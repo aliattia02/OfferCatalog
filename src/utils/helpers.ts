@@ -46,7 +46,7 @@ export const truncateText = (text: string, maxLength: number): string => {
 
 // Generate unique ID
 export const generateId = (): string => {
-  return `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 };
 
 // Debounce function
