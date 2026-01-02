@@ -1,8 +1,4 @@
-<<<<<<< HEAD
 import React, { useState, useMemo, useEffect } from 'react';
-=======
-import React, { useState } from 'react';
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
 import {
   View,
   Text,
@@ -12,11 +8,8 @@ import {
   TouchableOpacity,
   Dimensions,
   I18nManager,
-<<<<<<< HEAD
   Alert,
   Platform,
-=======
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -24,17 +17,10 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { Button } from '../../components/common';
-<<<<<<< HEAD
 import { OfferCard, CataloguePDFViewer, SavePageButton } from '../../components/flyers';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { useLocalized } from '../../hooks';
 import { addToBasket, addPageToBasket } from '../../store/slices/basketSlice';
-=======
-import { OfferCard } from '../../components/flyers';
-import { useAppSelector, useAppDispatch } from '../../store/hooks';
-import { useLocalized } from '../../hooks';
-import { addToBasket } from '../../store/slices/basketSlice';
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
 import { getCatalogueById, getOfferById } from '../../data/offers';
 import type { Offer } from '../../types';
 
@@ -48,7 +34,6 @@ export default function FlyerDetailScreen() {
   const { getTitle, getName } = useLocalized();
   
   const [currentPage, setCurrentPage] = useState(0);
-<<<<<<< HEAD
   const [showPDF, setShowPDF] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
@@ -188,13 +173,6 @@ export default function FlyerDetailScreen() {
     );
   };
 
-=======
-  
-  const catalogue = getCatalogueById(id);
-  const stores = useAppSelector(state => state.stores.stores);
-  const store = stores.find(s => s.id === catalogue?.storeId);
-
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
   if (!catalogue || !store) {
     return (
       <View style={styles.errorContainer}>
@@ -205,13 +183,9 @@ export default function FlyerDetailScreen() {
   }
 
   const currentPageData = catalogue.pages[currentPage];
-<<<<<<< HEAD
   const pageOffers = currentPageData?.offers
     .map(offerId => getOfferById(offerId))
     .filter(Boolean) as Offer[];
-=======
-  const pageOffers = currentPageData?.offers.map(offerId => getOfferById(offerId)).filter(Boolean) as Offer[];
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
 
   const handleAddToBasket = (offer: Offer) => {
     dispatch(addToBasket({
@@ -224,7 +198,6 @@ export default function FlyerDetailScreen() {
     router.push(`/offer/${offer.id}`);
   };
 
-<<<<<<< HEAD
   const handleOpenPDF = () => {
     addDebugLog('🖱️ PDF button clicked');
 
@@ -276,8 +249,6 @@ export default function FlyerDetailScreen() {
     Alert.alert('نجح', 'تم حفظ الصفحة في السلة');
   };
 
-=======
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
   return (
     <>
       <Stack.Screen
@@ -285,7 +256,6 @@ export default function FlyerDetailScreen() {
           headerShown: true,
           title: getTitle(catalogue),
           headerBackTitle: 'عودة',
-<<<<<<< HEAD
           headerRight: () => (
             <View style={{ flexDirection: 'row', gap: 8 }}>
               {/* Debug button */}
@@ -325,11 +295,6 @@ export default function FlyerDetailScreen() {
           </View>
         )}
 
-=======
-        }}
-      />
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
         {/* Store Header */}
         <View style={styles.header}>
           <Image source={{ uri: store.logo }} style={styles.storeLogo} resizeMode="contain" />
@@ -348,11 +313,7 @@ export default function FlyerDetailScreen() {
             style={styles.pageImage}
             resizeMode="contain"
           />
-<<<<<<< HEAD
 
-=======
-          
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
           {/* Page Navigation */}
           <View style={styles.pageNavigation}>
             <TouchableOpacity
@@ -366,19 +327,11 @@ export default function FlyerDetailScreen() {
                 color={currentPage === 0 ? colors.gray[400] : colors.white}
               />
             </TouchableOpacity>
-<<<<<<< HEAD
 
             <Text style={styles.pageIndicator}>
               {currentPage + 1} / {catalogue.pages.length}
             </Text>
 
-=======
-            
-            <Text style={styles.pageIndicator}>
-              {currentPage + 1} / {catalogue.pages.length}
-            </Text>
-            
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
             <TouchableOpacity
               style={[
                 styles.navButton,
@@ -396,7 +349,6 @@ export default function FlyerDetailScreen() {
           </View>
         </View>
 
-<<<<<<< HEAD
         {/* Save Page Button */}
         <View style={styles.savePageSection}>
           <SavePageButton
@@ -431,12 +383,6 @@ export default function FlyerDetailScreen() {
         {pageOffers.length > 0 && (
           <View style={styles.offersSection}>
             <Text style={styles.sectionTitle}>عروض هذه الصفحة ({pageOffers.length})</Text>
-=======
-        {/* Offers on Current Page */}
-        {pageOffers.length > 0 && (
-          <View style={styles.offersSection}>
-            <Text style={styles.sectionTitle}>عروض هذه الصفحة</Text>
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
             <View style={styles.offersGrid}>
               {pageOffers.map(offer => (
                 <OfferCard
@@ -452,7 +398,6 @@ export default function FlyerDetailScreen() {
 
         <View style={styles.bottomPadding} />
       </ScrollView>
-<<<<<<< HEAD
 
       {/* PDF Viewer Modal */}
       {pdfUrl && (
@@ -466,8 +411,6 @@ export default function FlyerDetailScreen() {
           }}
         />
       )}
-=======
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     </>
   );
 }
@@ -488,7 +431,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.md,
   },
-<<<<<<< HEAD
   headerButton: {
     padding: spacing.sm,
   },
@@ -508,8 +450,6 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
-=======
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
   header: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
@@ -579,7 +519,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.md,
     fontWeight: '600',
   },
-<<<<<<< HEAD
   savePageSection: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     paddingHorizontal: spacing.md,
@@ -610,8 +549,6 @@ const styles = StyleSheet.create({
   pdfButtonTextDisabled: {
     color: colors.gray[400],
   },
-=======
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
   offersSection: {
     padding: spacing.md,
   },
@@ -630,8 +567,4 @@ const styles = StyleSheet.create({
   bottomPadding: {
     height: spacing.xl,
   },
-<<<<<<< HEAD
 });
-=======
-});
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
