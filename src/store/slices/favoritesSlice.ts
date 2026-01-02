@@ -44,6 +44,9 @@ export const favoritesSlice = createSlice({
     },
 
     // Sync favorites to Firestore for authenticated users
+    // Note: This is a fire-and-forget operation intentionally kept in the reducer
+    // for simplicity. The sync happens in the background without blocking the UI.
+    // Consider moving to middleware or async thunk for more complex sync logic.
     syncFavorites: (state, action: PayloadAction<string>) => {
       const uid = action.payload;
       if (uid) {
