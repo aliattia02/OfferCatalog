@@ -31,7 +31,10 @@ export interface Catalogue {
   startDate: string;
   endDate: string;
   coverImage: string;
+<<<<<<< HEAD
   pdfUrl?: string; // NEW: URL to PDF file
+=======
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
   pages: CataloguePage[];
 }
 
@@ -56,7 +59,11 @@ export interface Offer {
   originalPrice?: number;
   offerPrice: number;
   currency: 'EGP';
+<<<<<<< HEAD
   unit?: string;
+=======
+  unit?: string; // kg, piece, pack
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
   categoryId: string;
   imageUrl: string;
   startDate: string;
@@ -76,6 +83,7 @@ export interface Category {
 // BasketItem
 export interface BasketItem {
   id: string;
+<<<<<<< HEAD
   offerId?: string; // Optional now
   offer?: Offer; // Optional for saved pages
   cataloguePage?: SavedCataloguePage; // NEW: For saved pages
@@ -95,6 +103,14 @@ export interface SavedCataloguePage {
   imageUrl: string;
   offerIds: string[];
   savedAt: string;
+=======
+  offerId: string;
+  offer: Offer; // Denormalized for display
+  quantity: number;
+  addedAt: string;
+  storeName: string; // For quick display
+  offerEndDate: string; // For quick display
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
 }
 
 // Settings
@@ -143,4 +159,8 @@ export interface RootState {
   offers: OffersState;
   stores: StoresState;
   settings: SettingsState;
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537

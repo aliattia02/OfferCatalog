@@ -8,32 +8,46 @@ import {
   I18nManager,
   Alert,
 } from 'react-native';
+<<<<<<< HEAD
 import { useRouter } from 'expo-router';
+=======
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { Button, EmptyState } from '../../components/common';
+<<<<<<< HEAD
 import { BasketItemCard, SavedPageCard } from '../../components/basket';
+=======
+import { BasketItemCard } from '../../components/basket';
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { updateQuantity, removeFromBasket, clearBasket } from '../../store/slices/basketSlice';
 import { formatCurrency } from '../../utils/helpers';
 
 export default function BasketScreen() {
   const { t } = useTranslation();
+<<<<<<< HEAD
   const router = useRouter();
+=======
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
   const dispatch = useAppDispatch();
   
   const { items, total } = useAppSelector(state => state.basket);
 
+<<<<<<< HEAD
   // Separate items by type
   const savedPages = items.filter(item => item.type === 'page');
   const offerItems = items.filter(item => item.type === 'offer');
 
+=======
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
   const handleUpdateQuantity = (itemId: string, quantity: number) => {
     dispatch(updateQuantity({ itemId, quantity }));
   };
 
+<<<<<<< HEAD
   const handleRemoveItem = (itemId: string, itemType: 'offer' | 'page') => {
     const message = itemType === 'page' 
       ? 'هل تريد حذف هذه الصفحة المحفوظة من السلة؟'
@@ -42,6 +56,12 @@ export default function BasketScreen() {
     Alert.alert(
       t('common.confirm'),
       message,
+=======
+  const handleRemoveItem = (itemId: string) => {
+    Alert.alert(
+      t('common.confirm'),
+      'هل تريد حذف هذا العنصر من السلة؟',
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
       [
         { text: t('common.cancel'), style: 'cancel' },
         {
@@ -69,6 +89,7 @@ export default function BasketScreen() {
   };
 
   const handleShareList = () => {
+<<<<<<< HEAD
     Alert.alert('قريباً', 'ميزة المشاركة قيد التطوير');
   };
 
@@ -76,6 +97,12 @@ export default function BasketScreen() {
     router.push(`/flyer/${catalogueId}`);
   };
 
+=======
+    // Placeholder for share functionality
+    Alert.alert('قريباً', 'ميزة المشاركة قيد التطوير');
+  };
+
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
   if (items.length === 0) {
     return (
       <View style={styles.container}>
@@ -88,6 +115,7 @@ export default function BasketScreen() {
     );
   }
 
+<<<<<<< HEAD
   const itemCount = offerItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const renderItem = ({ item }: { item: typeof items[0] }) => {
@@ -109,6 +137,9 @@ export default function BasketScreen() {
       />
     );
   };
+=======
+  const itemCount = items.reduce((sum, item) => sum + item.quantity, 0);
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
 
   return (
     <View style={styles.container}>
@@ -126,6 +157,7 @@ export default function BasketScreen() {
         </TouchableOpacity>
       </View>
 
+<<<<<<< HEAD
       {/* Stats */}
       {(savedPages.length > 0 || offerItems.length > 0) && (
         <View style={styles.statsContainer}>
@@ -152,11 +184,24 @@ export default function BasketScreen() {
       <FlatList
         data={items}
         renderItem={renderItem}
+=======
+      {/* Items List */}
+      <FlatList
+        data={items}
+        renderItem={({ item }) => (
+          <BasketItemCard
+            item={item}
+            onUpdateQuantity={(quantity) => handleUpdateQuantity(item.id, quantity)}
+            onRemove={() => handleRemoveItem(item.id)}
+          />
+        )}
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
         keyExtractor={item => item.id}
         contentContainerStyle={styles.listContainer}
         showsVerticalScrollIndicator={false}
       />
 
+<<<<<<< HEAD
       {/* Footer with Total (only show if there are offer items) */}
       {offerItems.length > 0 && (
         <View style={styles.footer}>
@@ -178,6 +223,27 @@ export default function BasketScreen() {
           />
         </View>
       )}
+=======
+      {/* Footer with Total */}
+      <View style={styles.footer}>
+        <View style={styles.totalContainer}>
+          <Text style={styles.itemCount}>
+            {itemCount} {itemCount === 1 ? t('basket.item') : t('basket.items')}
+          </Text>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>{t('basket.total')}</Text>
+            <Text style={styles.totalAmount}>{formatCurrency(total)}</Text>
+          </View>
+        </View>
+        <Button
+          title={t('basket.storeComparison')}
+          onPress={() => Alert.alert('قريباً', 'ميزة مقارنة المتاجر قيد التطوير')}
+          variant="outline"
+          fullWidth
+          style={styles.compareButton}
+        />
+      </View>
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     </View>
   );
 }
@@ -205,6 +271,7 @@ const styles = StyleSheet.create({
     marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
     marginRight: I18nManager.isRTL ? spacing.xs : 0,
   },
+<<<<<<< HEAD
   statsContainer: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     padding: spacing.md,
@@ -223,6 +290,8 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontWeight: '600',
   },
+=======
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
   listContainer: {
     padding: spacing.md,
   },
@@ -259,4 +328,8 @@ const styles = StyleSheet.create({
   compareButton: {
     marginTop: spacing.sm,
   },
+<<<<<<< HEAD
 });
+=======
+});
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
