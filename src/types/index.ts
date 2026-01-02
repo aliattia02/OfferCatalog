@@ -112,8 +112,8 @@ export interface UserProfile {
   displayName: string | null;
   photoURL: string | null;
   isAdmin: boolean;
-  createdAt: any;
-  lastLoginAt: any;
+  createdAt: any; // Firebase FieldValue (serverTimestamp) - will be Timestamp after write
+  lastLoginAt: any; // Firebase FieldValue (serverTimestamp) - will be Timestamp after write
 }
 
 // Auth State
