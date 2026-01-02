@@ -46,7 +46,7 @@ export const CatalogueListItem: React.FC<CatalogueListItemProps> = ({
         <View style={styles.info}>
           <View style={styles.infoItem}>
             <Ionicons name="storefront-outline" size={16} color={colors.textSecondary} />
-            <Text style={styles.infoText}>{catalogue.storeName || catalogue.storeId}</Text>
+            <Text style={styles.infoText}>{catalogue.storeId}</Text>
           </View>
           <View style={styles.infoItem}>
             <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
