@@ -10,6 +10,8 @@ import {
   orderBy,
   serverTimestamp,
   where,
+  QueryDocumentSnapshot,
+  DocumentData,
 } from 'firebase/firestore';
 import {
   ref,
@@ -17,6 +19,8 @@ import {
   getDownloadURL,
   deleteObject,
   UploadTask,
+  UploadTaskSnapshot,
+  StorageError,
 } from 'firebase/storage';
 import { getDbInstance, getStorageInstance } from '../config/firebase';
 import { Catalogue } from '../types';
@@ -65,7 +69,7 @@ export const uploadCataloguePDF = async (
     return new Promise((resolve, reject) => {
       uploadTask.on(
         'state_changed',
-        (snapshot) => {
+        (snapshot: UploadTaskSnapshot) => {
           // Track upload progress
           const progress: UploadProgress = {
             bytesTransferred: snapshot.bytesTransferred,
@@ -77,7 +81,7 @@ export const uploadCataloguePDF = async (
             onProgress(progress);
           }
         },
-        (error) => {
+        (error: StorageError) => {
           console.error('Upload error:', error);
           reject(error);
         },
@@ -194,7 +198,7 @@ export const getAllCatalogues = async (): Promise<Catalogue[]> => {
     const querySnapshot = await getDocs(q);
     const catalogues: Catalogue[] = [];
 
-    querySnapshot.forEach((doc) => {
+    querySnapshot.forEach((doc: QueryDocumentSnapshot<DocumentData>) => {
       catalogues.push({
         id: doc.id,
         ...doc.data(),
@@ -226,7 +230,7 @@ export const getCataloguesByStore = async (storeId: string): Promise<Catalogue[]
     const querySnapshot = await getDocs(q);
     const catalogues: Catalogue[] = [];
 
-    querySnapshot.forEach((doc) => {
+    querySnapshot.forEach((doc: QueryDocumentSnapshot<DocumentData>) => {
       catalogues.push({
         id: doc.id,
         ...doc.data(),
