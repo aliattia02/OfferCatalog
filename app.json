@@ -1,0 +1,55 @@
+{
+  "expo": {
+    "name": "offer-catalog",
+    "slug": "offer-catalog",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*",
+      "assets/catalogues/*.pdf"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourcompany.offercatalog"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.yourcompany.offercatalog"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-file-system",
+        {
+          "ios": {
+            "NSPhotoLibraryUsageDescription": "Allow $(PRODUCT_NAME) to access your photos to share catalogues."
+          },
+          "android": {
+            "permissions": [
+              "READ_EXTERNAL_STORAGE",
+              "WRITE_EXTERNAL_STORAGE"
+            ]
+          }
+        }
+      ],
+      "expo-asset"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}
