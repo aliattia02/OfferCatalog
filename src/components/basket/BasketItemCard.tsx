@@ -19,6 +19,11 @@ export const BasketItemCard: React.FC<BasketItemCardProps> = ({
 }) => {
   const { getName, language } = useLocalized();
 
+  // Only render if this is an offer type basket item
+  if (item.type !== 'offer' || !item.offer) {
+    return null;
+  }
+
   return (
     <View style={styles.container}>
       <Image source={{ uri: item.offer.imageUrl }} style={styles.image} resizeMode="cover" />
