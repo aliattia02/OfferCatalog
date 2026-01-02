@@ -1,11 +1,16 @@
 {
   "expo": {
+<<<<<<< HEAD
     "name": "offer-catalog",
+=======
+    "name": "عروض مصر - Offer Catalog",
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     "slug": "offer-catalog",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+<<<<<<< HEAD
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -18,13 +23,33 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.yourcompany.offercatalog"
+=======
+    "newArchEnabled": true,
+    "scheme": "offer-catalog",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#E63946"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.offercatalog.app"
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
+<<<<<<< HEAD
         "backgroundColor": "#ffffff"
       },
       "package": "com.yourcompany.offercatalog"
+=======
+        "backgroundColor": "#E63946"
+      },
+      "edgeToEdgeEnabled": true,
+      "predictiveBackGestureEnabled": false,
+      "package": "com.offercatalog.app"
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -32,6 +57,7 @@
     },
     "plugins": [
       "expo-router",
+<<<<<<< HEAD
       [
         "expo-file-system",
         {
@@ -47,6 +73,9 @@
         }
       ],
       "expo-asset"
+=======
+      "expo-localization"
+>>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     ],
     "experiments": {
       "typedRoutes": true
