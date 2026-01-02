@@ -1,7 +1,8 @@
 // src/utils/pdfHelpers.ts
 import { Platform } from 'react-native';
 import { Asset } from 'expo-asset';
-import * as FileSystem from 'expo-file-system';
+import { Paths, File } from 'expo-file-system';
+import { getPdfAsset, isPdfRegistered } from '../assets/pdfRegistry';
 
 /**
  * Resolves PDF URL for both web and native platforms
@@ -21,11 +22,14 @@ export const resolvePdfUrl = async (pdfUrl: string): Promise<string> => {
       return pdfUrl;
     }
 
-    // It's a local asset filename
-    // Load the asset from the assets/catalogues folder
-    const asset = Asset.fromModule(
-      require(`../../assets/catalogues/${pdfUrl}`)
-    );
+    // It's a local asset filename - use the registry
+    const assetModule = getPdfAsset(pdfUrl);
+    
+    if (!assetModule) {
+      throw new Error(`PDF asset not found in registry: ${pdfUrl}. Please add it to src/assets/pdfRegistry.ts`);
+    }
+
+    const asset = Asset.fromModule(assetModule);
     
     await asset.downloadAsync();
     
@@ -51,9 +55,13 @@ export const copyPdfToCache = async (filename: string): Promise<string> => {
   }
 
   try {
-    const asset = Asset.fromModule(
-      require(`../../assets/catalogues/${filename}`)
-    );
+    const assetModule = getPdfAsset(filename);
+    
+    if (!assetModule) {
+      throw new Error(`PDF asset not found in registry: ${filename}. Please add it to src/assets/pdfRegistry.ts`);
+    }
+
+    const asset = Asset.fromModule(assetModule);
     
     await asset.downloadAsync();
 
@@ -62,19 +70,14 @@ export const copyPdfToCache = async (filename: string): Promise<string> => {
     }
 
     // Copy to cache directory for better access
-    const cacheDir = FileSystem.cacheDirectory;
-    const cachedFile = `${cacheDir}${filename}`;
+    const cachedFile = new File(Paths.cache, filename);
 
-    const fileInfo = await FileSystem.getInfoAsync(cachedFile);
-    
-    if (!fileInfo.exists) {
-      await FileSystem.copyAsync({
-        from: asset.localUri,
-        to: cachedFile,
-      });
+    if (!cachedFile.exists) {
+      const sourceFile = new File(asset.localUri);
+      sourceFile.copy(cachedFile);
     }
 
-    return cachedFile;
+    return cachedFile.uri;
   } catch (error) {
     console.error('Error copying PDF to cache:', error);
     throw error;
@@ -98,8 +101,8 @@ export const checkPdfExists = async (pdfUrl: string): Promise<boolean> => {
 
   try {
     const resolvedUrl = await resolvePdfUrl(pdfUrl);
-    const fileInfo = await FileSystem.getInfoAsync(resolvedUrl);
-    return fileInfo.exists;
+    const file = new File(resolvedUrl);
+    return file.exists;
   } catch {
     return false;
   }

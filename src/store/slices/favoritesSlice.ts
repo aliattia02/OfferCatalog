@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type { FavoritesState } from '../../types';
+import { syncFavoritesToFirestore } from '../../services/userDataService';
 
 const initialState: FavoritesState = {
   storeIds: [],
@@ -41,6 +42,19 @@ export const favoritesSlice = createSlice({
       state.storeIds = action.payload.storeIds;
       state.offerIds = action.payload.offerIds;
     },
+
+    // Sync favorites to Firestore for authenticated users
+    // Note: This is a fire-and-forget operation intentionally kept in the reducer
+    // for simplicity. The sync happens in the background without blocking the UI.
+    // Consider moving to middleware or async thunk for more complex sync logic.
+    syncFavorites: (state, action: PayloadAction<string>) => {
+      const uid = action.payload;
+      if (uid) {
+        syncFavoritesToFirestore(uid, { storeIds: state.storeIds, offerIds: state.offerIds }).catch((error) => {
+          console.error('Error syncing favorites:', error);
+        });
+      }
+    },
   },
 });
 
@@ -49,6 +63,7 @@ export const {
   toggleFavoriteOffer,
   clearFavorites,
   hydrateFavorites,
+  syncFavorites,
 } = favoritesSlice.actions;
 
 export default favoritesSlice.reducer;

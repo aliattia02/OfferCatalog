@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type { BasketState, BasketItem, Offer, CataloguePage, Catalogue } from '../../types';
+import { syncBasketToFirestore } from '../../services/userDataService';
 
 const initialState: BasketState = {
   items: [],
@@ -122,6 +123,19 @@ export const basketSlice = createSlice({
       state.items = action.payload.items;
       state.total = action.payload.total;
     },
+
+    // Sync basket to Firestore for authenticated users
+    // Note: This is a fire-and-forget operation intentionally kept in the reducer
+    // for simplicity. The sync happens in the background without blocking the UI.
+    // Consider moving to middleware or async thunk for more complex sync logic.
+    syncBasket: (state, action: PayloadAction<string>) => {
+      const uid = action.payload;
+      if (uid) {
+        syncBasketToFirestore(uid, state.items).catch((error) => {
+          console.error('Error syncing basket:', error);
+        });
+      }
+    },
   },
 });
 
@@ -132,6 +146,7 @@ export const {
   updateQuantity,
   clearBasket,
   hydrateBasket,
+  syncBasket,
 } = basketSlice.actions;
 
 export default basketSlice.reducer;
