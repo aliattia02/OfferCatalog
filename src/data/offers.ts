@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 import { Platform } from 'react-native';
 import type { Offer, Catalogue, CataloguePage } from '../types';
 
@@ -10,27 +9,15 @@ const createPlaceholder = (width: number, height: number, text: string) => {
   return `${PLACEHOLDER_BASE}/${width}x${height}/e63946/ffffff?text=${encodedText}`;
 };
 
-=======
-import type { Offer, Catalogue, CataloguePage } from '../types';
-
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
 // Helper to get dates for offers (current week)
 const getOfferDates = () => {
   const today = new Date();
   const startDate = new Date(today);
-<<<<<<< HEAD
   startDate.setDate(today.getDate() - today.getDay());
 
   const endDate = new Date(startDate);
   endDate.setDate(startDate.getDate() + 6);
 
-=======
-  startDate.setDate(today.getDate() - today.getDay()); // Start of week
-  
-  const endDate = new Date(startDate);
-  endDate.setDate(startDate.getDate() + 6); // End of week
-  
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
   return {
     startDate: startDate.toISOString().split('T')[0],
     endDate: endDate.toISOString().split('T')[0],
@@ -39,7 +26,6 @@ const getOfferDates = () => {
 
 const { startDate, endDate } = getOfferDates();
 
-<<<<<<< HEAD
 // FIXED: Helper to get PDF URL based on platform
 const getPdfUrl = (filename: string): string => {
   if (Platform.OS === 'web') {
@@ -52,8 +38,6 @@ const getPdfUrl = (filename: string): string => {
   }
 };
 
-=======
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
 // Sample offers for Kazyon
 export const kazyonOffers: Offer[] = [
   {
@@ -69,11 +53,7 @@ export const kazyonOffers: Offer[] = [
     currency: 'EGP',
     unit: '5 kg',
     categoryId: 'rice-grains',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Rice'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Rice',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
     isFeatured: true,
@@ -91,11 +71,7 @@ export const kazyonOffers: Offer[] = [
     currency: 'EGP',
     unit: '2 L',
     categoryId: 'oils-ghee',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Oil'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Oil',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
     isFeatured: true,
@@ -113,11 +89,7 @@ export const kazyonOffers: Offer[] = [
     currency: 'EGP',
     unit: '1.2 kg',
     categoryId: 'meat-poultry',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Chicken'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Chicken',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
   },
@@ -134,11 +106,7 @@ export const kazyonOffers: Offer[] = [
     currency: 'EGP',
     unit: '1 kg',
     categoryId: 'dairy',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Cheese'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Cheese',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
   },
@@ -155,11 +123,7 @@ export const kazyonOffers: Offer[] = [
     currency: 'EGP',
     unit: '1 L',
     categoryId: 'dairy',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Milk'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Milk',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
   },
@@ -176,11 +140,7 @@ export const kazyonOffers: Offer[] = [
     currency: 'EGP',
     unit: '3 kg',
     categoryId: 'household',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Detergent'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Detergent',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
   },
@@ -197,11 +157,7 @@ export const kazyonOffers: Offer[] = [
     currency: 'EGP',
     unit: '2.25 L',
     categoryId: 'beverages',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Cola'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Cola',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
   },
@@ -222,11 +178,7 @@ export const carrefourOffers: Offer[] = [
     currency: 'EGP',
     unit: '2 kg',
     categoryId: 'rice-grains',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Basmati'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Basmati',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
     isFeatured: true,
@@ -244,11 +196,7 @@ export const carrefourOffers: Offer[] = [
     currency: 'EGP',
     unit: '500 ml',
     categoryId: 'oils-ghee',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Olive+Oil'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Olive+Oil',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
     isFeatured: true,
@@ -266,11 +214,7 @@ export const carrefourOffers: Offer[] = [
     currency: 'EGP',
     unit: '500 g',
     categoryId: 'meat-poultry',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Beef'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Beef',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
   },
@@ -287,11 +231,7 @@ export const carrefourOffers: Offer[] = [
     currency: 'EGP',
     unit: '200 g',
     categoryId: 'dairy',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Cheddar'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Cheddar',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
   },
@@ -308,11 +248,7 @@ export const carrefourOffers: Offer[] = [
     currency: 'EGP',
     unit: '400 ml',
     categoryId: 'personal-care',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Shampoo'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Shampoo',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
   },
@@ -329,11 +265,7 @@ export const carrefourOffers: Offer[] = [
     currency: 'EGP',
     unit: '50 pcs',
     categoryId: 'baby-products',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Diapers'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Diapers',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
   },
@@ -350,11 +282,7 @@ export const carrefourOffers: Offer[] = [
     currency: 'EGP',
     unit: '1 L',
     categoryId: 'beverages',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Juice'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Juice',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
   },
@@ -371,11 +299,7 @@ export const carrefourOffers: Offer[] = [
     currency: 'EGP',
     unit: 'piece',
     categoryId: 'electronics',
-<<<<<<< HEAD
     imageUrl: createPlaceholder(300, 300, 'Earphones'),
-=======
-    imageUrl: 'https://via.placeholder.com/300x300?text=Earphones',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     startDate,
     endDate,
     isFeatured: true,
@@ -391,33 +315,21 @@ const kazyonPages: CataloguePage[] = [
     id: 'kazyon-page-1',
     catalogueId: 'kazyon-catalogue-1',
     pageNumber: 1,
-<<<<<<< HEAD
     imageUrl: createPlaceholder(400, 600, 'Kazyon Page 1'),
-=======
-    imageUrl: 'https://via.placeholder.com/400x600?text=Kazyon+Page+1',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     offers: ['kazyon-offer-1', 'kazyon-offer-2'],
   },
   {
     id: 'kazyon-page-2',
     catalogueId: 'kazyon-catalogue-1',
     pageNumber: 2,
-<<<<<<< HEAD
     imageUrl: createPlaceholder(400, 600, 'Kazyon Page 2'),
-=======
-    imageUrl: 'https://via.placeholder.com/400x600?text=Kazyon+Page+2',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     offers: ['kazyon-offer-3', 'kazyon-offer-4', 'kazyon-offer-5'],
   },
   {
     id: 'kazyon-page-3',
     catalogueId: 'kazyon-catalogue-1',
     pageNumber: 3,
-<<<<<<< HEAD
     imageUrl: createPlaceholder(400, 600, 'Kazyon Page 3'),
-=======
-    imageUrl: 'https://via.placeholder.com/400x600?text=Kazyon+Page+3',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     offers: ['kazyon-offer-6', 'kazyon-offer-7'],
   },
 ];
@@ -427,42 +339,26 @@ const carrefourPages: CataloguePage[] = [
     id: 'carrefour-page-1',
     catalogueId: 'carrefour-catalogue-1',
     pageNumber: 1,
-<<<<<<< HEAD
     imageUrl: createPlaceholder(400, 600, 'Carrefour Page 1'),
-=======
-    imageUrl: 'https://via.placeholder.com/400x600?text=Carrefour+Page+1',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     offers: ['carrefour-offer-1', 'carrefour-offer-2'],
   },
   {
     id: 'carrefour-page-2',
     catalogueId: 'carrefour-catalogue-1',
     pageNumber: 2,
-<<<<<<< HEAD
     imageUrl: createPlaceholder(400, 600, 'Carrefour Page 2'),
-=======
-    imageUrl: 'https://via.placeholder.com/400x600?text=Carrefour+Page+2',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     offers: ['carrefour-offer-3', 'carrefour-offer-4', 'carrefour-offer-5'],
   },
   {
     id: 'carrefour-page-3',
     catalogueId: 'carrefour-catalogue-1',
     pageNumber: 3,
-<<<<<<< HEAD
     imageUrl: createPlaceholder(400, 600, 'Carrefour Page 3'),
-=======
-    imageUrl: 'https://via.placeholder.com/400x600?text=Carrefour+Page+3',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     offers: ['carrefour-offer-6', 'carrefour-offer-7', 'carrefour-offer-8'],
   },
 ];
 
-<<<<<<< HEAD
 // FIXED: Use correct PDF filenames without the duplicate .pdf extension
-=======
-// Catalogues
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
 export const catalogues: Catalogue[] = [
   {
     id: 'kazyon-catalogue-1',
@@ -471,12 +367,8 @@ export const catalogues: Catalogue[] = [
     titleEn: 'Weekly Offers - Kazyon',
     startDate,
     endDate,
-<<<<<<< HEAD
     coverImage: createPlaceholder(400, 600, 'Kazyon Cover'),
     pdfUrl: getPdfUrl('kazyon_2025-12-23_2025-12-29.pdf'), // Fixed filename
-=======
-    coverImage: 'https://via.placeholder.com/400x600?text=Kazyon+Cover',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     pages: kazyonPages,
   },
   {
@@ -486,12 +378,8 @@ export const catalogues: Catalogue[] = [
     titleEn: 'Weekly Offers - Carrefour',
     startDate,
     endDate,
-<<<<<<< HEAD
     coverImage: createPlaceholder(400, 600, 'Carrefour Cover'),
     pdfUrl: getPdfUrl('catalogue_92b7a97e_1765366806.pdf'),
-=======
-    coverImage: 'https://via.placeholder.com/400x600?text=Carrefour+Cover',
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
     pages: carrefourPages,
   },
 ];
@@ -521,7 +409,6 @@ export const getCatalogueById = (id: string): Catalogue | undefined => {
   return catalogues.find(catalogue => catalogue.id === id);
 };
 
-<<<<<<< HEAD
 export const getOffersForPage = (pageOfferIds: string[]): Offer[] => {
   return pageOfferIds
     .map(id => getOfferById(id))
@@ -529,6 +416,3 @@ export const getOffersForPage = (pageOfferIds: string[]): Offer[] => {
 };
 
 export default offers;
-=======
-export default offers;
->>>>>>> 50d173479f0c2c25463a0dfa16210fb8bd07c537
