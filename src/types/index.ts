@@ -105,6 +105,26 @@ export interface AppSettings {
   favoriteOfferIds: string[];
 }
 
+// User Profile
+export interface UserProfile {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
+  isAdmin: boolean;
+  createdAt: any;
+  lastLoginAt: any;
+}
+
+// Auth State
+export interface AuthState {
+  user: UserProfile | null;
+  isAuthenticated: boolean;
+  isAdmin: boolean;
+  loading: boolean;
+  error: string | null;
+}
+
 // Redux State Types
 export interface BasketState {
   items: BasketItem[];
@@ -143,4 +163,5 @@ export interface RootState {
   offers: OffersState;
   stores: StoresState;
   settings: SettingsState;
+  auth: AuthState;
 }
