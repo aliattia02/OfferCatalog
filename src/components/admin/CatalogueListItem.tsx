@@ -1,0 +1,138 @@
+// src/components/admin/CatalogueListItem.tsx
+import React from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
+import { Catalogue } from '../../types';
+
+interface CatalogueListItemProps {
+  catalogue: Catalogue;
+  onDelete: () => void;
+}
+
+export const CatalogueListItem: React.FC<CatalogueListItemProps> = ({
+  catalogue,
+  onDelete,
+}) => {
+  const formatDate = (dateStr: string) => {
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('ar-EG', { year: 'numeric', month: 'short', day: 'numeric' });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.content}>
+        <View style={styles.header}>
+          <View style={styles.titleContainer}>
+            <Ionicons name="document-text" size={24} color={colors.primary} />
+            <View style={styles.titleText}>
+              <Text style={styles.title} numberOfLines={1}>
+                {catalogue.titleAr}
+              </Text>
+              <Text style={styles.subtitle} numberOfLines={1}>
+                {catalogue.titleEn}
+              </Text>
+            </View>
+          </View>
+          <TouchableOpacity onPress={onDelete} style={styles.deleteButton}>
+            <Ionicons name="trash-outline" size={20} color={colors.error} />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.info}>
+          <View style={styles.infoItem}>
+            <Ionicons name="storefront-outline" size={16} color={colors.textSecondary} />
+            <Text style={styles.infoText}>{catalogue.storeId}</Text>
+          </View>
+          <View style={styles.infoItem}>
+            <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
+            <Text style={styles.infoText}>
+              {formatDate(catalogue.startDate)} - {formatDate(catalogue.endDate)}
+            </Text>
+          </View>
+        </View>
+
+        {catalogue.pdfUrl && (
+          <View style={styles.badge}>
+            <Ionicons name="cloud-done" size={14} color={colors.success} />
+            <Text style={styles.badgeText}>مرفوع على السحابة</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.md,
+    ...shadows.sm,
+  },
+  content: {
+    padding: spacing.md,
+  },
+  header: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: spacing.sm,
+  },
+  titleContainer: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    flex: 1,
+    gap: spacing.sm,
+  },
+  titleText: {
+    flex: 1,
+  },
+  title: {
+    fontSize: typography.fontSize.md,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  subtitle: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: 2,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  deleteButton: {
+    padding: spacing.xs,
+  },
+  info: {
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  infoItem: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  infoText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+  },
+  badge: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    alignSelf: I18nManager.isRTL ? 'flex-end' : 'flex-start',
+    backgroundColor: colors.success + '20',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.sm,
+    gap: 4,
+  },
+  badgeText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.success,
+    fontWeight: '600',
+  },
+});

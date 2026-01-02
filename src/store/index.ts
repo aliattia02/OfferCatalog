@@ -4,6 +4,7 @@ import favoritesReducer from './slices/favoritesSlice';
 import offersReducer from './slices/offersSlice';
 import storesReducer from './slices/storesSlice';
 import settingsReducer from './slices/settingsSlice';
+import authReducer from './slices/authSlice';
 
 export const store = configureStore({
   reducer: {
@@ -12,12 +13,20 @@ export const store = configureStore({
     offers: offersReducer,
     stores: storesReducer,
     settings: settingsReducer,
+    auth: authReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
         // Ignore these action types for serializable check
-        ignoredActions: ['basket/hydrateBasket', 'favorites/hydrateFavorites'],
+        ignoredActions: [
+          'basket/hydrateBasket',
+          'favorites/hydrateFavorites',
+          'auth/signInWithGoogle/fulfilled',
+          'auth/checkAuthState/fulfilled',
+        ],
+        // Ignore these paths in the state
+        ignoredPaths: ['auth.user.createdAt', 'auth.user.lastLoginAt'],
       },
     }),
 });

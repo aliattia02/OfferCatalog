@@ -8,6 +8,9 @@ import { StatusBar } from 'expo-status-bar';
 import store from '../store';
 import { initI18n } from '../i18n';
 import { colors } from '../constants/theme';
+import { initializeFirebase } from '../config/firebase';
+import { onAuthChange } from '../services/authService';
+import { setUser } from '../store/slices/authSlice';
 
 // Import i18next for translation hook
 import '../i18n';
@@ -20,7 +23,21 @@ export default function RootLayout() {
       try {
         // Initialize i18n
         await initI18n();
+        
+        // Initialize Firebase
+        initializeFirebase();
+        
+        // Listen to auth state changes
+        const unsubscribe = onAuthChange((user) => {
+          store.dispatch(setUser(user));
+        });
+        
         setIsReady(true);
+        
+        // Cleanup
+        return () => {
+          unsubscribe();
+        };
       } catch (error) {
         console.error('Error initializing app:', error);
         setIsReady(true);
@@ -49,6 +66,8 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="auth" options={{ headerShown: false }} />
+          <Stack.Screen name="admin" options={{ headerShown: false }} />
           <Stack.Screen
             name="flyer/[id]"
             options={{
