@@ -8,13 +8,16 @@ import {
   Switch,
   I18nManager,
   Alert,
+  Image,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { setLanguage, setNotificationsEnabled } from '../../store/slices/settingsSlice';
+import { signOut as authSignOut } from '../../store/slices/authSlice';
 import { changeLanguage } from '../../i18n';
 import { usePersistSettings } from '../../hooks';
 import { APP_CONFIG } from '../../constants/config';
@@ -22,12 +25,14 @@ import { APP_CONFIG } from '../../constants/config';
 export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
   const dispatch = useAppDispatch();
+  const router = useRouter();
   
   // Persist settings
   usePersistSettings();
   
   const settings = useAppSelector(state => state.settings);
   const favoriteStoreIds = useAppSelector(state => state.favorites.storeIds);
+  const { user, isAuthenticated, isAdmin } = useAppSelector(state => state.auth);
 
   const handleLanguageChange = async (language: 'ar' | 'en') => {
     await changeLanguage(language);
@@ -45,6 +50,39 @@ export default function SettingsScreen() {
 
   const handleNotificationsToggle = () => {
     dispatch(setNotificationsEnabled(!settings.notificationsEnabled));
+  };
+
+  const handleSignIn = () => {
+    router.push('/auth/sign-in');
+  };
+
+  const handleSignOut = async () => {
+    Alert.alert(
+      'تسجيل الخروج',
+      'هل أنت متأكد من تسجيل الخروج؟',
+      [
+        {
+          text: 'إلغاء',
+          style: 'cancel',
+        },
+        {
+          text: 'تسجيل الخروج',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await dispatch(authSignOut()).unwrap();
+              Alert.alert('نجح', 'تم تسجيل الخروج بنجاح');
+            } catch (error: any) {
+              Alert.alert('خطأ', error.message || 'فشل تسجيل الخروج');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleAdminPanel = () => {
+    router.push('/admin/dashboard');
   };
 
   const renderSettingItem = (
@@ -79,6 +117,68 @@ export default function SettingsScreen() {
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      {/* Account Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{t('settings.account') || 'الحساب'}</Text>
+        <View style={styles.card}>
+          {isAuthenticated && user ? (
+            <>
+              {/* User Profile */}
+              <View style={styles.profileContainer}>
+                {user.photoURL ? (
+                  <Image source={{ uri: user.photoURL }} style={styles.avatar} />
+                ) : (
+                  <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                    <Ionicons name="person" size={32} color={colors.textSecondary} />
+                  </View>
+                )}
+                <View style={styles.profileInfo}>
+                  <Text style={styles.profileName}>{user.displayName || 'مستخدم'}</Text>
+                  <Text style={styles.profileEmail}>{user.email}</Text>
+                  {isAdmin && (
+                    <View style={styles.adminBadge}>
+                      <Ionicons name="shield-checkmark" size={14} color={colors.white} />
+                      <Text style={styles.adminBadgeText}>مدير</Text>
+                    </View>
+                  )}
+                </View>
+              </View>
+              <View style={styles.divider} />
+              {/* Admin Panel Link */}
+              {isAdmin && (
+                <>
+                  {renderSettingItem(
+                    'settings',
+                    'لوحة التحكم الإدارية',
+                    'إدارة الكتالوجات والعروض',
+                    undefined,
+                    handleAdminPanel
+                  )}
+                  <View style={styles.divider} />
+                </>
+              )}
+              {/* Sign Out Button */}
+              {renderSettingItem(
+                'log-out',
+                'تسجيل الخروج',
+                undefined,
+                undefined,
+                handleSignOut
+              )}
+            </>
+          ) : (
+            /* Sign In Button */
+            renderSettingItem(
+              'log-in',
+              'تسجيل الدخول',
+              'احفظ المفضلة والسلة عبر جميع أجهزتك',
+              undefined,
+              handleSignIn
+            )
+          )}
+        </View>
+      </View>
+
       {/* Language Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('settings.language')}</Text>
@@ -282,5 +382,53 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: spacing.xxl,
+  },
+  profileContainer: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+  },
+  avatar: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    marginRight: I18nManager.isRTL ? 0 : spacing.md,
+    marginLeft: I18nManager.isRTL ? spacing.md : 0,
+  },
+  avatarPlaceholder: {
+    backgroundColor: colors.gray[200],
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  profileInfo: {
+    flex: 1,
+  },
+  profileName: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: 'bold',
+    color: colors.text,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  profileEmail: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: 2,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  adminBadge: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+    alignSelf: I18nManager.isRTL ? 'flex-end' : 'flex-start',
+    marginTop: spacing.xs,
+    gap: 4,
+  },
+  adminBadgeText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.white,
+    fontWeight: '600',
   },
 });
