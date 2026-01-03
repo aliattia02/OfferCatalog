@@ -17,10 +17,10 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { Button } from '../../components/common';
-import { OfferCard, CataloguePDFViewer, SavePageButton } from '../../components/flyers';
+import { OfferCard, CataloguePDFViewer, SavePageButton, PDFPageViewer } from '../../components/flyers';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { useLocalized } from '../../hooks';
-import { addToBasket, addPageToBasket } from '../../store/slices/basketSlice';
+import { addToBasket, addPageToBasket, addPdfPageToBasket } from '../../store/slices/basketSlice';
 import { getCatalogueById, getOfferById } from '../../data/offers';
 import type { Offer } from '../../types';
 
@@ -35,6 +35,7 @@ export default function FlyerDetailScreen() {
   
   const [currentPage, setCurrentPage] = useState(0);
   const [showPDF, setShowPDF] = useState(false);
+  const [showInteractivePDF, setShowInteractivePDF] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
   const [debugInfo, setDebugInfo] = useState<string[]>([]);
@@ -63,7 +64,7 @@ export default function FlyerDetailScreen() {
     console.log('[PDF Debug]', message);
   };
 
-  // Check if current page is saved
+  // Check if current page is saved (for image-based pages)
   const isPageSaved = useMemo(() => {
     if (!catalogue) return false;
     return basketItems.some(
@@ -73,6 +74,18 @@ export default function FlyerDetailScreen() {
         item.cataloguePage?.pageNumber === currentPage + 1
     );
   }, [basketItems, catalogue, currentPage]);
+
+  // Get saved PDF pages for the current catalogue
+  const savedPdfPages = useMemo(() => {
+    if (!catalogue) return [];
+    return basketItems
+      .filter(
+        item =>
+          item.type === 'page' &&
+          item.cataloguePage?.catalogueId === catalogue.id
+      )
+      .map(item => item.cataloguePage?.pageNumber || 0);
+  }, [basketItems, catalogue]);
 
   // Load PDF URL on mount
   useEffect(() => {
@@ -231,6 +244,56 @@ export default function FlyerDetailScreen() {
     setShowPDF(true);
   };
 
+  const handleOpenInteractivePDF = () => {
+    addDebugLog('🖱️ Interactive PDF button clicked');
+
+    if (!catalogue.pdfUrl) {
+      addDebugLog('❌ No PDF URL available');
+      Alert.alert('خطأ', 'ملف PDF غير متوفر لهذا الكتالوج');
+      return;
+    }
+
+    if (!pdfUrl && !loadingPdf) {
+      addDebugLog('❌ PDF URL not loaded yet');
+      Alert.alert(
+        'خطأ',
+        'فشل تحميل ملف PDF. يرجى المحاولة مرة أخرى',
+        [
+          { text: 'إعادة المحاولة', onPress: loadPdfUrl },
+          { text: 'معلومات التصحيح', onPress: showDebugInfo },
+          { text: 'إلغاء' }
+        ]
+      );
+      return;
+    }
+
+    if (loadingPdf) {
+      addDebugLog('⏳ Still loading PDF');
+      Alert.alert('انتظر', 'جاري تحميل ملف PDF...');
+      return;
+    }
+
+    addDebugLog(`✅ Opening interactive PDF viewer with URL: ${pdfUrl}`);
+    setShowInteractivePDF(true);
+  };
+
+  const handleSavePdfPage = (pageNumber: number, pageImageUri: string) => {
+    if (!catalogue || !store) return;
+
+    dispatch(
+      addPdfPageToBasket({
+        catalogueId: catalogue.id,
+        catalogueTitle: getTitle(catalogue),
+        pageNumber,
+        pageImageUri,
+        storeName: store.nameAr,
+        endDate: catalogue.endDate,
+      })
+    );
+
+    Alert.alert('نجح', `تم حفظ الصفحة ${pageNumber} في السلة`);
+  };
+
   const handleSavePage = () => {
     if (isPageSaved) {
       Alert.alert('تنبيه', 'تم حفظ هذه الصفحة مسبقاً');
@@ -356,26 +419,48 @@ export default function FlyerDetailScreen() {
             onPress={handleSavePage}
           />
           {catalogue.pdfUrl && (
-            <TouchableOpacity
-              style={[
-                styles.pdfButton,
-                (loadingPdf || !pdfUrl) && styles.pdfButtonDisabled
-              ]}
-              onPress={handleOpenPDF}
-              disabled={loadingPdf || !pdfUrl}
-            >
-              <Ionicons
-                name="document-text-outline"
-                size={20}
-                color={loadingPdf || !pdfUrl ? colors.gray[400] : colors.primary}
-              />
-              <Text style={[
-                styles.pdfButtonText,
-                (loadingPdf || !pdfUrl) && styles.pdfButtonTextDisabled
-              ]}>
-                {loadingPdf ? 'جاري التحميل...' : 'عرض PDF'}
-              </Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity
+                style={[
+                  styles.pdfButton,
+                  (loadingPdf || !pdfUrl) && styles.pdfButtonDisabled
+                ]}
+                onPress={handleOpenInteractivePDF}
+                disabled={loadingPdf || !pdfUrl}
+              >
+                <Ionicons
+                  name="albums-outline"
+                  size={20}
+                  color={loadingPdf || !pdfUrl ? colors.gray[400] : colors.primary}
+                />
+                <Text style={[
+                  styles.pdfButtonText,
+                  (loadingPdf || !pdfUrl) && styles.pdfButtonTextDisabled
+                ]}>
+                  {loadingPdf ? 'جاري التحميل...' : 'عرض تفاعلي'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.pdfButton,
+                  (loadingPdf || !pdfUrl) && styles.pdfButtonDisabled
+                ]}
+                onPress={handleOpenPDF}
+                disabled={loadingPdf || !pdfUrl}
+              >
+                <Ionicons
+                  name="document-text-outline"
+                  size={20}
+                  color={loadingPdf || !pdfUrl ? colors.gray[400] : colors.primary}
+                />
+                <Text style={[
+                  styles.pdfButtonText,
+                  (loadingPdf || !pdfUrl) && styles.pdfButtonTextDisabled
+                ]}>
+                  {loadingPdf ? 'جاري التحميل...' : 'عرض PDF'}
+                </Text>
+              </TouchableOpacity>
+            </>
           )}
         </View>
 
@@ -408,6 +493,22 @@ export default function FlyerDetailScreen() {
           onClose={() => {
             addDebugLog('🔒 Closing PDF modal');
             setShowPDF(false);
+          }}
+        />
+      )}
+
+      {/* Interactive PDF Page Viewer Modal */}
+      {pdfUrl && (
+        <PDFPageViewer
+          visible={showInteractivePDF}
+          pdfUrl={pdfUrl}
+          catalogueTitle={getTitle(catalogue)}
+          catalogueId={catalogue.id}
+          savedPages={savedPdfPages}
+          onSavePage={handleSavePdfPage}
+          onClose={() => {
+            addDebugLog('🔒 Closing interactive PDF modal');
+            setShowInteractivePDF(false);
           }}
         />
       )}
@@ -521,6 +622,7 @@ const styles = StyleSheet.create({
   },
   savePageSection: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexWrap: 'wrap',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     gap: spacing.sm,
@@ -535,6 +637,8 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderWidth: 1,
     borderColor: colors.primary,
+    flex: 1,
+    minWidth: 120,
   },
   pdfButtonDisabled: {
     borderColor: colors.gray[300],
