@@ -79,11 +79,12 @@ export interface BasketItem {
   offerId?: string; // Optional now
   offer?: Offer; // Optional for saved pages
   cataloguePage?: SavedCataloguePage; // NEW: For saved pages
+  pdfPage?: SavedPdfPage; // NEW: For saved PDF pages
   quantity: number;
   addedAt: string;
   storeName: string;
   offerEndDate: string;
-  type: 'offer' | 'page'; // NEW: Distinguish between offers and pages
+  type: 'offer' | 'page' | 'pdf-page'; // NEW: Distinguish between offers, pages and PDF pages
 }
 
 // NEW: Saved Catalogue Page
@@ -95,6 +96,18 @@ export interface SavedCataloguePage {
   imageUrl: string;
   offerIds: string[];
   savedAt: string;
+}
+
+// NEW: Saved PDF Page
+export interface SavedPdfPage {
+  id: string;
+  catalogueId: string;
+  catalogueTitle: string;
+  storeId: string;
+  storeName: string;
+  pageNumber: number;
+  pageImageUri: string; // Base64 data URL
+  savedAt: string; // ISO timestamp
 }
 
 // Settings
