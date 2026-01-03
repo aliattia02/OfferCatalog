@@ -17,11 +17,11 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { Button } from '../../components/common';
-import { OfferCard, CataloguePDFViewer, SavePageButton } from '../../components/flyers';
+import { OfferCard, PDFPageViewer, SavePageButton } from '../../components/flyers';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { useLocalized } from '../../hooks';
-import { addToBasket, addPageToBasket } from '../../store/slices/basketSlice';
-// Use the NEW catalogue registry instead of old offers. ts
+import { addToBasket, addPageToBasket, addPdfPageToBasket } from '../../store/slices/basketSlice';
+// Use the NEW catalogue registry instead of old offers.ts
 import { getCatalogueById } from '../../data/catalogueRegistry';
 import { getOfferById } from '../../data/offers';
 import type { Offer } from '../../types';
@@ -37,6 +37,7 @@ export default function FlyerDetailScreen() {
 
   const [currentPage, setCurrentPage] = useState(0);
   const [showPDF, setShowPDF] = useState(false);
+  const [showPDFPageViewer, setShowPDFPageViewer] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
 
@@ -76,16 +77,27 @@ export default function FlyerDetailScreen() {
     console.log('========================');
   }, [id]); // Only run when id changes
 
-  // Check if current page is saved
+  // Check if current page is saved (for image pages)
   const isPageSaved = useMemo(() => {
     if (!catalogue || !catalogue.pages || catalogue.pages.length === 0) return false;
     return basketItems.some(
       item =>
         item.type === 'page' &&
-        item. cataloguePage?.catalogueId === catalogue.id &&
+        item.cataloguePage?.catalogueId === catalogue.id &&
         item.cataloguePage?.pageNumber === currentPage + 1
     );
-  }, [basketItems, catalogue?. id, currentPage]);
+  }, [basketItems, catalogue?.id, currentPage]);
+
+  // Get saved PDF page numbers for this catalogue
+  const savedPdfPageNumbers = useMemo(() => {
+    if (!catalogue) return [];
+    return basketItems
+      .filter(item => 
+        item.type === 'pdf-page' && 
+        item.pdfPage?.catalogueId === catalogue.id
+      )
+      .map(item => item.pdfPage!.pageNumber);
+  }, [basketItems, catalogue?.id]);
 
   // Load PDF URL on mount
   useEffect(() => {
@@ -193,7 +205,7 @@ export default function FlyerDetailScreen() {
   const handleOpenPDF = () => {
     addDebugLog('🖱️ PDF button clicked');
 
-    if (! catalogue.pdfUrl) {
+    if (!catalogue.pdfUrl) {
       addDebugLog('❌ No PDF URL available');
       Alert.alert('خطأ', 'ملف PDF غير متوفر لهذا الكتالوج');
       return;
@@ -206,10 +218,10 @@ export default function FlyerDetailScreen() {
     }
 
     // Use the catalogue URL directly if pdfUrl state hasn't been set yet
-    const urlToUse = pdfUrl || catalogue. pdfUrl;
-    addDebugLog(`✅ Opening PDF modal with URL: ${urlToUse}`);
+    const urlToUse = pdfUrl || catalogue.pdfUrl;
+    addDebugLog(`✅ Opening PDF page viewer with URL: ${urlToUse}`);
     setPdfUrl(urlToUse);
-    setShowPDF(true);
+    setShowPDFPageViewer(true);
   };
 
   const handleSavePage = () => {
@@ -227,12 +239,27 @@ export default function FlyerDetailScreen() {
       addPageToBasket({
         catalogue,
         page: currentPageData,
-        storeName:  store.nameAr,
+        storeName: store.nameAr,
         offers: pageOffers,
       })
     );
 
     Alert.alert('نجح', 'تم حفظ الصفحة في السلة');
+  };
+
+  const handleSavePdfPage = (pageNumber: number, pageImageUri: string) => {
+    dispatch(
+      addPdfPageToBasket({
+        catalogueId: catalogue.id,
+        catalogueTitle: catalogue.titleAr,
+        storeId: catalogue.storeId,
+        storeName: store?.nameAr || '',
+        pageNumber,
+        pageImageUri,
+      })
+    );
+
+    Alert.alert('تم الحفظ', `تم حفظ الصفحة ${pageNumber} في السلة`);
   };
 
   return (
@@ -410,16 +437,23 @@ export default function FlyerDetailScreen() {
         <View style={styles. bottomPadding} />
       </ScrollView>
 
-      {/* PDF Viewer Modal */}
-      <CataloguePDFViewer
-        visible={showPDF}
-        pdfUrl={pdfUrl || catalogue.pdfUrl}
-        catalogueTitle={catalogue.titleAr}
-        onClose={() => {
-          addDebugLog('🔒 Closing PDF modal');
-          setShowPDF(false);
-        }}
-      />
+      {/* New PDF Page Viewer Modal */}
+      {showPDFPageViewer && (
+        <PDFPageViewer
+          visible={showPDFPageViewer}
+          pdfUrl={pdfUrl || catalogue.pdfUrl}
+          catalogueTitle={catalogue.titleAr}
+          catalogueId={catalogue.id}
+          storeId={catalogue.storeId}
+          storeName={store?.nameAr || ''}
+          onClose={() => {
+            addDebugLog('🔒 Closing PDF page viewer');
+            setShowPDFPageViewer(false);
+          }}
+          onSavePage={handleSavePdfPage}
+          savedPageNumbers={savedPdfPageNumbers}
+        />
+      )}
     </>
   );
 }

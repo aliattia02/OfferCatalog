@@ -94,6 +94,56 @@ export const basketSlice = createSlice({
       state.total = calculateTotal(state.items);
     },
 
+    // NEW: Add PDF page to basket
+    addPdfPageToBasket: (
+      state,
+      action: PayloadAction<{
+        catalogueId: string;
+        catalogueTitle: string;
+        storeId: string;
+        storeName: string;
+        pageNumber: number;
+        pageImageUri: string;
+      }>
+    ) => {
+      const { catalogueId, catalogueTitle, storeId, storeName, pageNumber, pageImageUri } = action.payload;
+
+      // Check if this PDF page is already saved
+      const existingPage = state.items.find(
+        item =>
+          item.type === 'pdf-page' &&
+          item.pdfPage?.catalogueId === catalogueId &&
+          item.pdfPage?.pageNumber === pageNumber
+      );
+
+      if (existingPage) {
+        // Already saved, don't add duplicate
+        return;
+      }
+
+      const newItem: BasketItem = {
+        id: `basket_pdf_page_${Date.now()}`,
+        pdfPage: {
+          id: `pdf_page_${catalogueId}_${pageNumber}_${Date.now()}`,
+          catalogueId,
+          catalogueTitle,
+          storeId,
+          storeName,
+          pageNumber,
+          pageImageUri,
+          savedAt: new Date().toISOString(),
+        },
+        quantity: 1, // PDF pages always have quantity 1
+        addedAt: new Date().toISOString(),
+        storeName,
+        offerEndDate: '', // PDF pages don't have offer end dates
+        type: 'pdf-page',
+      };
+
+      state.items.unshift(newItem); // Add to beginning
+      state.total = calculateTotal(state.items);
+    },
+
     removeFromBasket: (state, action: PayloadAction<string>) => {
       state.items = state.items.filter(item => item.id !== action.payload);
       state.total = calculateTotal(state.items);
@@ -142,6 +192,7 @@ export const basketSlice = createSlice({
 export const {
   addToBasket,
   addPageToBasket,
+  addPdfPageToBasket,
   removeFromBasket,
   updateQuantity,
   clearBasket,
