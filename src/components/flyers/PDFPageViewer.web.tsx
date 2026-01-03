@@ -15,9 +15,16 @@ import * as pdfjsLib from 'pdfjs-dist';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import type { PDFPageViewerProps, PageData } from '../../types';
 
-// Set up PDF.js worker
+// Set up PDF.js worker with fallback
 if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+  try {
+    // Try to use CDN worker first
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+  } catch (error) {
+    console.error('Failed to set PDF worker URL:', error);
+    // Fallback: try unpkg CDN
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.js`;
+  }
 }
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
@@ -250,6 +257,9 @@ export const PDFPageViewer: React.FC<PDFPageViewerProps> = ({
             >
               <View style={styles.canvasWrapper}>
                 {cachedPage ? (
+                  // Note: Using native HTML img element for web platform only
+                  // This is necessary for displaying base64 canvas data
+                  // Native platforms use PDFPageViewer.native.tsx instead
                   <img 
                     src={cachedPage.imageDataUrl} 
                     alt={`Page ${currentPage}`}
@@ -265,6 +275,8 @@ export const PDFPageViewer: React.FC<PDFPageViewerProps> = ({
                     <Text style={styles.renderingText}>جاري تحميل الصفحة...</Text>
                   </View>
                 )}
+                {/* Canvas element used for PDF rendering (web only) */}
+                {/* Hidden after rendering, displayed as img above */}
                 <canvas
                   ref={canvasRef}
                   style={{ display: 'none' }}
