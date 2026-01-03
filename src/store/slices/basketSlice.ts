@@ -1,4 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { BasketState, BasketItem, Offer, CataloguePage, Catalogue } from '../../types';
 import { syncBasketToFirestore } from '../../services/userDataService';
 
@@ -178,11 +179,16 @@ export const basketSlice = createSlice({
     // Note: This is a fire-and-forget operation intentionally kept in the reducer
     // for simplicity. The sync happens in the background without blocking the UI.
     // Consider moving to middleware or async thunk for more complex sync logic.
-    syncBasket: (state, action: PayloadAction<string>) => {
+    syncBasket: (state, action: PayloadAction<string | null>) => {
       const uid = action.payload;
+      
+      // Always save to AsyncStorage (local) first
+      AsyncStorage.setItem('basket', JSON.stringify(state.items)).catch(console.error);
+      
+      // Only sync to Firebase if user is authenticated
       if (uid) {
         syncBasketToFirestore(uid, state.items).catch((error) => {
-          console.error('Error syncing basket:', error);
+          console.error('Error syncing basket to Firebase:', error);
         });
       }
     },

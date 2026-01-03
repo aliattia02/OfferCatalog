@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { Button, EmptyState } from '../../components/common';
-import { BasketItemCard, SavedPageCard } from '../../components/basket';
+import { BasketItemCard, SavedPageCard, SavedPdfPageCard } from '../../components/basket';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { updateQuantity, removeFromBasket, clearBasket } from '../../store/slices/basketSlice';
 import { formatCurrency } from '../../utils/helpers';
@@ -27,15 +27,15 @@ export default function BasketScreen() {
   const { items, total } = useAppSelector(state => state.basket);
 
   // Separate items by type
-  const savedPages = items.filter(item => item.type === 'page');
+  const savedPages = items.filter(item => item.type === 'page' || item.type === 'pdf-page');
   const offerItems = items.filter(item => item.type === 'offer');
 
   const handleUpdateQuantity = (itemId: string, quantity: number) => {
     dispatch(updateQuantity({ itemId, quantity }));
   };
 
-  const handleRemoveItem = (itemId: string, itemType: 'offer' | 'page') => {
-    const message = itemType === 'page' 
+  const handleRemoveItem = (itemId: string, itemType: 'offer' | 'page' | 'pdf-page') => {
+    const message = (itemType === 'page' || itemType === 'pdf-page')
       ? 'هل تريد حذف هذه الصفحة المحفوظة من السلة؟'
       : 'هل تريد حذف هذا العنصر من السلة؟';
       
@@ -97,6 +97,16 @@ export default function BasketScreen() {
           item={item}
           onRemove={() => handleRemoveItem(item.id, 'page')}
           onViewPage={() => handleViewPage(item.cataloguePage!.catalogueId)}
+        />
+      );
+    }
+
+    if (item.type === 'pdf-page') {
+      return (
+        <SavedPdfPageCard
+          item={item}
+          onRemove={() => handleRemoveItem(item.id, 'pdf-page')}
+          onViewPage={() => handleViewPage(item.pdfPage!.catalogueId)}
         />
       );
     }
