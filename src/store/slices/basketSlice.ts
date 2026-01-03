@@ -121,8 +121,11 @@ export const basketSlice = createSlice({
         return;
       }
 
+      // Generate more unique ID combining timestamp, random, and page info
+      const uniqueId = `basket_pdf_page_${catalogueId}_${pageNumber}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
       const newItem: BasketItem = {
-        id: `basket_pdf_page_${Date.now()}`,
+        id: uniqueId,
         cataloguePage: {
           id: `pdf_page_${catalogueId}_${pageNumber}`,
           catalogueId,
