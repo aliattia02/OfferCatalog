@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -17,20 +17,45 @@ import { OfferCard, CatalogueCard } from '../../components/flyers';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { addToBasket } from '../../store/slices/basketSlice';
 import { toggleFavoriteOffer } from '../../store/slices/favoritesSlice';
-import { offers, catalogues } from '../../data/offers';
+import { offers } from '../../data/offers';
 import { categories } from '../../data/categories';
-import type { Offer, Category } from '../../types';
+import {
+  getCataloguesGroupedByStatus,
+  type CatalogueWithStatus
+} from '../../data/catalogueRegistry';
+import { formatDateRange } from '../../utils/catalogueUtils';
+import type { Offer } from '../../types';
+
+type FilterType = 'all' | 'active' | 'upcoming' | 'expired';
 
 export default function FlyersScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const dispatch = useAppDispatch();
-  
+
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'catalogues' | 'offers'>('catalogues');
-  
+  const [statusFilter, setStatusFilter] = useState<FilterType>('all');
+
   const stores = useAppSelector(state => state.stores.stores);
-  const favoriteOfferIds = useAppSelector(state => state.favorites.offerIds);
+  const favoriteOfferIds = useAppSelector(state => state. favorites.offerIds);
+
+  // Get catalogues grouped by status
+  const catalogueGroups = useMemo(() => getCataloguesGroupedByStatus(), []);
+
+  // Filter catalogues based on selected status
+  const filteredCatalogues = useMemo(() => {
+    switch (statusFilter) {
+      case 'active':
+        return catalogueGroups.active;
+      case 'upcoming':
+        return catalogueGroups.upcoming;
+      case 'expired':
+        return catalogueGroups.expired;
+      default:
+        return catalogueGroups.all;
+    }
+  }, [statusFilter, catalogueGroups]);
 
   // Filter offers by category
   const filteredOffers = selectedCategory
@@ -41,7 +66,7 @@ export default function FlyersScreen() {
     router.push(`/offer/${offer.id}`);
   };
 
-  const handleAddToBasket = (offer: Offer) => {
+  const handleAddToBasket = (offer:  Offer) => {
     const store = stores.find(s => s.id === offer.storeId);
     dispatch(addToBasket({
       offer,
@@ -57,6 +82,68 @@ export default function FlyersScreen() {
     router.push(`/flyer/${catalogueId}`);
   };
 
+  const getStatusBadgeStyle = (status: string) => {
+    switch (status) {
+      case 'active':
+        return { backgroundColor: colors.success };
+      case 'upcoming':
+        return { backgroundColor: colors. warning };
+      case 'expired':
+        return { backgroundColor:  colors.gray[400] };
+      default:
+        return { backgroundColor: colors.gray[300] };
+    }
+  };
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case 'active':
+        return 'نشط';
+      case 'upcoming':
+        return 'قادم';
+      case 'expired':
+        return 'منتهي';
+      default:
+        return status;
+    }
+  };
+
+  const renderStatusFilter = () => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.filterScroll}
+      contentContainerStyle={styles.filterContainer}
+    >
+      {(['all', 'active', 'upcoming', 'expired'] as FilterType[]).map((filter) => {
+        const count = filter === 'all'
+          ? catalogueGroups.all. length
+          :  catalogueGroups[filter].length;
+
+        return (
+          <TouchableOpacity
+            key={filter}
+            style={[
+              styles.filterChip,
+              statusFilter === filter && styles.filterChipActive,
+              filter === 'active' && statusFilter === filter && styles.filterChipActiveGreen,
+            ]}
+            onPress={() => setStatusFilter(filter)}
+          >
+            <Text
+              style={[
+                styles.filterChipText,
+                statusFilter === filter && styles.filterChipTextActive,
+              ]}
+            >
+              {filter === 'all' ?  'الكل' : getStatusLabel(filter)} ({count})
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+    </ScrollView>
+  );
+
   const renderCategoryFilter = () => (
     <ScrollView
       horizontal
@@ -67,14 +154,14 @@ export default function FlyersScreen() {
       <TouchableOpacity
         style={[
           styles.categoryChip,
-          !selectedCategory && styles.categoryChipActive,
+          ! selectedCategory && styles. categoryChipActive,
         ]}
         onPress={() => setSelectedCategory(null)}
       >
         <Text
           style={[
             styles.categoryChipText,
-            !selectedCategory && styles.categoryChipTextActive,
+            ! selectedCategory && styles. categoryChipTextActive,
           ]}
         >
           {t('categories.all')}
@@ -95,7 +182,7 @@ export default function FlyersScreen() {
               selectedCategory === category.id && styles.categoryChipTextActive,
             ]}
           >
-            {category.nameAr}
+            {category. nameAr}
           </Text>
         </TouchableOpacity>
       ))}
@@ -105,7 +192,7 @@ export default function FlyersScreen() {
   const renderViewToggle = () => (
     <View style={styles.viewToggle}>
       <TouchableOpacity
-        style={[styles.toggleButton, viewMode === 'catalogues' && styles.toggleButtonActive]}
+        style={[styles.toggleButton, viewMode === 'catalogues' && styles. toggleButtonActive]}
         onPress={() => setViewMode('catalogues')}
       >
         <Ionicons
@@ -118,13 +205,13 @@ export default function FlyersScreen() {
         </Text>
       </TouchableOpacity>
       <TouchableOpacity
-        style={[styles.toggleButton, viewMode === 'offers' && styles.toggleButtonActive]}
+        style={[styles.toggleButton, viewMode === 'offers' && styles. toggleButtonActive]}
         onPress={() => setViewMode('offers')}
       >
         <Ionicons
           name="grid-outline"
           size={20}
-          color={viewMode === 'offers' ? colors.white : colors.text}
+          color={viewMode === 'offers' ? colors.white :  colors.text}
         />
         <Text style={[styles.toggleText, viewMode === 'offers' && styles.toggleTextActive]}>
           عروض
@@ -133,27 +220,110 @@ export default function FlyersScreen() {
     </View>
   );
 
+  const renderCatalogueCard = (catalogue: CatalogueWithStatus) => {
+    const store = stores.find(s => s.id === catalogue.storeId);
+
+    return (
+      <TouchableOpacity
+        key={catalogue.id}
+        style={styles.catalogueCard}
+        onPress={() => handleCataloguePress(catalogue. id)}
+        activeOpacity={0.7}
+      >
+        {/* Status Badge */}
+        <View style={[styles.statusBadge, getStatusBadgeStyle(catalogue.status)]}>
+          <Text style={styles.statusBadgeText}>
+            {getStatusLabel(catalogue.status)}
+          </Text>
+        </View>
+
+        {/* Store Logo/Name */}
+        <View style={styles.catalogueHeader}>
+          <View style={styles.storeInfo}>
+            <Text style={styles.storeName}>
+              {catalogue.parsedInfo.storeNameAr}
+            </Text>
+            <Text style={styles.storeNameEn}>
+              {catalogue.parsedInfo. storeName. toUpperCase()}
+            </Text>
+          </View>
+        </View>
+
+        {/* Date Range */}
+        <View style={styles.dateContainer}>
+          <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
+          <Text style={styles.dateText}>
+            {formatDateRange(catalogue.startDate, catalogue.endDate)}
+          </Text>
+        </View>
+
+        {/* Catalogue Title */}
+        <Text style={styles.catalogueTitle}>{catalogue.titleAr}</Text>
+
+        {/* View Button */}
+        <View style={styles.viewButtonContainer}>
+          <View style={[
+            styles.viewButton,
+            catalogue.status === 'expired' && styles.viewButtonExpired
+          ]}>
+            <Ionicons
+              name="eye-outline"
+              size={18}
+              color={catalogue.status === 'expired' ? colors. gray[500] : colors.primary}
+            />
+            <Text style={[
+              styles.viewButtonText,
+              catalogue.status === 'expired' && styles. viewButtonTextExpired
+            ]}>
+              عرض الكتالوج
+            </Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
+
   return (
     <View style={styles.container}>
       {renderViewToggle()}
+
+      {viewMode === 'catalogues' && renderStatusFilter()}
       {viewMode === 'offers' && renderCategoryFilter()}
-      
-      {viewMode === 'catalogues' ? (
+
+      {viewMode === 'catalogues' ?  (
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-          <Text style={styles.sectionTitle}>{t('flyers.activeCatalogues')}</Text>
-          {catalogues.map(catalogue => {
-            const store = stores.find(s => s.id === catalogue.storeId);
-            if (!store) return null;
-            return (
-              <View key={catalogue.id} style={styles.catalogueWrapper}>
-                <CatalogueCard
-                  catalogue={catalogue}
-                  store={store}
-                  onPress={() => handleCataloguePress(catalogue.id)}
-                />
-              </View>
-            );
-          })}
+          {/* Summary */}
+          <View style={styles.summaryContainer}>
+            <Text style={styles.summaryText}>
+              📚 {catalogueGroups.all.length} كتالوج |
+              ✅ {catalogueGroups.active.length} نشط |
+              ⏳ {catalogueGroups.upcoming.length} قادم |
+              ⌛ {catalogueGroups.expired. length} منتهي
+            </Text>
+          </View>
+
+          {/* Section Title */}
+          <Text style={styles. sectionTitle}>
+            {statusFilter === 'all' ? 'جميع الكتالوجات' :
+             statusFilter === 'active' ? 'الكتالوجات النشطة' :
+             statusFilter === 'upcoming' ? 'الكتالوجات القادمة' :
+             'الكتالوجات المنتهية'}
+          </Text>
+
+          {/* Catalogues List */}
+          {filteredCatalogues.length > 0 ?  (
+            filteredCatalogues.map(renderCatalogueCard)
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="document-text-outline" size={64} color={colors. gray[300]} />
+              <Text style={styles. emptyStateText}>
+                لا توجد كتالوجات {statusFilter !== 'all' ?  getStatusLabel(statusFilter) : ''}
+              </Text>
+            </View>
+          )}
+
+          {/* Bottom Padding */}
+          <View style={{ height: 100 }} />
         </ScrollView>
       ) : (
         <FlatList
@@ -163,7 +333,7 @@ export default function FlyersScreen() {
               offer={item}
               onPress={() => handleOfferPress(item)}
               onAddToBasket={() => handleAddToBasket(item)}
-              isFavorite={favoriteOfferIds.includes(item.id)}
+              isFavorite={favoriteOfferIds. includes(item.id)}
               onToggleFavorite={() => handleToggleFavorite(item.id)}
             />
           )}
@@ -187,19 +357,19 @@ const styles = StyleSheet.create({
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     margin: spacing.md,
     backgroundColor: colors.gray[100],
-    borderRadius: borderRadius.lg,
+    borderRadius: borderRadius. lg,
     padding: spacing.xs,
   },
   toggleButton: {
     flex: 1,
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems:  'center',
+    justifyContent:  'center',
     paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
+    borderRadius: borderRadius. md,
   },
-  toggleButtonActive: {
-    backgroundColor: colors.primary,
+  toggleButtonActive:  {
+    backgroundColor:  colors.primary,
   },
   toggleText: {
     fontSize: typography.fontSize.md,
@@ -208,29 +378,62 @@ const styles = StyleSheet.create({
     marginRight: I18nManager.isRTL ? spacing.xs : 0,
   },
   toggleTextActive: {
-    color: colors.white,
+    color: colors. white,
     fontWeight: '600',
   },
-  categoryScroll: {
+  filterScroll: {
+    maxHeight: 50,
+    marginBottom: spacing.sm,
+  },
+  filterContainer: {
+    paddingHorizontal:  spacing.md,
+  },
+  filterChip: {
+    paddingHorizontal:  spacing.md,
+    paddingVertical: spacing. sm,
+    borderRadius: borderRadius. full,
+    backgroundColor: colors.white,
+    marginRight: I18nManager.isRTL ? 0 : spacing. sm,
+    marginLeft: I18nManager.isRTL ? spacing.sm :  0,
+    borderWidth: 1,
+    borderColor:  colors.gray[200],
+  },
+  filterChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors. primary,
+  },
+  filterChipActiveGreen: {
+    backgroundColor: colors. success,
+    borderColor: colors. success,
+  },
+  filterChipText: {
+    fontSize: typography.fontSize. sm,
+    color: colors.text,
+  },
+  filterChipTextActive:  {
+    color:  colors.white,
+    fontWeight: '600',
+  },
+  categoryScroll:  {
     maxHeight: 50,
   },
   categoryContainer: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal:  spacing.md,
     paddingBottom: spacing.sm,
   },
-  categoryChip: {
+  categoryChip:  {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical:  spacing.sm,
     borderRadius: borderRadius.full,
-    backgroundColor: colors.white,
+    backgroundColor: colors. white,
     marginRight: I18nManager.isRTL ? 0 : spacing.sm,
-    marginLeft: I18nManager.isRTL ? spacing.sm : 0,
+    marginLeft:  I18nManager. isRTL ?  spacing.sm : 0,
     borderWidth: 1,
-    borderColor: colors.gray[200],
+    borderColor:  colors.gray[200],
   },
   categoryChipActive: {
     backgroundColor: colors.primary,
-    borderColor: colors.primary,
+    borderColor:  colors.primary,
   },
   categoryChipText: {
     fontSize: typography.fontSize.sm,
@@ -244,15 +447,118 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: spacing.md,
   },
-  sectionTitle: {
-    fontSize: typography.fontSize.xl,
+  summaryContainer: {
+    backgroundColor: colors.white,
+    padding:  spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.md,
+  },
+  summaryText:  {
+    fontSize:  typography.fontSize.sm,
+    color:  colors.textSecondary,
+    textAlign: 'center',
+  },
+  sectionTitle:  {
+    fontSize:  typography.fontSize.xl,
     fontWeight: 'bold',
     color: colors.text,
     marginBottom: spacing.md,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
-  catalogueWrapper: {
+  catalogueCard: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius. lg,
+    padding:  spacing.md,
     marginBottom: spacing.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    position: 'relative',
+  },
+  statusBadge: {
+    position: 'absolute',
+    top: spacing.sm,
+    right:  spacing.sm,
+    paddingHorizontal:  spacing.sm,
+    paddingVertical: spacing. xs,
+    borderRadius: borderRadius.full,
+    zIndex: 1,
+  },
+  statusBadgeText: {
+    color: colors.white,
+    fontSize: typography.fontSize. xs,
+    fontWeight: '600',
+  },
+  catalogueHeader: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  storeInfo:  {
+    flex: 1,
+  },
+  storeName: {
+    fontSize: typography.fontSize. lg,
+    fontWeight: 'bold',
+    color: colors.text,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  storeNameEn: {
+    fontSize: typography.fontSize.sm,
+    color:  colors.textSecondary,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  dateContainer: {
+    flexDirection:  I18nManager. isRTL ?  'row-reverse' : 'row',
+    alignItems: 'center',
+    marginBottom:  spacing.sm,
+    gap: spacing.xs,
+  },
+  dateText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+  },
+  catalogueTitle: {
+    fontSize: typography.fontSize.md,
+    color: colors.text,
+    marginBottom: spacing.md,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  viewButtonContainer: {
+    alignItems: 'center',
+  },
+  viewButton: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primaryLight + '20',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.md,
+    gap: spacing.xs,
+  },
+  viewButtonExpired: {
+    backgroundColor: colors.gray[100],
+  },
+  viewButtonText: {
+    color: colors.primary,
+    fontSize:  typography.fontSize.md,
+    fontWeight: '600',
+  },
+  viewButtonTextExpired:  {
+    color:  colors.gray[500],
+  },
+  emptyState:  {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing. xxl,
+  },
+  emptyStateText: {
+    fontSize: typography. fontSize.md,
+    color:  colors.textSecondary,
+    marginTop: spacing.md,
   },
   offersContainer: {
     padding: spacing.md,

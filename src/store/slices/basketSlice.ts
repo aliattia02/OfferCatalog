@@ -94,58 +94,6 @@ export const basketSlice = createSlice({
       state.total = calculateTotal(state.items);
     },
 
-    // NEW: Add PDF page from PDF viewer to basket
-    addPdfPageToBasket: (
-      state,
-      action: PayloadAction<{
-        catalogueId: string;
-        catalogueTitle: string;
-        pageNumber: number;
-        pageImageUri: string;
-        storeName: string;
-        endDate: string;
-      }>
-    ) => {
-      const { catalogueId, catalogueTitle, pageNumber, pageImageUri, storeName, endDate } = action.payload;
-
-      // Check if this page is already saved
-      const existingPage = state.items.find(
-        item =>
-          item.type === 'page' &&
-          item.cataloguePage?.catalogueId === catalogueId &&
-          item.cataloguePage?.pageNumber === pageNumber
-      );
-
-      if (existingPage) {
-        // Already saved, don't add duplicate
-        return;
-      }
-
-      // Generate more unique ID combining timestamp, random, and page info
-      const uniqueId = `basket_pdf_page_${catalogueId}_${pageNumber}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-      const newItem: BasketItem = {
-        id: uniqueId,
-        cataloguePage: {
-          id: `pdf_page_${catalogueId}_${pageNumber}`,
-          catalogueId,
-          catalogueTitle,
-          pageNumber,
-          imageUrl: pageImageUri,
-          offerIds: [],
-          savedAt: new Date().toISOString(),
-        },
-        quantity: 1,
-        addedAt: new Date().toISOString(),
-        storeName,
-        offerEndDate: endDate,
-        type: 'page',
-      };
-
-      state.items.unshift(newItem);
-      state.total = calculateTotal(state.items);
-    },
-
     removeFromBasket: (state, action: PayloadAction<string>) => {
       state.items = state.items.filter(item => item.id !== action.payload);
       state.total = calculateTotal(state.items);
@@ -194,7 +142,6 @@ export const basketSlice = createSlice({
 export const {
   addToBasket,
   addPageToBasket,
-  addPdfPageToBasket,
   removeFromBasket,
   updateQuantity,
   clearBasket,

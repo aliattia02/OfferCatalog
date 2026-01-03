@@ -12,21 +12,35 @@ import { getAuthInstance, getDbInstance } from '../config/firebase';
 import { UserProfile } from '../types';
 
 /**
- * Sign in with Google using ID token
- * This should be called from a component that uses expo-auth-session
- * @param idToken Google ID token from expo-auth-session
+ * Sign in with Google using ID token and/or Access token
+ * @param idToken Google ID token (optional)
+ * @param accessToken Google Access token (optional)
  * @returns UserProfile or null if sign-in failed
  */
-export const signInWithGoogleToken = async (idToken: string): Promise<UserProfile | null> => {
+export const signInWithGoogleToken = async (
+  idToken:  string | null,
+  accessToken:  string | null
+): Promise<UserProfile | null> => {
   try {
     const auth = getAuthInstance();
 
-    // Create Firebase credential
-    const credential = GoogleAuthProvider.credential(idToken);
+    console.log('=== AUTH SERVICE DEBUG ===');
+    console.log('ID Token:', idToken ?  'present' : 'null');
+    console.log('Access Token:', accessToken ? 'present' : 'null');
+
+    if (! idToken && !accessToken) {
+      throw new Error('No authentication token provided');
+    }
+
+    // Create Firebase credential - GoogleAuthProvider. credential accepts both
+    // credential(idToken, accessToken) - either can be null but not both
+    const credential = GoogleAuthProvider.credential(idToken, accessToken);
 
     // Sign in to Firebase
-    const userCredential: UserCredential = await signInWithCredential(auth, credential);
+    const userCredential:  UserCredential = await signInWithCredential(auth, credential);
     const user = userCredential.user;
+
+    console.log('Firebase sign-in successful:', user. email);
 
     // Get or create user profile in Firestore
     const userProfile = await getOrCreateUserProfile(user);
@@ -86,7 +100,7 @@ export const getOrCreateUserProfile = async (user: FirebaseUser): Promise<UserPr
       // Create new user profile
       const newProfile: UserProfile = {
         uid: user.uid,
-        email: user.email,
+        email:  user.email,
         displayName: user.displayName,
         photoURL: user.photoURL,
         isAdmin: false,
@@ -98,7 +112,7 @@ export const getOrCreateUserProfile = async (user: FirebaseUser): Promise<UserPr
       return newProfile;
     }
   } catch (error) {
-    console.error('Error getting or creating user profile:', error);
+    console. error('Error getting or creating user profile:', error);
     throw error;
   }
 };
@@ -119,11 +133,11 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
       return {
         uid,
         email: data.email,
-        displayName: data.displayName,
-        photoURL: data.photoURL,
-        isAdmin: data.isAdmin || false,
-        createdAt: data.createdAt,
-        lastLoginAt: data.lastLoginAt,
+        displayName: data. displayName,
+        photoURL: data. photoURL,
+        isAdmin: data. isAdmin || false,
+        createdAt: data. createdAt,
+        lastLoginAt:  data.lastLoginAt,
       };
     }
 
@@ -144,7 +158,7 @@ export const onAuthChange = (
 ): (() => void) => {
   const auth = getAuthInstance();
 
-  return onAuthStateChanged(auth, async (user: FirebaseUser | null) => {
+  return onAuthStateChanged(auth, async (user:  FirebaseUser | null) => {
     if (user) {
       const profile = await getUserProfile(user.uid);
       callback(profile);
@@ -162,10 +176,9 @@ export const onAuthChange = (
 export const isUserAdmin = async (uid: string): Promise<boolean> => {
   try {
     const profile = await getUserProfile(uid);
-    return profile?.isAdmin || false;
+    return profile?. isAdmin || false;
   } catch (error) {
     console.error('Error checking admin status:', error);
     return false;
   }
 };
-

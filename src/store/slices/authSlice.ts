@@ -6,7 +6,7 @@ import {
   signOut as authSignOut,
   getUserProfile,
 } from '../../services/authService';
-import { getAllUserData, syncAllUserData } from '../../services/userDataService';
+import { getAllUserData } from '../../services/userDataService';
 import { hydrateFavorites } from './favoritesSlice';
 import { hydrateBasket } from './basketSlice';
 
@@ -18,33 +18,51 @@ const initialState: AuthState = {
   error: null,
 };
 
+// Token payload type
+interface GoogleAuthTokens {
+  idToken: string | null;
+  accessToken: string | null;
+}
+
 /**
  * Async thunk for Google Sign-In
- * @param idToken Google ID token from expo-auth-session
+ * @param tokens Object containing idToken and/or accessToken
  */
 export const signInWithGoogle = createAsyncThunk(
   'auth/signInWithGoogle',
-  async (idToken: string, { dispatch, rejectWithValue }) => {
+  async (tokens:  GoogleAuthTokens, { dispatch, rejectWithValue }) => {
     try {
-      const userProfile = await signInWithGoogleToken(idToken);
-      
-      if (!userProfile) {
+      const { idToken, accessToken } = tokens;
+
+      console.log('=== AUTH SLICE DEBUG ===');
+      console.log('Received idToken:', idToken ?  'present' :  'null');
+      console.log('Received accessToken:', accessToken ? 'present' : 'null');
+
+      const userProfile = await signInWithGoogleToken(idToken, accessToken);
+
+      if (! userProfile) {
         return rejectWithValue('Sign-in cancelled or failed');
       }
 
       // Load user data from Firestore
-      const { favorites, basket } = await getAllUserData(userProfile.uid);
+      try {
+        const { favorites, basket } = await getAllUserData(userProfile.uid);
 
-      // Hydrate Redux state with user data
-      if (favorites) {
-        dispatch(hydrateFavorites(favorites));
-      }
-      if (basket.length > 0) {
-        dispatch(hydrateBasket({ items: basket, total: 0 }));
+        // Hydrate Redux state with user data
+        if (favorites) {
+          dispatch(hydrateFavorites(favorites));
+        }
+        if (basket && basket.length > 0) {
+          dispatch(hydrateBasket({ items: basket, total: 0 }));
+        }
+      } catch (dataError) {
+        console.warn('Could not load user data:', dataError);
+        // Don't fail sign-in if user data fails to load
       }
 
       return userProfile;
-    } catch (error: any) {
+    } catch (error:  any) {
+      console.error('Auth slice error:', error);
       return rejectWithValue(error.message || 'Failed to sign in');
     }
   }
@@ -58,7 +76,7 @@ export const signOut = createAsyncThunk(
   async (_, { rejectWithValue }) => {
     try {
       await authSignOut();
-    } catch (error: any) {
+    } catch (error:  any) {
       return rejectWithValue(error.message || 'Failed to sign out');
     }
   }
@@ -72,20 +90,24 @@ export const checkAuthState = createAsyncThunk(
   async (uid: string, { dispatch, rejectWithValue }) => {
     try {
       const userProfile = await getUserProfile(uid);
-      
-      if (!userProfile) {
+
+      if (! userProfile) {
         return rejectWithValue('User profile not found');
       }
 
       // Load user data from Firestore
-      const { favorites, basket } = await getAllUserData(userProfile.uid);
+      try {
+        const { favorites, basket } = await getAllUserData(userProfile.uid);
 
-      // Hydrate Redux state with user data
-      if (favorites) {
-        dispatch(hydrateFavorites(favorites));
-      }
-      if (basket.length > 0) {
-        dispatch(hydrateBasket({ items: basket, total: 0 }));
+        // Hydrate Redux state with user data
+        if (favorites) {
+          dispatch(hydrateFavorites(favorites));
+        }
+        if (basket && basket. length > 0) {
+          dispatch(hydrateBasket({ items: basket, total: 0 }));
+        }
+      } catch (dataError) {
+        console.warn('Could not load user data:', dataError);
       }
 
       return userProfile;
@@ -105,11 +127,11 @@ export const authSlice = createSlice({
       state.isAdmin = action.payload?.isAdmin || false;
       state.error = null;
     },
-    setLoading: (state, action: PayloadAction<boolean>) => {
+    setLoading:  (state, action:  PayloadAction<boolean>) => {
       state.loading = action.payload;
     },
     setError: (state, action: PayloadAction<string | null>) => {
-      state.error = action.payload;
+      state. error = action.payload;
     },
     clearError: (state) => {
       state.error = null;
@@ -118,34 +140,34 @@ export const authSlice = createSlice({
   extraReducers: (builder) => {
     // Sign In with Google
     builder
-      .addCase(signInWithGoogle.pending, (state) => {
+      .addCase(signInWithGoogle. pending, (state) => {
         state.loading = true;
         state.error = null;
       })
       .addCase(signInWithGoogle.fulfilled, (state, action) => {
-        state.loading = false;
+        state. loading = false;
         state.user = action.payload;
         state.isAuthenticated = true;
-        state.isAdmin = action.payload.isAdmin;
+        state.isAdmin = action.payload. isAdmin;
         state.error = null;
       })
-      .addCase(signInWithGoogle.rejected, (state, action) => {
+      .addCase(signInWithGoogle. rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload as string;
+        state.error = action. payload as string;
       });
 
     // Sign Out
     builder
       .addCase(signOut.pending, (state) => {
-        state.loading = true;
+        state. loading = true;
         state.error = null;
       })
       .addCase(signOut.fulfilled, (state) => {
-        state.loading = false;
+        state. loading = false;
         state.user = null;
         state.isAuthenticated = false;
         state.isAdmin = false;
-        state.error = null;
+        state. error = null;
       })
       .addCase(signOut.rejected, (state, action) => {
         state.loading = false;
@@ -154,7 +176,7 @@ export const authSlice = createSlice({
 
     // Check Auth State
     builder
-      .addCase(checkAuthState.pending, (state) => {
+      . addCase(checkAuthState.pending, (state) => {
         state.loading = true;
         state.error = null;
       })
@@ -165,9 +187,9 @@ export const authSlice = createSlice({
         state.isAdmin = action.payload.isAdmin;
         state.error = null;
       })
-      .addCase(checkAuthState.rejected, (state, action) => {
+      .addCase(checkAuthState. rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload as string;
+        state.error = action. payload as string;
       });
   },
 });
