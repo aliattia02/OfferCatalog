@@ -79,8 +79,10 @@ export const PDFPageViewer: React.FC<PDFPageViewerProps> = ({
       return;
     }
 
-    // For native, we'll use a placeholder image URI
-    // In a production app, you'd capture the actual page view here
+    // For native, we use a placeholder URI scheme
+    // In a production app, you would use a library like react-native-view-shot
+    // to capture the actual page view and convert it to a base64 image
+    // Example: ViewShot.captureRef(pdfRef, { format: 'jpg', quality: 0.9 })
     const pageImageUri = `pdf://${catalogueId}/page/${pageNumber}`;
     
     onSavePage(pageNumber, pageImageUri);

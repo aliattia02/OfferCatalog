@@ -17,7 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { Button } from '../../components/common';
-import { OfferCard, PDFPageViewer, CataloguePDFViewer, SavePageButton } from '../../components/flyers';
+import { OfferCard, PDFPageViewer, SavePageButton } from '../../components/flyers';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { useLocalized } from '../../hooks';
 import { addToBasket, addPageToBasket, addPdfPageToBasket } from '../../store/slices/basketSlice';
@@ -436,20 +436,6 @@ export default function FlyerDetailScreen() {
 
         <View style={styles. bottomPadding} />
       </ScrollView>
-
-      {/* PDF Viewer Modal - Old iframe version */}
-      {/* Kept for backward compatibility but hidden by default */}
-      {showPDF && false && (
-        <CataloguePDFViewer
-          visible={showPDF}
-          pdfUrl={pdfUrl || catalogue.pdfUrl}
-          catalogueTitle={catalogue.titleAr}
-          onClose={() => {
-            addDebugLog('🔒 Closing PDF modal');
-            setShowPDF(false);
-          }}
-        />
-      )}
 
       {/* New PDF Page Viewer Modal */}
       {showPDFPageViewer && (
