@@ -145,18 +145,18 @@ export default function SettingsScreen() {
               </View>
               <View style={styles.divider} />
               {/* Admin Panel Link */}
-              {isAdmin && (
-                <>
-                  {renderSettingItem(
-                    'settings',
-                    'لوحة التحكم الإدارية',
-                    'إدارة الكتالوجات والعروض',
-                    undefined,
-                    handleAdminPanel
-                  )}
-                  <View style={styles.divider} />
-                </>
-              )}
+             {(__DEV__ || isAdmin) && (
+  <>
+    {renderSettingItem(
+      'settings',
+      'لوحة التحكم الإدارية',
+      __DEV__ && ! isAdmin ? 'وضع المطور' : 'إدارة الكتالوجات والعروض',
+      undefined,
+      handleAdminPanel
+    )}
+    <View style={styles.divider} />
+  </>
+)}
               {/* Sign Out Button */}
               {renderSettingItem(
                 'log-out',
