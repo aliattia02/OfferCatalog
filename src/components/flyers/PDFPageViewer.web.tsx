@@ -114,6 +114,12 @@ export const PDFPageViewer: React.FC<PDFPageViewerProps> = ({
       // Create canvas
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
+      
+      if (!context) {
+        console.error('Failed to get 2D context from canvas');
+        return null;
+      }
+      
       canvas.height = viewport.height;
       canvas.width = viewport.width;
 
@@ -151,6 +157,12 @@ export const PDFPageViewer: React.FC<PDFPageViewerProps> = ({
 
         const canvas = document.createElement('canvas');
         const context = canvas.getContext('2d');
+        
+        if (!context) {
+          console.error('Failed to get 2D context for thumbnail canvas');
+          continue;
+        }
+        
         canvas.height = viewport.height;
         canvas.width = viewport.width;
 
