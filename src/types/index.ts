@@ -156,6 +156,25 @@ export interface SettingsState {
   isRTL: boolean;
 }
 
+// PDF Page Viewer Props
+export interface PDFPageViewerProps {
+  pdfUrl: string;
+  catalogueTitle: string;
+  catalogueId: string;
+  visible: boolean;
+  onClose: () => void;
+  onSavePage?: (pageNumber: number, pageImageUri: string) => void;
+  savedPages?: number[]; // Already saved page numbers
+}
+
+// PDF Page Data
+export interface PageData {
+  pageNumber: number;
+  imageDataUrl: string; // Base64 or URI
+  width: number;
+  height: number;
+}
+
 // Root State
 export interface RootState {
   basket: BasketState;
