@@ -1,3 +1,4 @@
+// src/hooks/index.ts
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
@@ -6,9 +7,10 @@ import { hydrateBasket } from '../store/slices/basketSlice';
 import { hydrateFavorites } from '../store/slices/favoritesSlice';
 import { hydrateSettings } from '../store/slices/settingsSlice';
 import { setStores } from '../store/slices/storesSlice';
-import { setOffers, setCatalogues } from '../store/slices/offersSlice';
+import { setOffers, loadCatalogues } from '../store/slices/offersSlice';
 import { stores as mockStores } from '../data/stores';
-import { offers as mockOffers, catalogues as mockCatalogues } from '../data/offers';
+import { offers as mockOffers } from '../data/offers';
+import { setCataloguesCache } from '../data/catalogueRegistry';
 import type { BasketState, FavoritesState, SettingsState } from '../types';
 
 // Hook for app initialization
@@ -19,6 +21,8 @@ export const useAppInitialization = () => {
   useEffect(() => {
     const initializeApp = async () => {
       try {
+        console.log('🚀 Initializing app data...');
+        
         // Load persisted data from AsyncStorage
         const [basket, favorites, settings] = await Promise.all([
           databaseService.getBasket(),
@@ -40,11 +44,19 @@ export const useAppInitialization = () => {
         // Load mock data for MVP
         dispatch(setStores(mockStores));
         dispatch(setOffers(mockOffers));
-        dispatch(setCatalogues(mockCatalogues));
+        
+        // Load catalogues from Firestore
+        console.log('📥 Loading catalogues from Firestore...');
+        const result = await dispatch(loadCatalogues()).unwrap();
+        
+        // Update the catalogue registry cache with loaded catalogues
+        setCataloguesCache(result);
+        console.log(`✅ Catalogues synchronized: ${result.length} items`);
 
+        console.log('✅ App initialization complete');
         setIsReady(true);
       } catch (error) {
-        console.error('Error initializing app:', error);
+        console.error('❌ Error initializing app:', error);
         setIsReady(true); // Still mark as ready to show app
       }
     };
@@ -99,7 +111,7 @@ export const useLocalized = () => {
 
   const getName = useCallback(
     (item: { nameAr: string; nameEn: string }): string => {
-      return language === 'ar' ? item.nameAr : item.nameEn;
+      return language === 'ar' ? item. nameAr : item.nameEn;
     },
     [language]
   );
@@ -107,13 +119,6 @@ export const useLocalized = () => {
   const getAddress = useCallback(
     (item: { addressAr: string; addressEn: string }): string => {
       return language === 'ar' ? item.addressAr : item.addressEn;
-    },
-    [language]
-  );
-
-  const getDescription = useCallback(
-    (item: { descriptionAr?: string; descriptionEn?: string }): string | undefined => {
-      return language === 'ar' ? item.descriptionAr : item.descriptionEn;
     },
     [language]
   );
@@ -130,10 +135,6 @@ export const useLocalized = () => {
     isRTL,
     getName,
     getAddress,
-    getDescription,
     getTitle,
   };
 };
-
-// Re-export store hooks
-export { useAppSelector, useAppDispatch } from '../store/hooks';

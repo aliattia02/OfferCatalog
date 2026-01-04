@@ -14,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
 import { getAllCatalogues, deleteCatalogue } from '../../services/adminService';
+import { refreshCatalogues, setCataloguesCache } from '../../data/catalogueRegistry';
 import { Catalogue } from '../../types';
 import { CatalogueUploadForm } from '../../components/admin/CatalogueUploadForm';
 import { CatalogueListItem } from '../../components/admin/CatalogueListItem';
@@ -30,11 +31,14 @@ export default function AdminDashboard() {
 
   const loadCatalogues = async () => {
     try {
+      console.log('🔄 [Admin] Loading catalogues...');
       setLoading(true);
       const data = await getAllCatalogues();
       setCatalogues(data);
-    } catch (error: any) {
-      Alert.alert('خطأ', 'فشل تحميل الكتالوجات: ' + error.message);
+      console.log(`✅ [Admin] Loaded ${data.length} catalogues`);
+    } catch (error:  any) {
+      console.error('❌ [Admin] Error loading catalogues:', error);
+      Alert.alert('خطأ', 'فشل تحميل الكتالوجات:  ' + error.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -60,11 +64,15 @@ export default function AdminDashboard() {
           style: 'destructive',
           onPress: async () => {
             try {
+              console.log(`🗑️ [Admin] Deleting catalogue: ${catalogue.id}`);
               await deleteCatalogue(catalogue.id, catalogue.pdfUrl || '');
               Alert.alert('نجح', 'تم حذف الكتالوج بنجاح');
-              loadCatalogues();
-            } catch (error: any) {
-              Alert.alert('خطأ', 'فشل حذف الكتالوج: ' + error.message);
+              await loadCatalogues();
+              // Also refresh the cache
+              await refreshCatalogues();
+            } catch (error:  any) {
+              console.error('❌ [Admin] Error deleting catalogue:', error);
+              Alert.alert('خطأ', 'فشل حذف الكتالوج:  ' + error.message);
             }
           },
         },
@@ -72,23 +80,30 @@ export default function AdminDashboard() {
     );
   };
 
-  const handleUploadSuccess = () => {
+  const handleUploadSuccess = async () => {
+    console.log('✅ [Admin] Upload successful, refreshing catalogues...');
     setShowUploadForm(false);
-    loadCatalogues();
+
+    // Reload catalogues from Firestore
+    await loadCatalogues();
+
+    // Also refresh the registry cache
+    const freshCatalogues = await refreshCatalogues();
+    console.log(`✅ [Admin] Catalogues refreshed: ${freshCatalogues.length} items`);
   };
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={styles. loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>جاري تحميل الكتالوجات...</Text>
+        <Text style={styles.loadingText}>جاري تحميل الكتالوجات... </Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      {showUploadForm ? (
+      {showUploadForm ?  (
         <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
           <CatalogueUploadForm
             onSuccess={handleUploadSuccess}
@@ -159,7 +174,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.backgroundSecondary,
   },
   loadingText: {
-    marginTop: spacing.md,
+    marginTop:  spacing.md,
     fontSize: typography.fontSize.md,
     color: colors.textSecondary,
   },
@@ -173,25 +188,25 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.gray[200],
   },
   headerInfo: {
-    flex: 1,
+    flex:  1,
   },
   headerTitle: {
-    fontSize: typography.fontSize.xl,
+    fontSize:  typography.fontSize.xl,
     fontWeight: 'bold',
     color: colors.text,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    textAlign: I18nManager. isRTL ? 'right' : 'left',
   },
-  headerSubtitle: {
+  headerSubtitle:  {
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
     marginTop: 2,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    textAlign: I18nManager. isRTL ? 'right' : 'left',
   },
   uploadButton: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
     alignItems: 'center',
     backgroundColor: colors.primary,
-    paddingVertical: spacing.sm,
+    paddingVertical:  spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,
     gap: spacing.xs,
@@ -203,7 +218,7 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor: colors. background,
   },
   listContainer: {
     flex: 1,
@@ -218,10 +233,10 @@ const styles = StyleSheet.create({
   emptyText: {
     fontSize: typography.fontSize.lg,
     fontWeight: '600',
-    color: colors.text,
+    color: colors. text,
     marginTop: spacing.lg,
   },
-  emptySubtext: {
+  emptySubtext:  {
     fontSize: typography.fontSize.md,
     color: colors.textSecondary,
     marginTop: spacing.xs,

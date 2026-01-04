@@ -43,7 +43,7 @@ export interface UploadProgress {
 }
 
 // Toggle between GitHub (local) and Firebase Storage
-const USE_GITHUB_STORAGE = true; // Set to false when you upgrade to Firebase Blaze
+const USE_GITHUB_STORAGE = false; // Set to false when you upgrade to Firebase Blaze
 
 /**
  * Upload a PDF catalogue (GitHub/Local version for development)
