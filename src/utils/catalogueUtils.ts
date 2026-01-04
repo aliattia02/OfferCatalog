@@ -174,9 +174,61 @@ export const formatDateAr = (dateStr: string): string => {
   return date.toLocaleDateString('ar-EG', options);
 };
 
+
+
+
 /**
  * Format date range for display
+ * @param startDate Start date string (YYYY-MM-DD)
+ * @param endDate End date string (YYYY-MM-DD)
+ * @returns Formatted date range in Arabic
  */
 export const formatDateRange = (startDate: string, endDate: string): string => {
-  return `${formatDateAr(startDate)} - ${formatDateAr(endDate)}`;
+  try {
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+
+    const options: Intl.DateTimeFormatOptions = {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+    };
+
+    const startStr = start.toLocaleDateString('ar-EG', options);
+    const endStr = end.toLocaleDateString('ar-EG', options);
+
+    return `${startStr} - ${endStr}`;
+  } catch (error) {
+    return `${startDate} - ${endDate}`;
+  }
+};
+
+/**
+ * Check if a date is today
+ */
+export const isToday = (dateStr: string): boolean => {
+  const date = new Date(dateStr);
+  const today = new Date();
+
+  return (
+    date.getDate() === today.getDate() &&
+    date.getMonth() === today.getMonth() &&
+    date.getFullYear() === today.getFullYear()
+  );
+};
+
+/**
+ * Get days remaining until end date
+ */
+export const getDaysRemaining = (endDate: string): number => {
+  const end = new Date(endDate);
+  const now = new Date();
+
+  end.setHours(23, 59, 59, 999);
+  now.setHours(0, 0, 0, 0);
+
+  const diffTime = end. getTime() - now.getTime();
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  return diffDays;
 };
