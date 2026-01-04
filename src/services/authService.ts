@@ -13,13 +13,10 @@ import { UserProfile } from '../types';
 
 /**
  * Sign in with Google using ID token and/or Access token
- * @param idToken Google ID token (optional)
- * @param accessToken Google Access token (optional)
- * @returns UserProfile or null if sign-in failed
  */
 export const signInWithGoogleToken = async (
-  idToken:  string | null,
-  accessToken:  string | null
+  idToken: string | null,
+  accessToken: string | null
 ): Promise<UserProfile | null> => {
   try {
     const auth = getAuthInstance();
@@ -28,26 +25,28 @@ export const signInWithGoogleToken = async (
     console.log('ID Token:', idToken ?  'present' : 'null');
     console.log('Access Token:', accessToken ? 'present' : 'null');
 
-    if (! idToken && !accessToken) {
+    if (!idToken && !accessToken) {
       throw new Error('No authentication token provided');
     }
 
-    // Create Firebase credential - GoogleAuthProvider. credential accepts both
-    // credential(idToken, accessToken) - either can be null but not both
+    // Create Firebase credential
     const credential = GoogleAuthProvider.credential(idToken, accessToken);
 
     // Sign in to Firebase
-    const userCredential:  UserCredential = await signInWithCredential(auth, credential);
+    const userCredential: UserCredential = await signInWithCredential(auth, credential);
     const user = userCredential.user;
 
-    console.log('Firebase sign-in successful:', user. email);
+    console.log('✅ Firebase sign-in successful:', user. email);
 
-    // Get or create user profile in Firestore
+    // Wait a bit for Firestore to be ready
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // Get or create user profile
     const userProfile = await getOrCreateUserProfile(user);
 
     return userProfile;
-  } catch (error) {
-    console.error('Error signing in with Google:', error);
+  } catch (error:  any) {
+    console.error('❌ Error signing in with Google:', error);
     throw error;
   }
 };
@@ -59,126 +58,125 @@ export const signOut = async (): Promise<void> => {
   try {
     const auth = getAuthInstance();
     await firebaseSignOut(auth);
-    console.log('User signed out successfully');
+    console.log('✅ User signed out successfully');
   } catch (error) {
-    console.error('Error signing out:', error);
+    console.error('❌ Error signing out:', error);
     throw error;
   }
 };
 
 /**
  * Get or create user profile in Firestore
- * @param user Firebase User object
- * @returns UserProfile
  */
-export const getOrCreateUserProfile = async (user: FirebaseUser): Promise<UserProfile> => {
-  try {
-    const db = getDbInstance();
-    const userRef = doc(db, 'users', user.uid);
-    const userSnap = await getDoc(userRef);
+export const getOrCreateUserProfile = async (
+  user: FirebaseUser
+): Promise<UserProfile> => {
+  const maxRetries = 5;
+  let lastError: any;
 
-    if (userSnap.exists()) {
-      // Update last login time
-      await setDoc(
-        userRef,
-        {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`📡 Attempt ${attempt}/${maxRetries}:  Getting user profile`);
+
+      const db = getDbInstance();
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+
+      if (userSnap.exists()) {
+        console.log('✅ User profile found');
+
+        // Update last login
+        await setDoc(userRef, { lastLoginAt: serverTimestamp() }, { merge: true });
+
+        const userData = userSnap.data();
+        return {
+          uid:  user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          isAdmin: userData. isAdmin || false,
+          createdAt:  userData.createdAt,
           lastLoginAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+        };
+      } else {
+        console.log('📝 Creating new user profile');
 
-      return {
-        uid: user.uid,
-        email: user.email,
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-        isAdmin: userSnap.data().isAdmin || false,
-        createdAt: userSnap.data().createdAt,
-        lastLoginAt: serverTimestamp(),
-      };
-    } else {
-      // Create new user profile
-      const newProfile: UserProfile = {
-        uid: user.uid,
-        email:  user.email,
-        displayName: user.displayName,
-        photoURL: user.photoURL,
-        isAdmin: false,
-        createdAt: serverTimestamp(),
-        lastLoginAt: serverTimestamp(),
-      };
+        const newProfile:  UserProfile = {
+          uid:  user.uid,
+          email: user.email,
+          displayName: user.displayName,
+          photoURL: user.photoURL,
+          isAdmin: false,
+          createdAt: serverTimestamp(),
+          lastLoginAt: serverTimestamp(),
+        };
 
-      await setDoc(userRef, newProfile);
-      return newProfile;
+        await setDoc(userRef, newProfile);
+        console.log('✅ User profile created');
+
+        return newProfile;
+      }
+    } catch (error: any) {
+      lastError = error;
+      console.error(`❌ Attempt ${attempt} failed:`, error.message);
+
+      if (attempt < maxRetries) {
+        const delay = 1000 * Math.pow(2, attempt - 1); // Exponential backoff
+        console.log(`⏳ Waiting ${delay}ms before retry...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
     }
-  } catch (error) {
-    console. error('Error getting or creating user profile:', error);
-    throw error;
   }
+
+  throw lastError || new Error('Failed to get/create user profile');
 };
 
 /**
  * Get user profile from Firestore
- * @param uid User ID
- * @returns UserProfile or null
  */
-export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
+export const getUserProfile = async (uid:  string): Promise<UserProfile | null> => {
   try {
     const db = getDbInstance();
     const userRef = doc(db, 'users', uid);
     const userSnap = await getDoc(userRef);
 
-    if (userSnap.exists()) {
-      const data = userSnap.data();
+    if (userSnap. exists()) {
+      const userData = userSnap.data();
       return {
         uid,
-        email: data.email,
-        displayName: data. displayName,
-        photoURL: data. photoURL,
-        isAdmin: data. isAdmin || false,
-        createdAt: data. createdAt,
-        lastLoginAt:  data.lastLoginAt,
+        email: userData.email,
+        displayName: userData.displayName,
+        photoURL: userData.photoURL,
+        isAdmin: userData.isAdmin || false,
+        createdAt: userData. createdAt,
+        lastLoginAt: userData.lastLoginAt,
       };
     }
 
     return null;
   } catch (error) {
-    console.error('Error getting user profile:', error);
-    return null;
+    console.error('❌ Error getting user profile:', error);
+    return null; // Don't throw, just return null
   }
 };
 
 /**
  * Listen to auth state changes
- * @param callback Function to call when auth state changes
- * @returns Unsubscribe function
  */
-export const onAuthChange = (
-  callback: (user: UserProfile | null) => void
-): (() => void) => {
+export const onAuthChange = (callback: (user: UserProfile | null) => void) => {
   const auth = getAuthInstance();
 
-  return onAuthStateChanged(auth, async (user:  FirebaseUser | null) => {
-    if (user) {
-      const profile = await getUserProfile(user.uid);
-      callback(profile);
+  return onAuthStateChanged(auth, async (firebaseUser) => {
+    if (firebaseUser) {
+      try {
+        const userProfile = await getUserProfile(firebaseUser.uid);
+        callback(userProfile);
+      } catch (error) {
+        console.error('❌ Error in auth change listener:', error);
+        callback(null);
+      }
     } else {
       callback(null);
     }
   });
-};
-
-/**
- * Check if user is admin
- * @param uid User ID
- * @returns true if user is admin
- */
-export const isUserAdmin = async (uid: string): Promise<boolean> => {
-  try {
-    const profile = await getUserProfile(uid);
-    return profile?. isAdmin || false;
-  } catch (error) {
-    console.error('Error checking admin status:', error);
-    return false;
-  }
 };
