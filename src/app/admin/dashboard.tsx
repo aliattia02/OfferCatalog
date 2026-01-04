@@ -66,13 +66,13 @@ export default function AdminDashboard() {
             try {
               console.log(`🗑️ [Admin] Deleting catalogue: ${catalogue.id}`);
               await deleteCatalogue(catalogue.id, catalogue.pdfUrl || '');
-              Alert.alert('نجح', 'تم حذف الكتالوج بنجاح');
+              Alert.alert('✅ نجح', 'تم حذف الكتالوج بنجاح');
               await loadCatalogues();
               // Also refresh the cache
               await refreshCatalogues();
             } catch (error:  any) {
               console.error('❌ [Admin] Error deleting catalogue:', error);
-              Alert.alert('خطأ', 'فشل حذف الكتالوج:  ' + error.message);
+              Alert.alert('❌ خطأ', 'فشل حذف الكتالوج: ' + (error.message || 'حدث خطأ غير متوقع'));
             }
           },
         },

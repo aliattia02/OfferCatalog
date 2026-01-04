@@ -136,6 +136,13 @@ export const authSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
+    clearUser: (state) => {
+      state.user = null;
+      state.isAuthenticated = false;
+      state.isAdmin = false;
+      state.loading = false;
+      state.error = null;
+    },
   },
   extraReducers: (builder) => {
     // Sign In with Google
@@ -194,6 +201,6 @@ export const authSlice = createSlice({
   },
 });
 
-export const { setUser, setLoading, setError, clearError } = authSlice.actions;
+export const { setUser, setLoading, setError, clearError, clearUser } = authSlice.actions;
 
 export default authSlice.reducer;

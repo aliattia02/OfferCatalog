@@ -72,6 +72,7 @@ export default function SettingsScreen() {
             try {
               await dispatch(authSignOut()).unwrap();
               Alert.alert('نجح', 'تم تسجيل الخروج بنجاح');
+              router.push('/auth/sign-in');
             } catch (error: any) {
               Alert.alert('خطأ', error.message || 'فشل تسجيل الخروج');
             }

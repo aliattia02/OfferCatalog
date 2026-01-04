@@ -124,10 +124,10 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
 
       await createCatalogue(metadata, pdfUrl);
 
-      // Show success with instructions
+      // Show success alert
       Alert.alert(
         '✅ نجح',
-        `تم حفظ بيانات الكتالوج بنجاح!\n\n⚠️ خطوة مهمة:\nانسخ ملف PDF يدوياً إلى المجلد:\npublic/catalogues/${filename}\n\nثم قم برفع التغييرات إلى GitHub. `,
+        'تم رفع الكتالوج بنجاح',
         [
           {
             text: 'موافق',
@@ -137,7 +137,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       );
     } catch (error:  any) {
       console.error('Upload error:', error);
-      Alert.alert('خطأ', 'فشل رفع الكتالوج:  ' + error.message);
+      Alert.alert('❌ خطأ', 'فشل رفع الكتالوج: ' + (error.message || 'حدث خطأ غير متوقع'));
     } finally {
       setUploading(false);
       setUploadProgress(0);

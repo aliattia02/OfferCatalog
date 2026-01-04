@@ -146,6 +146,7 @@ export const basketSlice = createSlice({
     },
 
     removeFromBasket: (state, action: PayloadAction<string>) => {
+      console.log(`🗑️ Removing item: ${action.payload}`);
       state.items = state.items.filter(item => item.id !== action.payload);
       state.total = calculateTotal(state.items);
     },
