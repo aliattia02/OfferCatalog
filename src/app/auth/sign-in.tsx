@@ -1,4 +1,4 @@
-// src/app/auth/sign-in. tsx
+// src/app/auth/sign-in.tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -21,17 +21,17 @@ import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { signInWithGoogle } from '../../store/slices/authSlice';
 
 // Complete the auth session for web
-WebBrowser. maybeCompleteAuthSession();
+WebBrowser.maybeCompleteAuthSession();
 
 /**
  * Get Google OAuth client IDs from environment
  */
 const getGoogleClientIds = () => {
   return {
-    webClientId: Constants.expoConfig?.extra?. EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    iosClientId: Constants.expoConfig?. extra?.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: Constants.expoConfig?. extra?.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    expoClientId: Constants. expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID || process.env. EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID,
+    webClientId: Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    iosClientId: Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || process.env. EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || process.env. EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    expoClientId: Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID || process.env. EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID,
   };
 };
 
@@ -46,24 +46,24 @@ export default function SignInScreen() {
   const clientIds = getGoogleClientIds();
 
   // Configure Google Sign-In
-  const [request, response, promptAsync] = Google. useAuthRequest({
+  const [request, response, promptAsync] = Google.useAuthRequest({
     webClientId: clientIds.webClientId,
-    iosClientId: clientIds. iosClientId,
+    iosClientId: clientIds.iosClientId,
     androidClientId: clientIds.androidClientId,
-    expoClientId: clientIds.expoClientId,
+    expoClientId: clientIds. expoClientId,
   });
 
   // Handle auth response
   useEffect(() => {
-    if (response?. type === 'success') {
+    if (response?.type === 'success') {
       // Debug: Log what we received
       console.log('=== GOOGLE AUTH RESPONSE ===');
-      console.log('Response type:', response.type);
-      console.log('Response params:', JSON.stringify(response. params, null, 2));
+      console.log('Response type:', response. type);
+      console.log('Response params:', JSON.stringify(response.params, null, 2));
       console.log('============================');
 
       // Get both tokens - web typically returns access_token, native may return id_token
-      const { id_token, access_token } = response. params;
+      const { id_token, access_token } = response.params;
 
       if (id_token || access_token) {
         handleGoogleSignIn(id_token || null, access_token || null);
@@ -76,7 +76,7 @@ export default function SignInScreen() {
           [{ text: 'موافق' }]
         );
       }
-    } else if (response?. type === 'error') {
+    } else if (response?.type === 'error') {
       console.error('Google auth error:', response.error);
       setIsSigningIn(false);
       Alert.alert(
@@ -101,25 +101,44 @@ export default function SignInScreen() {
     try {
       setIsSigningIn(true);
       console.log('Calling signInWithGoogle with:', {
-        idToken:  idToken ?  'present' :  'null',
+        idToken:  idToken ?  'present' : 'null',
         accessToken: accessToken ? 'present' : 'null'
       });
 
+      // Log token previews in development
+      if (__DEV__) {
+        console.log('ID Token preview:', idToken?. substring(0, 30) + '...');
+        console.log('Access Token preview:', accessToken?.substring(0, 30) + '...');
+      }
+
       await dispatch(signInWithGoogle({ idToken, accessToken })).unwrap();
+
+      console.log('Sign-in successful, navigation will happen via useEffect');
       // Navigation handled by useEffect above
-    } catch (err:  any) {
+    } catch (err: any) {
       console.error('Error in handleGoogleSignIn:', err);
+      console.error('Error details:', JSON.stringify(err, null, 2));
       setIsSigningIn(false);
+
+      // Provide more helpful error messages
+      let errorMessage = err.message || 'فشل تسجيل الدخول.  يرجى المحاولة مرة أخرى.';
+
+      if (err.message?. includes('network') || err.message?.includes('offline')) {
+        errorMessage = 'يبدو أنك غير متصل بالإنترنت. يرجى التحقق من الاتصال والمحاولة مرة أخرى.';
+      } else if (err.message?.includes('popup')) {
+        errorMessage = 'تم حظر النافذة المنبثقة. يرجى السماح بالنوافذ المنبثقة والمحاولة مرة أخرى.';
+      }
+
       Alert.alert(
         'خطأ في تسجيل الدخول',
-        err.message || 'فشل تسجيل الدخول.  يرجى المحاولة مرة أخرى.',
+        errorMessage,
         [{ text: 'موافق' }]
       );
     }
   };
 
   const handleSignInPress = () => {
-    if (! request) {
+    if (!request) {
       Alert.alert('خطأ', 'جاري تهيئة تسجيل الدخول.  يرجى المحاولة مرة أخرى.');
       return;
     }
@@ -135,12 +154,12 @@ export default function SignInScreen() {
     <View style={styles.container}>
       <View style={styles.content}>
         {/* Logo/Icon */}
-        <View style={styles. iconContainer}>
-          <Ionicons name="pricetags" size={80} color={colors. primary} />
+        <View style={styles.iconContainer}>
+          <Ionicons name="pricetags" size={80} color={colors.primary} />
         </View>
 
         {/* Title */}
-        <Text style={styles. title}>
+        <Text style={styles.title}>
           {I18nManager.isRTL ? 'مرحباً بك في كتالوج العروض' : 'Welcome to Offer Catalog'}
         </Text>
 
@@ -148,7 +167,7 @@ export default function SignInScreen() {
         <Text style={styles.subtitle}>
           {I18nManager.isRTL
             ? 'سجل الدخول لحفظ المفضلة والسلة عبر جميع أجهزتك'
-            :  'Sign in to save your favorites and basket across all your devices'}
+            : 'Sign in to save your favorites and basket across all your devices'}
         </Text>
 
         {/* Google Sign-In Button */}
@@ -157,11 +176,11 @@ export default function SignInScreen() {
           onPress={handleSignInPress}
           disabled={isSigningIn || loading || !request}
         >
-          {isSigningIn || loading ? (
+          {isSigningIn || loading ?  (
             <ActivityIndicator size="small" color={colors.text} />
           ) : (
             <>
-              <Ionicons name="logo-google" size={24} color={colors.text} />
+              <Ionicons name="logo-google" size={24} color={colors. text} />
               <Text style={styles.googleButtonText}>
                 {I18nManager.isRTL ? 'تسجيل الدخول باستخدام Google' : 'Sign in with Google'}
               </Text>
@@ -171,20 +190,20 @@ export default function SignInScreen() {
 
         {/* Skip Button */}
         <TouchableOpacity
-          style={styles.skipButton}
+          style={styles. skipButton}
           onPress={handleSkipPress}
           disabled={isSigningIn || loading}
         >
           <Text style={styles.skipButtonText}>
-            {I18nManager. isRTL ?  'تخطي الآن' : 'Skip for now'}
+            {I18nManager. isRTL ? 'تخطي الآن' : 'Skip for now'}
           </Text>
         </TouchableOpacity>
 
         {/* Error Message */}
         {error && (
           <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle" size={20} color={colors. error} />
-            <Text style={styles.errorText}>{error}</Text>
+            <Ionicons name="alert-circle" size={20} color={colors.error} />
+            <Text style={styles. errorText}>{error}</Text>
           </View>
         )}
 
@@ -194,14 +213,17 @@ export default function SignInScreen() {
             <Text style={styles.debugText}>
               Web Client ID: {clientIds.webClientId ?  '✓ Set' : '✗ Missing'}
             </Text>
+            <Text style={styles.debugText}>
+              Request Ready: {request ?  '✓ Yes' : '✗ No'}
+            </Text>
           </View>
         )}
       </View>
 
       {/* Footer */}
-      <View style={styles. footer}>
-        <Text style={styles. footerText}>
-          {I18nManager.isRTL
+      <View style={styles.footer}>
+        <Text style={styles.footerText}>
+          {I18nManager. isRTL
             ? 'بالمتابعة، أنت توافق على شروط الخدمة وسياسة الخصوصية'
             : 'By continuing, you agree to our Terms of Service and Privacy Policy'}
         </Text>
@@ -213,100 +235,99 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.background,
+    backgroundColor:  colors.background,
   },
   content: {
-    flex: 1,
-    justifyContent:  'center',
+    flex:  1,
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal:  spacing.xl,
+    paddingHorizontal: spacing.xl,
   },
   iconContainer: {
     width: 120,
-    height:  120,
+    height: 120,
     borderRadius: 60,
     backgroundColor: colors.primaryLight + '20',
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: spacing.xl,
   },
-  title: {
+  title:  {
     fontSize: typography.fontSize.xxl,
     fontWeight: 'bold',
     color: colors.text,
     textAlign: 'center',
-    marginBottom: spacing. md,
+    marginBottom: spacing.md,
   },
-  subtitle: {
-    fontSize: typography. fontSize.md,
-    color:  colors.textSecondary,
+  subtitle:  {
+    fontSize: typography.fontSize.md,
+    color: colors.textSecondary,
     textAlign: 'center',
-    marginBottom: spacing. xxl,
+    marginBottom: spacing.xxl,
     lineHeight: 24,
   },
   googleButton: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.white,
     paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing. xl,
     borderRadius: borderRadius.lg,
     width: '100%',
     ... shadows.md,
     gap: spacing.sm,
   },
   buttonDisabled: {
-    opacity: 0.6,
+    opacity:  0.6,
   },
   googleButtonText: {
     fontSize: typography.fontSize.md,
     fontWeight: '600',
-    color: colors.text,
+    color: colors. text,
   },
   skipButton: {
     marginTop: spacing.lg,
     paddingVertical: spacing.sm,
   },
   skipButtonText: {
-    fontSize: typography.fontSize.md,
-    color: colors.textSecondary,
-    textDecorationLine: 'underline',
+    fontSize: typography.fontSize. md,
+    color: colors.primary,
+    fontWeight: '600',
   },
-  errorContainer:  {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems:  'center',
+  errorContainer: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
+    alignItems: 'center',
     backgroundColor: colors.error + '20',
-    paddingVertical:  spacing.sm,
-    paddingHorizontal: spacing.md,
+    padding: spacing.md,
     borderRadius: borderRadius.md,
     marginTop: spacing.lg,
-    gap: spacing.xs,
+    gap: spacing.sm,
   },
   errorText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.error,
     flex: 1,
+    fontSize:  typography.fontSize.sm,
+    color: colors.error,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   debugContainer: {
-    marginTop: spacing.lg,
-    padding:  spacing.sm,
-    backgroundColor:  colors.gray[100],
-    borderRadius: borderRadius.sm,
+    marginTop:  spacing.lg,
+    padding: spacing.md,
+    backgroundColor: colors.gray[100],
+    borderRadius: borderRadius.md,
+    width: '100%',
   },
   debugText: {
-    fontSize: typography.fontSize. xs,
-    color:  colors.textSecondary,
-    fontFamily: 'monospace',
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    marginBottom: spacing.xs,
   },
   footer: {
-    paddingHorizontal:  spacing.xl,
-    paddingBottom: spacing.xl,
+    padding: spacing.xl,
   },
   footerText: {
-    fontSize: typography.fontSize.xs,
-    color:  colors.textSecondary,
+    fontSize: typography.fontSize. xs,
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
   },
