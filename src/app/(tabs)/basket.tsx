@@ -1,3 +1,4 @@
+// src/app/(tabs)/basket.tsx
 import React from 'react';
 import {
   View,
@@ -23,14 +24,15 @@ export default function BasketScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const dispatch = useAppDispatch();
-  
-  const { items, total } = useAppSelector(state => state.basket);
+
+  const { items, total } = useAppSelector(state => state. basket);
 
   // Separate items by type
   const savedPages = items.filter(item => item.type === 'page' || item.type === 'pdf-page');
   const offerItems = items.filter(item => item.type === 'offer');
 
   const handleUpdateQuantity = (itemId: string, quantity: number) => {
+    console.log(`📝 [BasketScreen] Update quantity:  ${itemId} -> ${quantity}`);
     dispatch(updateQuantity({ itemId, quantity }));
   };
 
@@ -38,31 +40,49 @@ export default function BasketScreen() {
     const message = (itemType === 'page' || itemType === 'pdf-page')
       ? 'هل تريد حذف هذه الصفحة المحفوظة من السلة؟'
       : 'هل تريد حذف هذا العنصر من السلة؟';
-      
+
+    console.log(`🗑️ [BasketScreen] Remove item requested: ${itemId}`);
+
     Alert.alert(
       t('common.confirm'),
       message,
       [
-        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: t('common.delete'),
+          text: t('common.cancel'),
+          style: 'cancel',
+          onPress: () => console.log('❌ [BasketScreen] Remove cancelled')
+        },
+        {
+          text: t('common. delete'),
           style: 'destructive',
-          onPress: () => dispatch(removeFromBasket(itemId)),
+          onPress: () => {
+            console.log(`✅ [BasketScreen] Confirmed removal of ${itemId}`);
+            dispatch(removeFromBasket(itemId));
+          },
         },
       ]
     );
   };
 
   const handleClearBasket = () => {
+    console.log('🗑️ [BasketScreen] Clear basket requested');
+
     Alert.alert(
       t('basket.clearBasket'),
       'هل تريد تفريغ السلة بالكامل؟',
       [
-        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: t('common.confirm'),
+          text: t('common.cancel'),
+          style: 'cancel',
+          onPress: () => console.log('❌ [BasketScreen] Clear cancelled')
+        },
+        {
+          text:  t('common.confirm'),
           style: 'destructive',
-          onPress: () => dispatch(clearBasket()),
+          onPress: () => {
+            console.log('✅ [BasketScreen] Confirmed clear basket');
+            dispatch(clearBasket());
+          },
         },
       ]
     );
@@ -95,8 +115,11 @@ export default function BasketScreen() {
       return (
         <SavedPageCard
           item={item}
-          onRemove={() => handleRemoveItem(item.id, 'page')}
-          onViewPage={() => handleViewPage(item.cataloguePage!.catalogueId)}
+          onRemove={() => {
+            console.log(`🗑️ [BasketScreen] Remove page card: ${item.id}`);
+            handleRemoveItem(item.id, 'page');
+          }}
+          onViewPage={() => handleViewPage(item.cataloguePage! .catalogueId)}
         />
       );
     }
@@ -105,7 +128,10 @@ export default function BasketScreen() {
       return (
         <SavedPdfPageCard
           item={item}
-          onRemove={() => handleRemoveItem(item.id, 'pdf-page')}
+          onRemove={() => {
+            console.log(`🗑️ [BasketScreen] Remove PDF page card: ${item.id}`);
+            handleRemoveItem(item.id, 'pdf-page');
+          }}
           onViewPage={() => handleViewPage(item.pdfPage!.catalogueId)}
         />
       );
@@ -115,7 +141,10 @@ export default function BasketScreen() {
       <BasketItemCard
         item={item}
         onUpdateQuantity={(quantity) => handleUpdateQuantity(item.id, quantity)}
-        onRemove={() => handleRemoveItem(item.id, 'offer')}
+        onRemove={() => {
+          console.log(`🗑️ [BasketScreen] Remove offer card: ${item.id}`);
+          handleRemoveItem(item.id, 'offer');
+        }}
       />
     );
   };
@@ -128,7 +157,10 @@ export default function BasketScreen() {
           <Ionicons name="share-outline" size={20} color={colors.primary} />
           <Text style={styles.actionText}>{t('basket.shareList')}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.actionButton} onPress={handleClearBasket}>
+        <TouchableOpacity
+          style={styles.actionButton}
+          onPress={handleClearBasket}
+        >
           <Ionicons name="trash-outline" size={20} color={colors.error} />
           <Text style={[styles.actionText, { color: colors.error }]}>
             {t('basket.clearBasket')}
@@ -142,8 +174,8 @@ export default function BasketScreen() {
           {savedPages.length > 0 && (
             <View style={styles.statItem}>
               <Ionicons name="bookmark" size={18} color={colors.primary} />
-              <Text style={styles.statText}>
-                {savedPages.length} {savedPages.length === 1 ? 'صفحة' : 'صفحات'} محفوظة
+              <Text style={styles. statText}>
+                {savedPages.length} {savedPages.length === 1 ?  'صفحة' :  'صفحات'} محفوظة
               </Text>
             </View>
           )}
@@ -195,36 +227,37 @@ export default function BasketScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundSecondary,
+    backgroundColor:  colors.backgroundSecondary,
   },
   headerActions: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
     justifyContent: 'space-between',
     padding: spacing.md,
     backgroundColor: colors.white,
     borderBottomWidth: 1,
-    borderBottomColor: colors.gray[200],
+    borderBottomColor: colors. gray[200],
   },
   actionButton: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
     alignItems: 'center',
+    padding: spacing.xs,
   },
   actionText: {
     fontSize: typography.fontSize.sm,
     color: colors.primary,
     marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
-    marginRight: I18nManager.isRTL ? spacing.xs : 0,
+    marginRight: I18nManager.isRTL ? spacing.xs :  0,
   },
   statsContainer: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
     padding: spacing.md,
     backgroundColor: colors.white,
     borderBottomWidth: 1,
-    borderBottomColor: colors.gray[200],
+    borderBottomColor: colors. gray[200],
     gap: spacing.lg,
   },
   statItem: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
     alignItems: 'center',
     gap: spacing.xs,
   },
@@ -252,7 +285,7 @@ const styles = StyleSheet.create({
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   totalRow: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexDirection:  I18nManager.isRTL ? 'row-reverse' : 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
@@ -262,8 +295,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   totalAmount: {
-    fontSize: typography.fontSize.xxl,
-    color: colors.primary,
+    fontSize: typography. fontSize.xxl,
+    color: colors. primary,
     fontWeight: 'bold',
   },
   compareButton: {

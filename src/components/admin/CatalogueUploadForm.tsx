@@ -49,7 +49,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
         copyToCacheDirectory: true,
       });
 
-      if (! result.canceled && result.assets && result.assets. length > 0) {
+      if (!result.canceled && result.assets && result.assets.length > 0) {
         setSelectedFile(result.assets[0]);
         // Generate filename preview
         const filename = `${storeId || 'store'}_${Date.now()}.pdf`;
@@ -57,37 +57,51 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       }
     } catch (error) {
       console.error('Error picking document:', error);
-      Alert.alert('خطأ', 'فشل اختيار الملف');
+
+      if (Platform.OS === 'web') {
+        alert('خطأ: فشل اختيار الملف');
+      } else {
+        Alert.alert('خطأ', 'فشل اختيار الملف');
+      }
+    }
+  };
+
+  const showAlert = (title: string, message: string, onOk?: () => void) => {
+    if (Platform.OS === 'web') {
+      alert(`${title}\n\n${message}`);
+      if (onOk) onOk();
+    } else {
+      Alert.alert(title, message, onOk ? [{ text: 'موافق', onPress: onOk }] : undefined);
     }
   };
 
   const validateForm = (): boolean => {
-    if (! titleAr. trim()) {
-      Alert.alert('خطأ', 'يرجى إدخال العنوان بالعربية');
+    if (!titleAr.trim()) {
+      showAlert('خطأ', 'يرجى إدخال العنوان بالعربية');
       return false;
     }
     if (!titleEn.trim()) {
-      Alert.alert('خطأ', 'يرجى إدخال العنوان بالإنجليزية');
+      showAlert('خطأ', 'يرجى إدخال العنوان بالإنجليزية');
       return false;
     }
-    if (!storeId. trim()) {
-      Alert.alert('خطأ', 'يرجى إدخال معرف المتجر');
+    if (!storeId.trim()) {
+      showAlert('خطأ', 'يرجى إدخال معرف المتجر');
       return false;
     }
     if (!storeName.trim()) {
-      Alert.alert('خطأ', 'يرجى إدخال اسم المتجر');
+      showAlert('خطأ', 'يرجى إدخال اسم المتجر');
       return false;
     }
     if (!startDate.trim()) {
-      Alert.alert('خطأ', 'يرجى إدخال تاريخ البداية');
+      showAlert('خطأ', 'يرجى إدخال تاريخ البداية');
       return false;
     }
     if (!endDate.trim()) {
-      Alert.alert('خطأ', 'يرجى إدخال تاريخ النهاية');
+      showAlert('خطأ', 'يرجى إدخال تاريخ النهاية');
       return false;
     }
     if (!selectedFile) {
-      Alert.alert('خطأ', 'يرجى اختيار ملف PDF');
+      showAlert('خطأ', 'يرجى اختيار ملف PDF');
       return false;
     }
     return true;
@@ -102,6 +116,8 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       setUploading(true);
       setUploadProgress(0);
 
+      console.log('📤 [Upload] Starting upload...');
+
       // Upload PDF (to local/GitHub or Firebase)
       const filename = `${storeId}_${Date.now()}.pdf`;
       const pdfUrl = await uploadCataloguePDF(
@@ -109,35 +125,30 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
         filename,
         (progress: UploadProgress) => {
           setUploadProgress(progress.percentage);
+          console.log(`📊 [Upload] Progress: ${progress.percentage}%`);
         }
       );
 
+      console.log('✅ [Upload] PDF uploaded:', pdfUrl);
+
       // Create catalogue entry in Firestore
       const metadata: CatalogueMetadata = {
-        titleAr:  titleAr.trim(),
-        titleEn: titleEn. trim(),
+        titleAr: titleAr.trim(),
+        titleEn: titleEn.trim(),
         storeId: storeId.trim(),
         storeName: storeName.trim(),
-        startDate: startDate. trim(),
+        startDate: startDate.trim(),
         endDate: endDate.trim(),
       };
 
       await createCatalogue(metadata, pdfUrl);
+      console.log('✅ [Upload] Catalogue created in Firestore');
 
       // Show success alert
-      Alert.alert(
-        '✅ نجح',
-        'تم رفع الكتالوج بنجاح',
-        [
-          {
-            text: 'موافق',
-            onPress:  onSuccess,
-          },
-        ]
-      );
-    } catch (error:  any) {
-      console.error('Upload error:', error);
-      Alert.alert('❌ خطأ', 'فشل رفع الكتالوج: ' + (error.message || 'حدث خطأ غير متوقع'));
+      showAlert('✅ نجح', 'تم رفع الكتالوج بنجاح!', onSuccess);
+    } catch (error: any) {
+      console.error('❌ [Upload] Upload error:', error);
+      showAlert('❌ خطأ', 'فشل رفع الكتالوج: ' + (error.message || 'حدث خطأ غير متوقع'));
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -145,7 +156,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
   };
 
   return (
-    <ScrollView style={styles. container}>
+    <ScrollView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>إضافة كتالوج جديد</Text>
         <TouchableOpacity onPress={onCancel} disabled={uploading}>
@@ -174,13 +185,13 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
             onChangeText={setTitleAr}
             placeholder="كتالوج كازيون 23-29 ديسمبر"
             placeholderTextColor={colors.gray[400]}
-            editable={! uploading}
+            editable={!uploading}
           />
         </View>
 
         {/* Title (English) */}
         <View style={styles.inputGroup}>
-          <Text style={styles. label}>العنوان (إنجليزي) *</Text>
+          <Text style={styles.label}>العنوان (إنجليزي) *</Text>
           <TextInput
             style={styles.input}
             value={titleEn}
@@ -259,16 +270,16 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
           >
             <Ionicons name="document-attach" size={24} color={colors.primary} />
             <Text style={styles.filePickerText}>
-              {selectedFile ? selectedFile.name :  'اختر ملف PDF'}
+              {selectedFile ? selectedFile.name : 'اختر ملف PDF'}
             </Text>
           </TouchableOpacity>
           {selectedFile && (
             <>
-              <Text style={styles. fileSizeText}>
-                الحجم: {(selectedFile.size!  / 1024 / 1024).toFixed(2)} MB
+              <Text style={styles.fileSizeText}>
+                الحجم: {(selectedFile.size! / 1024 / 1024).toFixed(2)} MB
               </Text>
               <View style={styles.filenamePreview}>
-                <Text style={styles.filenameLabel}>اسم الملف المُولّد:</Text>
+                <Text style={styles.filenameLabel}>اسم الملف المُولَّد:</Text>
                 <Text style={styles.filenameText}>{generatedFilename}</Text>
               </View>
             </>
@@ -279,7 +290,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
         {uploading && (
           <View style={styles.progressContainer}>
             <View style={styles.progressBar}>
-              <View style={[styles. progressFill, { width: `${uploadProgress}%` }]} />
+              <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
             </View>
             <Text style={styles.progressText}>{Math.round(uploadProgress)}%</Text>
           </View>
@@ -295,7 +306,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
             <Text style={styles.cancelButtonText}>إلغاء</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles. button, styles.uploadButton, uploading && styles.buttonDisabled]}
+            style={[styles.button, styles.uploadButton, uploading && styles.buttonDisabled]}
             onPress={handleUpload}
             disabled={uploading}
           >
@@ -317,20 +328,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
   },
   header: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: spacing. md,
+    padding: spacing.md,
     borderBottomWidth: 1,
-    borderBottomColor: colors. gray[200],
+    borderBottomColor: colors.gray[200],
   },
   title: {
-    fontSize:  typography.fontSize.xl,
+    fontSize: typography.fontSize.xl,
     fontWeight: 'bold',
-    color:  colors.text,
+    color: colors.text,
   },
   noticeBox: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     backgroundColor: colors.primaryLight + '20',
     padding: spacing.md,
     margin: spacing.md,
@@ -343,13 +354,13 @@ const styles = StyleSheet.create({
   noticeTitle: {
     fontSize: typography.fontSize.md,
     fontWeight: 'bold',
-    color: colors. primary,
+    color: colors.primary,
     marginBottom: spacing.xs,
-    textAlign: I18nManager. isRTL ? 'right' : 'left',
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   noticeText: {
-    fontSize: typography.fontSize. sm,
-    color: colors. primary,
+    fontSize: typography.fontSize.sm,
+    color: colors.primary,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
     lineHeight: 20,
   },
@@ -362,9 +373,9 @@ const styles = StyleSheet.create({
   label: {
     fontSize: typography.fontSize.md,
     fontWeight: '600',
-    color: colors. text,
+    color: colors.text,
     marginBottom: spacing.xs,
-    textAlign: I18nManager. isRTL ? 'right' : 'left',
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   input: {
     backgroundColor: colors.gray[100],
@@ -377,7 +388,7 @@ const styles = StyleSheet.create({
     borderColor: colors.gray[200],
   },
   filePickerButton: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     backgroundColor: colors.gray[100],
     borderRadius: borderRadius.md,
@@ -388,15 +399,15 @@ const styles = StyleSheet.create({
   },
   filePickerText: {
     flex: 1,
-    fontSize:  typography.fontSize.md,
+    fontSize: typography.fontSize.md,
     color: colors.text,
-    textAlign: I18nManager. isRTL ? 'right' : 'left',
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
-  fileSizeText:  {
+  fileSizeText: {
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
     marginTop: spacing.xs,
-    textAlign: I18nManager. isRTL ? 'right' : 'left',
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   filenamePreview: {
     marginTop: spacing.sm,
@@ -414,7 +425,7 @@ const styles = StyleSheet.create({
   filenameText: {
     fontSize: typography.fontSize.sm,
     color: colors.text,
-    fontFamily: Platform.OS === 'ios' ?  'Courier' : 'monospace',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
   },
   progressContainer: {
     marginBottom: spacing.md,
@@ -422,7 +433,7 @@ const styles = StyleSheet.create({
   progressBar: {
     height: 8,
     backgroundColor: colors.gray[200],
-    borderRadius:  borderRadius.sm,
+    borderRadius: borderRadius.sm,
     overflow: 'hidden',
     marginBottom: spacing.xs,
   },
@@ -436,11 +447,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   actions: {
-    flexDirection: I18nManager. isRTL ? 'row-reverse' : 'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     gap: spacing.md,
     marginTop: spacing.lg,
   },
-  button:  {
+  button: {
     flex: 1,
     paddingVertical: spacing.md,
     borderRadius: borderRadius.md,
@@ -451,7 +462,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[200],
   },
   cancelButtonText: {
-    fontSize:  typography.fontSize.md,
+    fontSize: typography.fontSize.md,
     fontWeight: '600',
     color: colors.text,
   },
@@ -459,11 +470,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   uploadButtonText: {
-    fontSize: typography.fontSize. md,
+    fontSize: typography.fontSize.md,
     fontWeight: '600',
-    color: colors. white,
+    color: colors.white,
   },
   buttonDisabled: {
-    opacity:  0.6,
+    opacity: 0.6,
   },
 });

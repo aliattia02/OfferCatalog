@@ -1,69 +1,61 @@
+// src/store/slices/favoritesSlice.ts
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import type { FavoritesState } from '../../types';
-import { syncFavoritesToFirestore } from '../../services/userDataService';
 
 const initialState: FavoritesState = {
-  storeIds: [],
   offerIds: [],
+  storeIds:  [],
 };
 
 export const favoritesSlice = createSlice({
   name: 'favorites',
   initialState,
   reducers: {
+    toggleFavoriteOffer: (state, action: PayloadAction<string>) => {
+      const offerId = action.payload;
+      const index = state.offerIds. indexOf(offerId);
+      
+      if (index > -1) {
+        state.offerIds.splice(index, 1);
+        console.log(`❤️ Removed offer ${offerId} from favorites`);
+      } else {
+        state. offerIds.push(offerId);
+        console.log(`❤️ Added offer ${offerId} to favorites`);
+      }
+    },
+    
     toggleFavoriteStore: (state, action: PayloadAction<string>) => {
       const storeId = action.payload;
       const index = state.storeIds.indexOf(storeId);
       
-      if (index === -1) {
-        state.storeIds.push(storeId);
-      } else {
+      if (index > -1) {
         state.storeIds.splice(index, 1);
-      }
-    },
-    
-    toggleFavoriteOffer: (state, action: PayloadAction<string>) => {
-      const offerId = action.payload;
-      const index = state.offerIds.indexOf(offerId);
-      
-      if (index === -1) {
-        state.offerIds.push(offerId);
+        console.log(`⭐ Removed store ${storeId} from favorites`);
       } else {
-        state.offerIds.splice(index, 1);
+        state. storeIds.push(storeId);
+        console.log(`⭐ Added store ${storeId} to favorites`);
       }
-    },
-    
-    clearFavorites: (state) => {
-      state.storeIds = [];
-      state.offerIds = [];
     },
     
     hydrateFavorites: (state, action: PayloadAction<FavoritesState>) => {
-      state.storeIds = action.payload.storeIds;
       state.offerIds = action.payload.offerIds;
+      state.storeIds = action.payload.storeIds;
+      console.log(`💧 Hydrated favorites:  ${state.offerIds.length} offers, ${state.storeIds.length} stores`);
     },
 
-    // Sync favorites to Firestore for authenticated users
-    // Note: This is a fire-and-forget operation intentionally kept in the reducer
-    // for simplicity. The sync happens in the background without blocking the UI.
-    // Consider moving to middleware or async thunk for more complex sync logic.
-    syncFavorites: (state, action: PayloadAction<string>) => {
-      const uid = action.payload;
-      if (uid) {
-        syncFavoritesToFirestore(uid, { storeIds: state.storeIds, offerIds: state.offerIds }).catch((error) => {
-          console.error('Error syncing favorites:', error);
-        });
-      }
+    clearFavorites: (state) => {
+      console.log('🗑️ Clearing favorites');
+      state.offerIds = [];
+      state.storeIds = [];
     },
   },
 });
 
-export const {
-  toggleFavoriteStore,
-  toggleFavoriteOffer,
-  clearFavorites,
+export const { 
+  toggleFavoriteOffer, 
+  toggleFavoriteStore, 
   hydrateFavorites,
-  syncFavorites,
-} = favoritesSlice.actions;
+  clearFavorites 
+} = favoritesSlice. actions;
 
-export default favoritesSlice.reducer;
+export default favoritesSlice. reducer;

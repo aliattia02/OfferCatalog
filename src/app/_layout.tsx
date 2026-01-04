@@ -10,7 +10,7 @@ import { initI18n } from '../i18n';
 import { colors } from '../constants/theme';
 import { initializeFirebase } from '../config/firebase';
 import { onAuthChange } from '../services/authService';
-import { setUser } from '../store/slices/authSlice';
+import { setUser, clearUser } from '../store/slices/authSlice';
 
 // Import i18next for translation hook
 import '../i18n';
@@ -34,8 +34,14 @@ export default function RootLayout() {
 
         // Listen to auth state changes
         const unsubscribe = onAuthChange((user) => {
-          console.log('👤 Auth state changed:', user ?  user.email : 'Not logged in');
-          store.dispatch(setUser(user));
+          console.log('👤 Auth state changed:', user ? user.email : 'Not logged in');
+
+          // FIX: Handle null user properly
+          if (user) {
+            store.dispatch(setUser(user));
+          } else {
+            store.dispatch(clearUser());
+          }
         });
 
         setIsReady(true);
@@ -45,7 +51,7 @@ export default function RootLayout() {
         return () => {
           unsubscribe();
         };
-      } catch (error:  any) {
+      } catch (error: any) {
         console.error('❌ Error initializing app:', error);
         setInitError(error.message || 'Failed to initialize app');
         setIsReady(true); // Still show the app
@@ -67,8 +73,8 @@ export default function RootLayout() {
   if (initError) {
     return (
       <View style={styles.loading}>
-        <Text style={styles. errorText}>⚠️ {initError}</Text>
-        <Text style={styles.errorSubtext}>سيتم المحاولة مجدداً... </Text>
+        <Text style={styles.errorText}>⚠️ {initError}</Text>
+        <Text style={styles.errorSubtext}>سيتم المحاولة مجدداً...</Text>
       </View>
     );
   }
@@ -119,7 +125,7 @@ export default function RootLayout() {
 const styles = StyleSheet.create({
   loading: {
     flex: 1,
-    justifyContent:  'center',
+    justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.background,
     padding: 20,
@@ -131,13 +137,13 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 16,
-    color:  colors.error,
+    color: colors.error,
     textAlign: 'center',
     marginBottom: 8,
   },
   errorSubtext: {
     fontSize: 14,
-    color: colors. textSecondary,
+    color: colors.textSecondary,
     textAlign: 'center',
   },
 });

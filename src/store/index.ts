@@ -5,6 +5,7 @@ import offersReducer from './slices/offersSlice';
 import storesReducer from './slices/storesSlice';
 import settingsReducer from './slices/settingsSlice';
 import authReducer from './slices/authSlice';
+import { syncMiddleware } from './middleware/syncMiddleware';
 
 export const store = configureStore({
   reducer: {
@@ -28,7 +29,7 @@ export const store = configureStore({
         // Ignore these paths in the state
         ignoredPaths: ['auth.user.createdAt', 'auth.user.lastLoginAt'],
       },
-    }),
+    }).concat(syncMiddleware), // Add sync middleware
 });
 
 export type AppDispatch = typeof store.dispatch;
