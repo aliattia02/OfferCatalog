@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// src/app/(tabs)/settings.tsx
+import React from 'react';
 import {
   View,
   Text,
@@ -9,6 +10,7 @@ import {
   I18nManager,
   Alert,
   Image,
+  Platform,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,7 +19,10 @@ import { useRouter } from 'expo-router';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { setLanguage, setNotificationsEnabled } from '../../store/slices/settingsSlice';
-import { signOut as authSignOut } from '../../store/slices/authSlice';
+// FIX: Import signOut correctly (not renamed)
+import { signOut, clearUser } from '../../store/slices/authSlice';
+import { clearBasket } from '../../store/slices/basketSlice';
+import { clearFavorites } from '../../store/slices/favoritesSlice';
 import { changeLanguage } from '../../i18n';
 import { usePersistSettings } from '../../hooks';
 import { APP_CONFIG } from '../../constants/config';
@@ -26,10 +31,9 @@ export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
   const dispatch = useAppDispatch();
   const router = useRouter();
-  
-  // Persist settings
+
   usePersistSettings();
-  
+
   const settings = useAppSelector(state => state.settings);
   const favoriteStoreIds = useAppSelector(state => state.favorites.storeIds);
   const { user, isAuthenticated, isAdmin } = useAppSelector(state => state.auth);
@@ -37,8 +41,7 @@ export default function SettingsScreen() {
   const handleLanguageChange = async (language: 'ar' | 'en') => {
     await changeLanguage(language);
     dispatch(setLanguage(language));
-    
-    // Show alert about RTL change
+
     if ((language === 'ar') !== I18nManager.isRTL) {
       Alert.alert(
         'تنبيه',
@@ -57,29 +60,95 @@ export default function SettingsScreen() {
   };
 
   const handleSignOut = async () => {
-    Alert.alert(
-      'تسجيل الخروج',
-      'هل أنت متأكد من تسجيل الخروج؟',
-      [
-        {
-          text: 'إلغاء',
-          style: 'cancel',
-        },
-        {
-          text: 'تسجيل الخروج',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await dispatch(authSignOut()).unwrap();
-              Alert.alert('نجح', 'تم تسجيل الخروج بنجاح');
-              router.push('/auth/sign-in');
-            } catch (error: any) {
-              Alert.alert('خطأ', error.message || 'فشل تسجيل الخروج');
-            }
+    console.log('🔴 [Settings] handleSignOut CALLED!');
+    console.log('🔴 [Settings] Current auth state:', {
+      isAuthenticated,
+      userEmail: user?.email,
+      isAdmin
+    });
+
+    // Web-compatible confirmation
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm('هل أنت متأكد من تسجيل الخروج؟');
+      console.log('🔴 [Settings] Web confirm result:', confirmed);
+
+      if (!confirmed) {
+        console.log('🔴 [Settings] User cancelled sign out');
+        return;
+      }
+    } else {
+      // Native Alert for mobile
+      Alert.alert(
+        'تسجيل الخروج',
+        'هل أنت متأكد من تسجيل الخروج؟',
+        [
+          {
+            text: 'إلغاء',
+            style: 'cancel',
+            onPress: () => console.log('🔴 [Settings] User cancelled sign out'),
           },
-        },
-      ]
-    );
+          {
+            text: 'تسجيل الخروج',
+            style: 'destructive',
+            onPress: () => performSignOut(),
+          },
+        ]
+      );
+      return; // Exit here for native, the alert button will call performSignOut
+    }
+
+    // For web, continue immediately if confirmed
+    await performSignOut();
+  };
+
+  const performSignOut = async () => {
+    try {
+      console.log('🔵 [Settings] User confirmed sign out');
+      console.log('🔵 [Settings] Auth state before:', {
+        isAuthenticated,
+        userEmail: user?.email
+      });
+
+      // IMPORTANT: Don't clear local data before syncing to Firestore
+      // The sign-out will trigger auth state change which will clear everything
+
+      // Call signOut thunk
+      console.log('🔵 [Settings] Dispatching signOut thunk...');
+      await dispatch(signOut()).unwrap();
+      console.log('✅ [Settings] Sign out from Firebase successful');
+
+      // Clear all user-related data AFTER sign out completes
+      console.log('🔵 [Settings] Clearing user data...');
+      dispatch(clearUser());
+      dispatch(clearBasket());
+      dispatch(clearFavorites());
+      console.log('✅ [Settings] User data cleared');
+
+      // Navigate to auth screen
+      console.log('🔵 [Settings] Navigating to sign-in...');
+      router.replace('/auth/sign-in');
+
+      // Show success message after navigation
+      setTimeout(() => {
+        if (Platform.OS === 'web') {
+          alert('تم تسجيل الخروج بنجاح');
+        } else {
+          Alert.alert('نجح', 'تم تسجيل الخروج بنجاح');
+        }
+      }, 500);
+    } catch (error: any) {
+      console.error('❌ [Settings] Sign out error:', error);
+      console.error('❌ [Settings] Error details:', JSON.stringify(error, null, 2));
+
+      if (Platform.OS === 'web') {
+        alert(`خطأ: ${error.message || 'فشل تسجيل الخروج. يرجى المحاولة مرة أخرى.'}`);
+      } else {
+        Alert.alert(
+          'خطأ',
+          error.message || 'فشل تسجيل الخروج. يرجى المحاولة مرة أخرى.'
+        );
+      }
+    }
   };
 
   const handleAdminPanel = () => {
@@ -92,29 +161,41 @@ export default function SettingsScreen() {
     subtitle?: string,
     rightElement?: React.ReactNode,
     onPress?: () => void
-  ) => (
-    <TouchableOpacity
-      style={styles.settingItem}
-      onPress={onPress}
-      disabled={!onPress}
-      activeOpacity={onPress ? 0.7 : 1}
-    >
-      <View style={styles.settingIcon}>
-        <Ionicons name={icon} size={24} color={colors.primary} />
-      </View>
-      <View style={styles.settingContent}>
-        <Text style={styles.settingTitle}>{title}</Text>
-        {subtitle && <Text style={styles.settingSubtitle}>{subtitle}</Text>}
-      </View>
-      {rightElement || (onPress && (
-        <Ionicons
-          name={I18nManager.isRTL ? 'chevron-back' : 'chevron-forward'}
-          size={24}
-          color={colors.gray[400]}
-        />
-      ))}
-    </TouchableOpacity>
-  );
+  ) => {
+    console.log(`🟡 [Settings] Rendering setting item: "${title}", onPress:`, onPress ? 'provided' : 'undefined');
+
+    return (
+      <TouchableOpacity
+        style={styles.settingItem}
+        onPress={() => {
+          console.log(`🟢 [Settings] Item clicked: "${title}"`);
+          if (onPress) {
+            console.log(`🟢 [Settings] Calling onPress for: "${title}"`);
+            onPress();
+          } else {
+            console.log(`🟡 [Settings] No onPress handler for: "${title}"`);
+          }
+        }}
+        disabled={!onPress}
+        activeOpacity={onPress ? 0.7 : 1}
+      >
+        <View style={styles.settingIcon}>
+          <Ionicons name={icon} size={24} color={colors.primary} />
+        </View>
+        <View style={styles.settingContent}>
+          <Text style={styles.settingTitle}>{title}</Text>
+          {subtitle && <Text style={styles.settingSubtitle}>{subtitle}</Text>}
+        </View>
+        {rightElement || (onPress && (
+          <Ionicons
+            name={I18nManager.isRTL ? 'chevron-back' : 'chevron-forward'}
+            size={24}
+            color={colors.gray[400]}
+          />
+        ))}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -145,19 +226,21 @@ export default function SettingsScreen() {
                 </View>
               </View>
               <View style={styles.divider} />
+
               {/* Admin Panel Link */}
-             {(__DEV__ || isAdmin) && (
-  <>
-    {renderSettingItem(
-      'settings',
-      'لوحة التحكم الإدارية',
-      __DEV__ && ! isAdmin ? 'وضع المطور' : 'إدارة الكتالوجات والعروض',
-      undefined,
-      handleAdminPanel
-    )}
-    <View style={styles.divider} />
-  </>
-)}
+              {(__DEV__ || isAdmin) && (
+                <>
+                  {renderSettingItem(
+                    'settings',
+                    'لوحة التحكم الإدارية',
+                    __DEV__ && !isAdmin ? 'وضع المطور' : 'إدارة الكتالوجات والعروض',
+                    undefined,
+                    handleAdminPanel
+                  )}
+                  <View style={styles.divider} />
+                </>
+              )}
+
               {/* Sign Out Button */}
               {renderSettingItem(
                 'log-out',
@@ -165,6 +248,24 @@ export default function SettingsScreen() {
                 undefined,
                 undefined,
                 handleSignOut
+              )}
+
+              {/* TEST BUTTON - Remove after debugging */}
+              {__DEV__ && (
+                <>
+                  <View style={styles.divider} />
+                  <TouchableOpacity
+                    style={[styles.settingItem, { backgroundColor: '#ffebee' }]}
+                    onPress={() => {
+                      console.log('🔴 TEST BUTTON CLICKED');
+                      handleSignOut();
+                    }}
+                  >
+                    <Text style={{ color: '#d32f2f', fontWeight: 'bold' }}>
+                      TEST: Click to Sign Out
+                    </Text>
+                  </TouchableOpacity>
+                </>
               )}
             </>
           ) : (
@@ -180,6 +281,7 @@ export default function SettingsScreen() {
         </View>
       </View>
 
+      {/* Rest of your settings sections... */}
       {/* Language Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('settings.language')}</Text>

@@ -1,6 +1,4 @@
 {
-
-
   "expo": {
     "name": "offer-catalog",
     "slug": "offer-catalog",
@@ -14,8 +12,7 @@
       "backgroundColor": "#ffffff"
     },
     "assetBundlePatterns": [
-      "**/*",
-      "assets/catalogues/*.pdf"
+      "assets/**/*"
     ],
     "ios": {
       "supportsTablet": true,
@@ -46,7 +43,6 @@
     },
     "plugins": [
       "expo-router",
-      "expo-dev-client",
       [
         "expo-file-system",
         {
