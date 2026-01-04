@@ -1,0 +1,93 @@
+# Dependencies (EAS installs these fresh)
+node_modules/
+
+# Native build folders (EAS generates these)
+android/
+ios/
+
+# Git
+.git/
+.gitignore
+
+# IDE and Editor folders
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Build outputs
+dist/
+build/
+*.apk
+*.aab
+*.ipa
+*.app
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+logs/
+
+# Test files (not needed for build)
+__tests__/
+*.test.ts
+*.test.tsx
+*.test.js
+*.test.jsx
+*.spec.ts
+*.spec.tsx
+coverage/
+.jest/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# Environment files (use EAS secrets instead)
+.env
+.env.*
+!.env.example
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Python files (your upload script)
+scripts/
+*.py
+__pycache__/
+*.pyc
+.python-version
+venv/
+.venv/
+
+# Cache folders
+.cache/
+.expo/
+.turbo/
+
+# Package manager files
+.npm/
+.yarn/
+.pnpm-store/
+
+# Large media files
+*.mp4
+*.mov
+*.avi
+*.mkv
+*.zip
+*.tar.gz
+*.rar
+
+# Debug files
+*.map.js
