@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   I18nManager,
   Platform,
+  ScrollView,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,6 +40,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
   const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [generatedFilename, setGeneratedFilename] = useState('');
 
   const handlePickDocument = async () => {
     try {
@@ -47,8 +49,11 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
         copyToCacheDirectory: true,
       });
 
-      if (!result.canceled && result.assets && result.assets.length > 0) {
+      if (! result.canceled && result.assets && result.assets. length > 0) {
         setSelectedFile(result.assets[0]);
+        // Generate filename preview
+        const filename = `${storeId || 'store'}_${Date.now()}.pdf`;
+        setGeneratedFilename(filename);
       }
     } catch (error) {
       console.error('Error picking document:', error);
@@ -57,7 +62,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
   };
 
   const validateForm = (): boolean => {
-    if (!titleAr.trim()) {
+    if (! titleAr. trim()) {
       Alert.alert('خطأ', 'يرجى إدخال العنوان بالعربية');
       return false;
     }
@@ -65,7 +70,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       Alert.alert('خطأ', 'يرجى إدخال العنوان بالإنجليزية');
       return false;
     }
-    if (!storeId.trim()) {
+    if (!storeId. trim()) {
       Alert.alert('خطأ', 'يرجى إدخال معرف المتجر');
       return false;
     }
@@ -97,7 +102,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       setUploading(true);
       setUploadProgress(0);
 
-      // Upload PDF to Firebase Storage
+      // Upload PDF (to local/GitHub or Firebase)
       const filename = `${storeId}_${Date.now()}.pdf`;
       const pdfUrl = await uploadCataloguePDF(
         selectedFile.uri,
@@ -109,25 +114,30 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
 
       // Create catalogue entry in Firestore
       const metadata: CatalogueMetadata = {
-        titleAr: titleAr.trim(),
-        titleEn: titleEn.trim(),
+        titleAr:  titleAr.trim(),
+        titleEn: titleEn. trim(),
         storeId: storeId.trim(),
         storeName: storeName.trim(),
-        startDate: startDate.trim(),
+        startDate: startDate. trim(),
         endDate: endDate.trim(),
       };
 
       await createCatalogue(metadata, pdfUrl);
 
-      Alert.alert('نجح', 'تم رفع الكتالوج بنجاح', [
-        {
-          text: 'موافق',
-          onPress: onSuccess,
-        },
-      ]);
-    } catch (error: any) {
+      // Show success with instructions
+      Alert.alert(
+        '✅ نجح',
+        `تم حفظ بيانات الكتالوج بنجاح!\n\n⚠️ خطوة مهمة:\nانسخ ملف PDF يدوياً إلى المجلد:\npublic/catalogues/${filename}\n\nثم قم برفع التغييرات إلى GitHub. `,
+        [
+          {
+            text: 'موافق',
+            onPress:  onSuccess,
+          },
+        ]
+      );
+    } catch (error:  any) {
       console.error('Upload error:', error);
-      Alert.alert('خطأ', 'فشل رفع الكتالوج: ' + error.message);
+      Alert.alert('خطأ', 'فشل رفع الكتالوج:  ' + error.message);
     } finally {
       setUploading(false);
       setUploadProgress(0);
@@ -135,12 +145,23 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
   };
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles. container}>
       <View style={styles.header}>
         <Text style={styles.title}>إضافة كتالوج جديد</Text>
         <TouchableOpacity onPress={onCancel} disabled={uploading}>
           <Ionicons name="close" size={28} color={colors.text} />
         </TouchableOpacity>
+      </View>
+
+      {/* GitHub Storage Notice */}
+      <View style={styles.noticeBox}>
+        <Ionicons name="information-circle" size={24} color={colors.primary} />
+        <View style={styles.noticeTextContainer}>
+          <Text style={styles.noticeTitle}>وضع التخزين المؤقت</Text>
+          <Text style={styles.noticeText}>
+            حالياً يتم استخدام التخزين المحلي (GitHub). بعد رفع الكتالوج، ستحتاج إلى نسخ ملف PDF يدوياً إلى مجلد public/catalogues/
+          </Text>
+        </View>
       </View>
 
       <View style={styles.form}>
@@ -153,13 +174,13 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
             onChangeText={setTitleAr}
             placeholder="كتالوج كازيون 23-29 ديسمبر"
             placeholderTextColor={colors.gray[400]}
-            editable={!uploading}
+            editable={! uploading}
           />
         </View>
 
         {/* Title (English) */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>العنوان (إنجليزي) *</Text>
+          <Text style={styles. label}>العنوان (إنجليزي) *</Text>
           <TextInput
             style={styles.input}
             value={titleEn}
@@ -176,7 +197,12 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
           <TextInput
             style={styles.input}
             value={storeId}
-            onChangeText={setStoreId}
+            onChangeText={(text) => {
+              setStoreId(text);
+              if (selectedFile) {
+                setGeneratedFilename(`${text}_${Date.now()}.pdf`);
+              }
+            }}
             placeholder="kazyon"
             placeholderTextColor={colors.gray[400]}
             autoCapitalize="none"
@@ -233,13 +259,19 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
           >
             <Ionicons name="document-attach" size={24} color={colors.primary} />
             <Text style={styles.filePickerText}>
-              {selectedFile ? selectedFile.name : 'اختر ملف PDF'}
+              {selectedFile ? selectedFile.name :  'اختر ملف PDF'}
             </Text>
           </TouchableOpacity>
           {selectedFile && (
-            <Text style={styles.fileSizeText}>
-              الحجم: {(selectedFile.size! / 1024 / 1024).toFixed(2)} MB
-            </Text>
+            <>
+              <Text style={styles. fileSizeText}>
+                الحجم: {(selectedFile.size!  / 1024 / 1024).toFixed(2)} MB
+              </Text>
+              <View style={styles.filenamePreview}>
+                <Text style={styles.filenameLabel}>اسم الملف المُولّد:</Text>
+                <Text style={styles.filenameText}>{generatedFilename}</Text>
+              </View>
+            </>
           )}
         </View>
 
@@ -247,7 +279,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
         {uploading && (
           <View style={styles.progressContainer}>
             <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
+              <View style={[styles. progressFill, { width: `${uploadProgress}%` }]} />
             </View>
             <Text style={styles.progressText}>{Math.round(uploadProgress)}%</Text>
           </View>
@@ -263,7 +295,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
             <Text style={styles.cancelButtonText}>إلغاء</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.button, styles.uploadButton, uploading && styles.buttonDisabled]}
+            style={[styles. button, styles.uploadButton, uploading && styles.buttonDisabled]}
             onPress={handleUpload}
             disabled={uploading}
           >
@@ -275,29 +307,51 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
     backgroundColor: colors.white,
-    borderRadius: borderRadius.lg,
-    margin: spacing.md,
-    ...shadows.md,
   },
   header: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: spacing.md,
+    padding: spacing. md,
     borderBottomWidth: 1,
-    borderBottomColor: colors.gray[200],
+    borderBottomColor: colors. gray[200],
   },
   title: {
-    fontSize: typography.fontSize.xl,
+    fontSize:  typography.fontSize.xl,
     fontWeight: 'bold',
-    color: colors.text,
+    color:  colors.text,
+  },
+  noticeBox: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
+    backgroundColor: colors.primaryLight + '20',
+    padding: spacing.md,
+    margin: spacing.md,
+    borderRadius: borderRadius.md,
+    gap: spacing.sm,
+  },
+  noticeTextContainer: {
+    flex: 1,
+  },
+  noticeTitle: {
+    fontSize: typography.fontSize.md,
+    fontWeight: 'bold',
+    color: colors. primary,
+    marginBottom: spacing.xs,
+    textAlign: I18nManager. isRTL ? 'right' : 'left',
+  },
+  noticeText: {
+    fontSize: typography.fontSize. sm,
+    color: colors. primary,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    lineHeight: 20,
   },
   form: {
     padding: spacing.md,
@@ -308,9 +362,9 @@ const styles = StyleSheet.create({
   label: {
     fontSize: typography.fontSize.md,
     fontWeight: '600',
-    color: colors.text,
+    color: colors. text,
     marginBottom: spacing.xs,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    textAlign: I18nManager. isRTL ? 'right' : 'left',
   },
   input: {
     backgroundColor: colors.gray[100],
@@ -323,7 +377,7 @@ const styles = StyleSheet.create({
     borderColor: colors.gray[200],
   },
   filePickerButton: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
     alignItems: 'center',
     backgroundColor: colors.gray[100],
     borderRadius: borderRadius.md,
@@ -334,15 +388,33 @@ const styles = StyleSheet.create({
   },
   filePickerText: {
     flex: 1,
-    fontSize: typography.fontSize.md,
+    fontSize:  typography.fontSize.md,
     color: colors.text,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    textAlign: I18nManager. isRTL ? 'right' : 'left',
   },
-  fileSizeText: {
+  fileSizeText:  {
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
     marginTop: spacing.xs,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    textAlign: I18nManager. isRTL ? 'right' : 'left',
+  },
+  filenamePreview: {
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+    backgroundColor: colors.gray[50],
+    borderRadius: borderRadius.sm,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
+  },
+  filenameLabel: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    marginBottom: 2,
+  },
+  filenameText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text,
+    fontFamily: Platform.OS === 'ios' ?  'Courier' : 'monospace',
   },
   progressContainer: {
     marginBottom: spacing.md,
@@ -350,7 +422,7 @@ const styles = StyleSheet.create({
   progressBar: {
     height: 8,
     backgroundColor: colors.gray[200],
-    borderRadius: borderRadius.sm,
+    borderRadius:  borderRadius.sm,
     overflow: 'hidden',
     marginBottom: spacing.xs,
   },
@@ -364,11 +436,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   actions: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexDirection: I18nManager. isRTL ? 'row-reverse' : 'row',
     gap: spacing.md,
     marginTop: spacing.lg,
   },
-  button: {
+  button:  {
     flex: 1,
     paddingVertical: spacing.md,
     borderRadius: borderRadius.md,
@@ -379,7 +451,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[200],
   },
   cancelButtonText: {
-    fontSize: typography.fontSize.md,
+    fontSize:  typography.fontSize.md,
     fontWeight: '600',
     color: colors.text,
   },
@@ -387,11 +459,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   uploadButtonText: {
-    fontSize: typography.fontSize.md,
+    fontSize: typography.fontSize. md,
     fontWeight: '600',
-    color: colors.white,
+    color: colors. white,
   },
   buttonDisabled: {
-    opacity: 0.6,
+    opacity:  0.6,
   },
 });
