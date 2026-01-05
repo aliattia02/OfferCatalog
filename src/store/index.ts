@@ -1,3 +1,4 @@
+
 import { configureStore } from '@reduxjs/toolkit';
 import basketReducer from './slices/basketSlice';
 import favoritesReducer from './slices/favoritesSlice';
@@ -19,17 +20,20 @@ export const store = configureStore({
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
-        // Ignore these action types for serializable check
+        // Ignore these action types completely (they're already serialized in the thunks)
         ignoredActions: [
           'basket/hydrateBasket',
           'favorites/hydrateFavorites',
           'auth/signInWithGoogle/fulfilled',
           'auth/checkAuthState/fulfilled',
         ],
-        // Ignore these paths in the state
-        ignoredPaths: ['auth.user.createdAt', 'auth.user.lastLoginAt'],
+        // Ignore these specific paths in case any timestamps slip through
+        ignoredPaths: [
+          'auth.user.createdAt',
+          'auth.user.lastLoginAt',
+        ],
       },
-    }).concat(syncMiddleware), // Add sync middleware
+    }).concat(syncMiddleware),
 });
 
 export type AppDispatch = typeof store.dispatch;

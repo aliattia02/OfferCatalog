@@ -203,26 +203,31 @@ export default function FlyerDetailScreen() {
   };
 
   const handleOpenPDF = () => {
-    addDebugLog('🖱️ PDF button clicked');
+  addDebugLog('🖱️ PDF button clicked');
 
-    if (!catalogue.pdfUrl) {
-      addDebugLog('❌ No PDF URL available');
-      Alert.alert('خطأ', 'ملف PDF غير متوفر لهذا الكتالوج');
-      return;
-    }
+  if (!catalogue.pdfUrl && (!catalogue.pages || catalogue.pages.length === 0)) {
+    addDebugLog('❌ No PDF URL or pages available');
+    Alert.alert('خطأ', 'لا يوجد محتوى متوفر لهذا الكتالوج');
+    return;
+  }
 
-    if (loadingPdf) {
-      addDebugLog('⏳ Still loading PDF');
-      Alert.alert('انتظر', 'جاري تحميل ملف PDF...');
-      return;
-    }
+  if (loadingPdf) {
+    addDebugLog('⏳ Still loading PDF');
+    Alert.alert('انتظر', 'جاري تحميل ملف PDF...');
+    return;
+  }
 
-    // Use the catalogue URL directly if pdfUrl state hasn't been set yet
-    const urlToUse = pdfUrl || catalogue.pdfUrl;
-    addDebugLog(`✅ Opening PDF page viewer with URL: ${urlToUse}`);
-    setPdfUrl(urlToUse);
-    setShowPDFPageViewer(true);
-  };
+  // Extract page images from catalogue if available
+  const pageImages = catalogue.pages && catalogue.pages.length > 0
+    ? catalogue.pages.map(page => page.imageUrl)
+    : [];
+
+  addDebugLog(`✅ Opening viewer with ${pageImages.length} images or PDF`);
+
+  setShowPDFPageViewer(true);
+};
+
+
 
   const handleSavePage = () => {
     if (!currentPageData) {
@@ -438,21 +443,22 @@ export default function FlyerDetailScreen() {
       </ScrollView>
 
       {/* New PDF Page Viewer Modal */}
-      {showPDFPageViewer && (
-        <PDFPageViewer
-          visible={showPDFPageViewer}
-          pdfUrl={pdfUrl || catalogue.pdfUrl}
-          catalogueTitle={catalogue.titleAr}
-          catalogueId={catalogue.id}
-          storeId={catalogue.storeId}
-          storeName={store?.nameAr || ''}
-          onClose={() => {
-            addDebugLog('🔒 Closing PDF page viewer');
-            setShowPDFPageViewer(false);
-          }}
-          onSavePage={handleSavePdfPage}
-          savedPageNumbers={savedPdfPageNumbers}
-        />
+{showPDFPageViewer && (
+  <PDFPageViewer
+    visible={showPDFPageViewer}
+    pdfUrl={catalogue.pdfUrl || pdfUrl} // Pass PDF URL if available
+    pageImages={catalogue.pages?.map(page => page.imageUrl) || []} // Pass page images
+    catalogueTitle={catalogue.titleAr}
+    catalogueId={catalogue.id}
+    storeId={catalogue.storeId}
+    storeName={store?.nameAr || ''}
+    onClose={() => {
+      addDebugLog('🔒 Closing PDF page viewer');
+      setShowPDFPageViewer(false);
+    }}
+    onSavePage={handleSavePdfPage}
+    savedPageNumbers={savedPdfPageNumbers}
+  />
       )}
     </>
   );

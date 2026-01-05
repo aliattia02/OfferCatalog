@@ -1,30 +1,21 @@
 // src/services/adminService.ts
 import {
   collection,
-  doc,
   addDoc,
-  updateDoc,
   deleteDoc,
+  doc,
   getDocs,
-  query,
-  orderBy,
-  serverTimestamp,
-  where,
-  QueryDocumentSnapshot,
-  DocumentData,
+  serverTimestamp
 } from 'firebase/firestore';
 import {
   ref,
-  uploadBytesResumable,
+  uploadBytes,
   getDownloadURL,
   deleteObject,
-  UploadTask,
-  UploadTaskSnapshot,
-  StorageError,
+  listAll
 } from 'firebase/storage';
-import { getDbInstance, getStorageInstance } from '../config/firebase';
-import { Catalogue } from '../types';
-import { Platform } from 'react-native';
+import { db, storage } from '../config/firebase';
+import type { Catalogue } from '../types';
 
 export interface CatalogueMetadata {
   titleAr: string;
@@ -33,157 +24,43 @@ export interface CatalogueMetadata {
   storeName: string;
   startDate: string;
   endDate: string;
-  coverImage?:  string;
 }
 
 export interface UploadProgress {
   bytesTransferred: number;
   totalBytes: number;
-  percentage:  number;
+  percentage: number;
 }
-
-// Toggle between GitHub (local) and Firebase Storage
-const USE_GITHUB_STORAGE = false; // Set to false when you upgrade to Firebase Blaze
-
-/**
- * Upload a PDF catalogue (GitHub/Local version for development)
- * @param uri Local file URI
- * @param filename Filename for the PDF
- * @param onProgress Callback for upload progress
- * @returns Download URL of the uploaded file
- */
-export const uploadCataloguePDFLocal = async (
-  uri: string,
-  filename: string,
-  onProgress?: (progress: UploadProgress) => void
-): Promise<string> => {
-  try {
-    console.log('📁 Using GitHub/Local storage (temporary solution)');
-    console.log('📄 File to upload:', filename);
-    console.log('📍 Source URI:', uri);
-
-    // Simulate upload progress
-    if (onProgress) {
-      for (let i = 0; i <= 100; i += 10) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        onProgress({
-          bytesTransferred: i,
-          totalBytes: 100,
-          percentage: i,
-        });
-      }
-    }
-
-    // Return the public URL path
-    // This assumes you'll manually copy the file to public/catalogues/
-    const publicUrl = `/catalogues/${filename}`;
-
-    console.log('✅ File path generated:', publicUrl);
-    console.log('⚠️  IMPORTANT:  Manually copy your PDF to:  public/catalogues/' + filename);
-
-    return publicUrl;
-  } catch (error) {
-    console.error('❌ Local upload error:', error);
-    throw error;
-  }
-};
-
-/**
- * Upload a PDF catalogue to Firebase Storage (for future use)
- * @param uri Local file URI
- * @param filename Filename for the PDF
- * @param onProgress Callback for upload progress
- * @returns Download URL of the uploaded file
- */
-export const uploadCataloguePDFFirebase = async (
-  uri:  string,
-  filename: string,
-  onProgress?: (progress:  UploadProgress) => void
-): Promise<string> => {
-  try {
-    console.log('🔥 Using Firebase Storage');
-    const storage = getStorageInstance();
-
-    // Fetch the file as a blob
-    const response = await fetch(uri);
-    const blob = await response.blob();
-
-    // Create a reference to the file location
-    const storageRef = ref(storage, `catalogues/${filename}`);
-
-    // Create upload task
-    const uploadTask:  UploadTask = uploadBytesResumable(storageRef, blob);
-
-    return new Promise((resolve, reject) => {
-      uploadTask.on(
-        'state_changed',
-        (snapshot: UploadTaskSnapshot) => {
-          // Track upload progress
-          const progress:  UploadProgress = {
-            bytesTransferred: snapshot.bytesTransferred,
-            totalBytes: snapshot.totalBytes,
-            percentage: (snapshot.bytesTransferred / snapshot.totalBytes) * 100,
-          };
-
-          if (onProgress) {
-            onProgress(progress);
-          }
-        },
-        (error: StorageError) => {
-          console.error('Firebase upload error:', error);
-          reject(error);
-        },
-        async () => {
-          // Upload completed successfully, get download URL
-          const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-          console.log('✅ File uploaded to Firebase:', downloadURL);
-          resolve(downloadURL);
-        }
-      );
-    });
-  } catch (error) {
-    console.error('❌ Firebase upload error:', error);
-    throw error;
-  }
-};
-
-/**
- * Main upload function - switches between local and Firebase
- */
-export const uploadCataloguePDF = async (
-  uri: string,
-  filename: string,
-  onProgress?:  (progress: UploadProgress) => void
-): Promise<string> => {
-  if (USE_GITHUB_STORAGE) {
-    return uploadCataloguePDFLocal(uri, filename, onProgress);
-  } else {
-    return uploadCataloguePDFFirebase(uri, filename, onProgress);
-  }
-};
 
 /**
  * Create a new catalogue entry in Firestore
- * @param metadata Catalogue metadata
- * @param pdfUrl URL to the PDF file
- * @returns Catalogue ID
+ * NOTE: This is now simplified - the actual upload and conversion
+ * happens in CatalogueUploadForm.tsx
  */
 export const createCatalogue = async (
-  metadata:  CatalogueMetadata,
-  pdfUrl: string
+  metadata: CatalogueMetadata,
+  pdfUrl: string,
+  coverImageUrl: string,
+  pages: Array<{ pageNumber: number; imageUrl: string; offers?: string[] }>
 ): Promise<string> => {
   try {
-    const db = getDbInstance();
-    const cataloguesRef = collection(db, 'catalogues');
-
     const catalogueData = {
-      ...metadata,
-      pdfUrl,
+      storeId: metadata.storeId,
+      storeName: metadata.storeName,
+      titleAr: metadata.titleAr,
+      titleEn: metadata.titleEn,
+      startDate: metadata.startDate,
+      endDate: metadata.endDate,
+      coverImage: coverImageUrl,
+      pdfUrl: pdfUrl,
+      pages: pages,
+      totalPages: pages.length,
+      pdfProcessed: true,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
 
-    const docRef = await addDoc(cataloguesRef, catalogueData);
+    const docRef = await addDoc(collection(db, 'catalogues'), catalogueData);
     console.log('✅ Catalogue created with ID:', docRef.id);
 
     return docRef.id;
@@ -194,89 +71,46 @@ export const createCatalogue = async (
 };
 
 /**
- * Get all catalogues from Firestore
- * @returns Array of catalogues
+ * Delete a catalogue and all its associated files
  */
-export const getAllCatalogues = async (): Promise<Catalogue[]> => {
+export const deleteCatalogue = async (catalogueId: string): Promise<void> => {
   try {
-    const db = getDbInstance();
-    const cataloguesRef = collection(db, 'catalogues');
-    const q = query(cataloguesRef, orderBy('createdAt', 'desc'));
+    console.log('🗑️ Deleting catalogue:', catalogueId);
 
-    const querySnapshot = await getDocs(q);
-
-    const catalogues: Catalogue[] = querySnapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id:  doc.id,
-        titleAr: data.titleAr,
-        titleEn: data. titleEn,
-        storeId: data.storeId,
-        storeName: data.storeName,
-        startDate: data.startDate,
-        endDate: data.endDate,
-        pdfUrl: data.pdfUrl,
-        coverImage: data. coverImage,
-        createdAt: data.createdAt,
-        updatedAt: data.updatedAt,
-      };
-    });
-
-    console.log('✅ Fetched catalogues:', catalogues. length);
-    return catalogues;
-  } catch (error) {
-    console.error('❌ Error fetching catalogues:', error);
-    throw error;
-  }
-};
-
-/**
- * Delete a catalogue (local version doesn't delete the actual file)
- * @param catalogueId Catalogue document ID
- * @param pdfUrl URL of the PDF to delete
- */
-export const deleteCatalogueLocal = async (
-  catalogueId: string,
-  pdfUrl: string
-): Promise<void> => {
-  try {
-    console.log('🗑️  Deleting catalogue (local mode)');
-
-    // Delete from Firestore
-    const db = getDbInstance();
+    // Delete Firestore document
     await deleteDoc(doc(db, 'catalogues', catalogueId));
+    console.log('✅ Deleted Firestore document');
 
-    console.log('✅ Catalogue deleted from Firestore');
-    console.log('⚠️  Note: PDF file still exists at:', pdfUrl);
-    console.log('⚠️  Manually delete if needed:  public' + pdfUrl);
-  } catch (error) {
-    console.error('❌ Error deleting catalogue:', error);
-    throw error;
-  }
-};
+    // Try to delete PDF file
+    try {
+      const pdfRef = ref(storage, `catalogues/${catalogueId}.pdf`);
+      await deleteObject(pdfRef);
+      console.log('✅ Deleted PDF file');
+    } catch (error) {
+      console.log('⚠️ PDF file not found or already deleted');
+    }
 
-/**
- * Delete a catalogue from Firebase (for future use)
- * @param catalogueId Catalogue document ID
- * @param pdfUrl URL of the PDF to delete
- */
-export const deleteCatalogueFirebase = async (
-  catalogueId: string,
-  pdfUrl: string
-): Promise<void> => {
-  try {
-    console.log('🗑️  Deleting catalogue from Firebase');
+    // Try to delete cover image
+    try {
+      const coverRef = ref(storage, `catalogue-covers/${catalogueId}.jpg`);
+      await deleteObject(coverRef);
+      console.log('✅ Deleted cover image');
+    } catch (error) {
+      console.log('⚠️ Cover image not found or already deleted');
+    }
 
-    // Delete from Firestore
-    const db = getDbInstance();
-    await deleteDoc(doc(db, 'catalogues', catalogueId));
+    // Try to delete all page images
+    try {
+      const pagesRef = ref(storage, `catalogue-pages/${catalogueId}`);
+      const pagesList = await listAll(pagesRef);
 
-    // Delete from Storage if it's a Firebase URL
-    if (pdfUrl && pdfUrl.includes('firebasestorage.googleapis.com')) {
-      const storage = getStorageInstance();
-      const fileRef = ref(storage, pdfUrl);
-      await deleteObject(fileRef);
-      console.log('✅ File deleted from Firebase Storage');
+      await Promise.all(
+        pagesList.items.map(item => deleteObject(item))
+      );
+
+      console.log(`✅ Deleted ${pagesList.items.length} page images`);
+    } catch (error) {
+      console.log('⚠️ Page images not found or already deleted');
     }
 
     console.log('✅ Catalogue deleted successfully');
@@ -287,40 +121,48 @@ export const deleteCatalogueFirebase = async (
 };
 
 /**
- * Main delete function - switches between local and Firebase
+ * Get all catalogues from Firestore
  */
-export const deleteCatalogue = async (
-  catalogueId: string,
-  pdfUrl: string
-): Promise<void> => {
-  if (USE_GITHUB_STORAGE) {
-    return deleteCatalogueLocal(catalogueId, pdfUrl);
-  } else {
-    return deleteCatalogueFirebase(catalogueId, pdfUrl);
+export const getAllCatalogues = async (): Promise<Catalogue[]> => {
+  try {
+    const querySnapshot = await getDocs(collection(db, 'catalogues'));
+
+    const catalogues: Catalogue[] = [];
+    querySnapshot.forEach((doc) => {
+      catalogues.push({
+        id: doc.id,
+        ...doc.data(),
+      } as Catalogue);
+    });
+
+    return catalogues;
+  } catch (error) {
+    console.error('❌ Error fetching catalogues:', error);
+    throw error;
   }
 };
 
 /**
- * Update catalogue metadata
- * @param catalogueId Catalogue document ID
- * @param updates Partial catalogue data to update
+ * Upload a blob/file to Firebase Storage
+ * Generic helper function
  */
-export const updateCatalogue = async (
-  catalogueId: string,
-  updates:  Partial<CatalogueMetadata>
-): Promise<void> => {
+export const uploadFileToStorage = async (
+  path: string,
+  file: Blob | File,
+  onProgress?: (progress: UploadProgress) => void
+): Promise<string> => {
   try {
-    const db = getDbInstance();
-    const catalogueRef = doc(db, 'catalogues', catalogueId);
+    const storageRef = ref(storage, path);
 
-    await updateDoc(catalogueRef, {
-      ...updates,
-      updatedAt: serverTimestamp(),
-    });
+    // Upload file
+    await uploadBytes(storageRef, file);
 
-    console.log('✅ Catalogue updated successfully');
+    // Get download URL
+    const downloadURL = await getDownloadURL(storageRef);
+
+    return downloadURL;
   } catch (error) {
-    console.error('❌ Error updating catalogue:', error);
+    console.error('❌ Error uploading file:', error);
     throw error;
   }
 };
