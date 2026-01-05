@@ -1,68 +1,244 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   Modal,
   TouchableOpacity,
+  ScrollView,
+  Dimensions,
+  ActivityIndicator,
+  Alert,
   I18nManager,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, typography } from '../../constants/theme';
+import { colors, spacing, typography, borderRadius } from '../../constants/theme';
+import { PDFThumbnailStrip } from './PDFThumbnailStrip';
 
-interface CataloguePDFViewerProps {
-  pdfUrl: string;
-  catalogueTitle: string;
-  visible: boolean;
-  onClose: () => void;
+// Import pdfjs-dist for web
+let pdfjsLib: any = null;
+if (typeof window !== 'undefined') {
+  pdfjsLib = require('pdfjs-dist');
+  pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 }
 
-export const CataloguePDFViewer: React.FC<CataloguePDFViewerProps> = ({
+interface PDFPageViewerProps {
+  pdfUrl?: string;
+  pageImages?: string[]; // Array of image URLs from Firebase Storage
+  catalogueTitle: string;
+  catalogueId: string;
+  storeId: string;
+  storeName: string;
+  visible: boolean;
+  onClose: () => void;
+  onSavePage: (pageNumber: number, pageImageUri: string) => void;
+  savedPageNumbers?: number[];
+}
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const PAGE_WIDTH = SCREEN_WIDTH - spacing.md * 2;
+
+export const PDFPageViewer: React.FC<PDFPageViewerProps> = ({
   pdfUrl,
+  pageImages = [],
   catalogueTitle,
+  catalogueId,
+  storeId,
+  storeName,
   visible,
   onClose,
+  onSavePage,
+  savedPageNumbers = [],
 }) => {
-  const [pdfError, setPdfError] = useState<string | null>(null);
-  const [pdfLoaded, setPdfLoaded] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [renderedPages, setRenderedPages] = useState<{ [key: number]: string }>({});
+  const [thumbnails, setThumbnails] = useState<{ [key: number]: string }>({});
+  const scrollViewRef = useRef<ScrollView>(null);
+  const pdfDocRef = useRef<any>(null);
 
+  // Determine if we're using images or PDF
+  const useImages = pageImages.length > 0;
+
+  // Load PDF document or set up images
   useEffect(() => {
     if (visible) {
-      console.log('=== PDF VIEWER DEBUG ===');
-      console.log('Modal opened');
-      console.log('PDF URL:', pdfUrl);
-      console.log('Catalogue:', catalogueTitle);
+      if (useImages) {
+        // Using images from Firebase Storage
+        setTotalPages(pageImages.length);
+        setLoading(false);
 
-      // Test if PDF is accessible
-      fetch(pdfUrl, { method: 'HEAD' })
-        .then(response => {
-          console.log('PDF fetch status:', response.status);
-          console.log('Content-Type:', response.headers.get('content-type'));
-          console.log('Content-Length:', response.headers.get('content-length'));
-
-          if (!response.ok) {
-            setPdfError(`HTTP ${response.status}: ${response.statusText}`);
-          }
-        })
-        .catch(error => {
-          console.error('PDF fetch error:', error);
-          setPdfError(error.message);
+        // Generate thumbnails from images
+        const imageThumbnails: { [key: number]: string } = {};
+        pageImages.forEach((url, index) => {
+          imageThumbnails[index + 1] = url;
         });
-
-      console.log('======================');
+        setThumbnails(imageThumbnails);
+      } else if (pdfUrl && pdfjsLib) {
+        // Using PDF
+        loadPDF();
+      }
     }
-  }, [visible, pdfUrl]);
+
+    return () => {
+      if (pdfDocRef.current) {
+        pdfDocRef.current.destroy();
+        pdfDocRef.current = null;
+      }
+    };
+  }, [visible, pdfUrl, pageImages]);
+
+  // Render current page when it changes (PDF only)
+  useEffect(() => {
+    if (pdfDocRef.current && !useImages && !renderedPages[currentPage + 1]) {
+      renderPage(currentPage + 1);
+    }
+  }, [currentPage, pdfDocRef.current]);
+
+  const loadPDF = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const loadingTask = pdfjsLib.getDocument(pdfUrl);
+      const pdf = await loadingTask.promise;
+      pdfDocRef.current = pdf;
+      setTotalPages(pdf.numPages);
+
+      await renderPage(1);
+      generateThumbnails(pdf);
+
+      setLoading(false);
+    } catch (err: any) {
+      console.error('Error loading PDF:', err);
+      setError(err.message || 'فشل تحميل ملف PDF');
+      setLoading(false);
+    }
+  };
+
+  const renderPage = async (pageNumber: number) => {
+    if (!pdfDocRef.current || renderedPages[pageNumber]) return;
+
+    try {
+      const page = await pdfDocRef.current.getPage(pageNumber);
+      const viewport = page.getViewport({ scale: 2.0 });
+
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+
+      if (!context) {
+        console.error('Failed to get 2D context from canvas');
+        return null;
+      }
+
+      canvas.height = viewport.height;
+      canvas.width = viewport.width;
+
+      const renderContext = {
+        canvasContext: context,
+        viewport: viewport,
+      };
+
+      await page.render(renderContext).promise;
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+
+      setRenderedPages(prev => ({
+        ...prev,
+        [pageNumber]: dataUrl,
+      }));
+
+      return dataUrl;
+    } catch (err) {
+      console.error(`Error rendering page ${pageNumber}:`, err);
+      return null;
+    }
+  };
+
+  const generateThumbnails = async (pdf: any) => {
+    const maxThumbnails = Math.min(10, pdf.numPages);
+
+    for (let i = 1; i <= maxThumbnails; i++) {
+      try {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 0.3 });
+
+        const canvas = document.createElement('canvas');
+        const context = canvas.getContext('2d');
+
+        if (!context) continue;
+
+        canvas.height = viewport.height;
+        canvas.width = viewport.width;
+
+        const renderContext = {
+          canvasContext: context,
+          viewport: viewport,
+        };
+
+        await page.render(renderContext).promise;
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+        setThumbnails(prev => ({
+          ...prev,
+          [i]: dataUrl,
+        }));
+      } catch (err) {
+        console.error(`Error generating thumbnail for page ${i}:`, err);
+      }
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages - 1) {
+      setCurrentPage(prev => prev + 1);
+    }
+  };
+
+  const handlePrevPage = () => {
+    if (currentPage > 0) {
+      setCurrentPage(prev => prev - 1);
+    }
+  };
+
+  const handleSavePage = async () => {
+    const pageNumber = currentPage + 1;
+    let pageImageUri: string;
+
+    if (useImages) {
+      // Using Firebase Storage images
+      pageImageUri = pageImages[currentPage];
+    } else {
+      // Using PDF rendered pages
+      pageImageUri = renderedPages[pageNumber];
+    }
+
+    if (!pageImageUri) {
+      Alert.alert('خطأ', 'لم يتم تحميل الصفحة بعد');
+      return;
+    }
+
+    if (savedPageNumbers.includes(pageNumber)) {
+      Alert.alert('تنبيه', 'تم حفظ هذه الصفحة مسبقاً');
+      return;
+    }
+
+    onSavePage(pageNumber, pageImageUri);
+  };
+
+  const isPageSaved = savedPageNumbers.includes(currentPage + 1);
 
   if (!visible) return null;
 
-  const handleIframeLoad = () => {
-    console.log('✅ PDF iframe loaded successfully');
-    setPdfLoaded(true);
-  };
-
-  const handleIframeError = (error: any) => {
-    console.error('❌ PDF iframe error:', error);
-    setPdfError('Failed to load PDF in iframe');
+  // Get current page image
+  const getCurrentPageImage = () => {
+    if (useImages) {
+      return pageImages[currentPage];
+    } else {
+      return renderedPages[currentPage + 1];
+    }
   };
 
   return (
@@ -82,72 +258,127 @@ export const CataloguePDFViewer: React.FC<CataloguePDFViewerProps> = ({
             <Text style={styles.title} numberOfLines={1}>
               {catalogueTitle}
             </Text>
-            {__DEV__ && (
-              <Text style={styles.debugUrl} numberOfLines={1}>
-                {pdfUrl}
-              </Text>
-            )}
+            <Text style={styles.subtitle}>
+              {useImages ? 'عرض الصور' : 'عرض PDF'}
+            </Text>
           </View>
           <View style={styles.placeholder} />
         </View>
 
-        {/* Debug Info */}
-        {__DEV__ && (
-          <View style={styles.debugBanner}>
-            <Text style={styles.debugText}>
-              🐛 PDF Status: {pdfLoaded ? '✅ Loaded' : '⏳ Loading'}
-              {pdfError && ` | ❌ Error: ${pdfError}`}
-            </Text>
-            <TouchableOpacity
-              onPress={() => {
-                console.log('Opening PDF in new tab:', pdfUrl);
-                window.open(pdfUrl, '_blank');
-              }}
-              style={styles.debugButton}
-            >
-              <Text style={styles.debugButtonText}>
-                🔗 Open in New Tab (for testing)
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Error Display */}
-        {pdfError && (
-          <View style={styles.errorContainer}>
-            <Ionicons name="alert-circle" size={48} color={colors.error} />
-            <Text style={styles.errorTitle}>فشل تحميل PDF</Text>
-            <Text style={styles.errorMessage}>{pdfError}</Text>
-            <Text style={styles.errorUrl}>المسار: {pdfUrl}</Text>
-            <TouchableOpacity
-              onPress={() => window.open(pdfUrl, '_blank')}
-              style={styles.retryButton}
-            >
-              <Text style={styles.retryButtonText}>فتح في نافذة جديدة</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        {/* Web PDF Viewer using iframe */}
-        <View style={styles.pdfContainer}>
-          <iframe
-            src={pdfUrl}
-            style={{
-              width: '100%',
-              height: '100%',
-              border: 'none',
-            }}
-            title={catalogueTitle}
-            onLoad={handleIframeLoad}
-            onError={handleIframeError}
-          />
-        </View>
-
-        {/* Loading Overlay */}
-        {!pdfLoaded && !pdfError && (
-          <View style={styles.loadingOverlay}>
+        {loading && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
             <Text style={styles.loadingText}>جاري تحميل الكتالوج...</Text>
           </View>
+        )}
+
+        {error && (
+          <View style={styles.errorContainer}>
+            <Ionicons name="alert-circle" size={64} color={colors.error} />
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={loadPDF}>
+              <Text style={styles.retryButtonText}>إعادة المحاولة</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!loading && !error && totalPages > 0 && (
+          <>
+            {/* Page Display */}
+            <ScrollView
+              style={styles.pageContainer}
+              contentContainerStyle={styles.pageContent}
+            >
+              {getCurrentPageImage() ? (
+                <Image
+                  source={{ uri: getCurrentPageImage() }}
+                  style={{
+                    width: PAGE_WIDTH,
+                    height: SCREEN_HEIGHT * 0.6,
+                    borderRadius: borderRadius.md,
+                  }}
+                  resizeMode="contain"
+                />
+              ) : (
+                <View style={styles.pageLoadingContainer}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={styles.pageLoadingText}>
+                    جاري تحميل الصفحة {currentPage + 1}...
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+
+            {/* Navigation Controls */}
+            <View style={styles.navigationContainer}>
+              <View style={styles.navigationButtons}>
+                <TouchableOpacity
+                  style={[
+                    styles.navButton,
+                    currentPage === 0 && styles.navButtonDisabled,
+                  ]}
+                  onPress={handlePrevPage}
+                  disabled={currentPage === 0}
+                >
+                  <Ionicons
+                    name={I18nManager.isRTL ? 'chevron-forward' : 'chevron-back'}
+                    size={24}
+                    color={currentPage === 0 ? colors.gray[400] : colors.white}
+                  />
+                </TouchableOpacity>
+
+                <Text style={styles.pageIndicator}>
+                  {currentPage + 1} / {totalPages}
+                </Text>
+
+                <TouchableOpacity
+                  style={[
+                    styles.navButton,
+                    currentPage === totalPages - 1 && styles.navButtonDisabled,
+                  ]}
+                  onPress={handleNextPage}
+                  disabled={currentPage === totalPages - 1}
+                >
+                  <Ionicons
+                    name={I18nManager.isRTL ? 'chevron-back' : 'chevron-forward'}
+                    size={24}
+                    color={currentPage === totalPages - 1 ? colors.gray[400] : colors.white}
+                  />
+                </TouchableOpacity>
+              </View>
+
+              {/* Save Button */}
+              <TouchableOpacity
+                style={[
+                  styles.saveButton,
+                  isPageSaved && styles.saveButtonSaved,
+                ]}
+                onPress={handleSavePage}
+                disabled={isPageSaved}
+              >
+                <Ionicons
+                  name={isPageSaved ? 'bookmark' : 'bookmark-outline'}
+                  size={20}
+                  color={isPageSaved ? colors.white : colors.primary}
+                />
+                <Text style={[
+                  styles.saveButtonText,
+                  isPageSaved && styles.saveButtonTextSaved,
+                ]}>
+                  {isPageSaved ? 'تم الحفظ' : 'حفظ الصفحة'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Thumbnail Strip */}
+            <PDFThumbnailStrip
+              totalPages={totalPages}
+              currentPage={currentPage}
+              onPageSelect={setCurrentPage}
+              thumbnails={thumbnails}
+              savedPageNumbers={savedPageNumbers}
+            />
+          </>
         )}
       </View>
     </Modal>
@@ -183,100 +414,122 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: spacing.md,
   },
-  debugUrl: {
-    fontSize: typography.fontSize.xs,
+  subtitle: {
+    fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
   placeholder: {
     width: 44,
   },
-  debugBanner: {
-    backgroundColor: colors.warning,
-    padding: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[300],
-  },
-  debugText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.text,
-    marginBottom: spacing.xs,
-  },
-  debugButton: {
-    backgroundColor: colors.white,
-    padding: spacing.xs,
-    borderRadius: 4,
-    marginTop: spacing.xs,
-  },
-  debugButtonText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.primary,
-    textAlign: 'center',
-  },
-  pdfContainer: {
+  loadingContainer: {
     flex: 1,
-  },
-  errorContainer: {
-    position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transform: 'translate(-50%, -50%)',
-    backgroundColor: colors.white,
-    padding: spacing.xl,
-    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
-    maxWidth: 400,
-    zIndex: 1000,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
+    padding: spacing.xl,
   },
-  errorTitle: {
-    fontSize: typography.fontSize.xl,
-    fontWeight: 'bold',
-    color: colors.error,
+  loadingText: {
     marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  errorMessage: {
     fontSize: typography.fontSize.md,
     color: colors.textSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
   },
-  errorUrl: {
-    fontSize: typography.fontSize.xs,
-    color: colors.gray[500],
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.xl,
+  },
+  errorText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSize.md,
+    color: colors.error,
     textAlign: 'center',
-    marginBottom: spacing.md,
-    fontFamily: 'monospace',
   },
   retryButton: {
+    marginTop: spacing.lg,
     backgroundColor: colors.primary,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: 8,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
   },
   retryButtonText: {
     color: colors.white,
     fontSize: typography.fontSize.md,
     fontWeight: '600',
   },
-  loadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(248, 249, 250, 0.9)',
+  pageContainer: {
+    flex: 1,
+  },
+  pageContent: {
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+  },
+  pageLoadingContainer: {
+    width: PAGE_WIDTH,
+    height: SCREEN_HEIGHT * 0.6,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.gray[100],
+    borderRadius: borderRadius.md,
+  },
+  pageLoadingText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSize.md,
+    color: colors.textSecondary,
+  },
+  navigationContainer: {
+    backgroundColor: colors.white,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[200],
+  },
+  navigationButtons: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.sm,
+  },
+  navButton: {
+    width: 44,
+    height: 44,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  loadingText: {
+  navButtonDisabled: {
+    backgroundColor: colors.gray[400],
+  },
+  pageIndicator: {
     fontSize: typography.fontSize.lg,
-    color: colors.textSecondary,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  saveButton: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+  },
+  saveButtonSaved: {
+    backgroundColor: colors.primary,
+  },
+  saveButtonText: {
+    fontSize: typography.fontSize.md,
+    fontWeight: '600',
+    color: colors.primary,
+    marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
+    marginRight: I18nManager.isRTL ? spacing.xs : 0,
+  },
+  saveButtonTextSaved: {
+    color: colors.white,
   },
 });
 
-export default CataloguePDFViewer;
+export default PDFPageViewer;

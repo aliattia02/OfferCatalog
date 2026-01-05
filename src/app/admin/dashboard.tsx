@@ -214,12 +214,13 @@ export default function AdminDashboard() {
               </View>
             ) : (
               catalogues.map((catalogue) => (
-                <CatalogueListItem
-                  key={catalogue.id}
-                  catalogue={catalogue}
-                  onDelete={() => handleDelete(catalogue)}
-                  canDelete={__DEV__ || isAdmin}
-                />
+<CatalogueListItem
+  key={catalogue.id}
+  catalogue={catalogue}
+  onDelete={() => handleDelete(catalogue)}
+  canDelete={__DEV__ || isAdmin}
+  onProcessComplete={loadCatalogues} // Add this line
+/>
               ))
             )}
             <View style={styles.bottomPadding} />

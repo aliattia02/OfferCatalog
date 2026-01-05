@@ -9,6 +9,7 @@ import {
   Alert,
   I18nManager,
   Platform,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Pdf from 'react-native-pdf';
@@ -16,7 +17,8 @@ import { colors, spacing, typography, borderRadius } from '../../constants/theme
 import { PDFThumbnailStrip } from './PDFThumbnailStrip';
 
 interface PDFPageViewerProps {
-  pdfUrl: string;
+  pdfUrl?: string;
+  pageImages?: string[]; // Array of image URLs from Firebase Storage
   catalogueTitle: string;
   catalogueId: string;
   storeId: string;
@@ -31,6 +33,7 @@ const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export const PDFPageViewer: React.FC<PDFPageViewerProps> = ({
   pdfUrl,
+  pageImages = [],
   catalogueTitle,
   catalogueId,
   storeId,
@@ -44,6 +47,16 @@ export const PDFPageViewer: React.FC<PDFPageViewerProps> = ({
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const pdfRef = useRef<any>(null);
+
+  // Determine if we're using images or PDF
+  const useImages = pageImages.length > 0;
+
+  React.useEffect(() => {
+    if (useImages) {
+      setTotalPages(pageImages.length);
+      setLoading(false);
+    }
+  }, [pageImages]);
 
   const handleLoadComplete = (numberOfPages: number) => {
     setTotalPages(numberOfPages);
@@ -79,18 +92,30 @@ export const PDFPageViewer: React.FC<PDFPageViewerProps> = ({
       return;
     }
 
-    // For native, we use a placeholder URI scheme
-    // In a production app, you would use a library like react-native-view-shot
-    // to capture the actual page view and convert it to a base64 image
-    // Example: ViewShot.captureRef(pdfRef, { format: 'jpg', quality: 0.9 })
-    const pageImageUri = `pdf://${catalogueId}/page/${pageNumber}`;
-    
+    let pageImageUri: string;
+
+    if (useImages) {
+      // Using Firebase Storage images
+      pageImageUri = pageImages[currentPage - 1];
+    } else {
+      // For PDF, use placeholder (in production, capture the page view)
+      pageImageUri = `pdf://${catalogueId}/page/${pageNumber}`;
+    }
+
     onSavePage(pageNumber, pageImageUri);
   };
 
   const isPageSaved = savedPageNumbers.includes(currentPage);
 
   if (!visible) return null;
+
+  // Generate thumbnails for images
+  const thumbnails: { [key: number]: string } = {};
+  if (useImages) {
+    pageImages.forEach((url, index) => {
+      thumbnails[index + 1] = url;
+    });
+  }
 
   return (
     <Modal
@@ -109,24 +134,39 @@ export const PDFPageViewer: React.FC<PDFPageViewerProps> = ({
             <Text style={styles.title} numberOfLines={1}>
               {catalogueTitle}
             </Text>
+            <Text style={styles.subtitle}>
+              {useImages ? 'عرض الصور' : 'عرض PDF'}
+            </Text>
           </View>
           <View style={styles.placeholder} />
         </View>
 
-        {/* PDF Viewer */}
-        <View style={styles.pdfContainer}>
-          <Pdf
-            ref={pdfRef}
-            source={{ uri: pdfUrl, cache: true }}
-            page={currentPage}
-            horizontal={false}
-            onLoadComplete={handleLoadComplete}
-            onPageChanged={handlePageChanged}
-            onError={handleError}
-            style={styles.pdf}
-            enablePaging={true}
-            spacing={0}
-          />
+        {/* Content Viewer */}
+        <View style={styles.contentContainer}>
+          {useImages ? (
+            // Image Viewer
+            <Image
+              source={{ uri: pageImages[currentPage - 1] }}
+              style={styles.pageImage}
+              resizeMode="contain"
+            />
+          ) : (
+            // PDF Viewer
+            pdfUrl && (
+              <Pdf
+                ref={pdfRef}
+                source={{ uri: pdfUrl, cache: true }}
+                page={currentPage}
+                horizontal={false}
+                onLoadComplete={handleLoadComplete}
+                onPageChanged={handlePageChanged}
+                onError={handleError}
+                style={styles.pdf}
+                enablePaging={true}
+                spacing={0}
+              />
+            )
+          )}
         </View>
 
         {/* Navigation Controls */}
@@ -195,8 +235,9 @@ export const PDFPageViewer: React.FC<PDFPageViewerProps> = ({
             {/* Thumbnail Strip */}
             <PDFThumbnailStrip
               totalPages={totalPages}
-              currentPage={currentPage - 1} // Adjust for 0-based indexing
+              currentPage={currentPage - 1}
               onPageSelect={(pageIndex) => setCurrentPage(pageIndex + 1)}
+              thumbnails={thumbnails}
               savedPageNumbers={savedPageNumbers}
             />
           </>
@@ -240,11 +281,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginHorizontal: spacing.md,
   },
+  subtitle: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
   placeholder: {
     width: 44,
   },
-  pdfContainer: {
+  contentContainer: {
     flex: 1,
+    backgroundColor: colors.gray[100],
+  },
+  pageImage: {
+    width: '100%',
+    height: '100%',
   },
   pdf: {
     flex: 1,

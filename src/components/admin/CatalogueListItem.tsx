@@ -1,18 +1,23 @@
-// src/components/admin/CatalogueListItem.tsx
+
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
 import { Catalogue } from '../../types';
+import { PDFProcessor } from './PDFProcessor';
 
 interface CatalogueListItemProps {
   catalogue: Catalogue;
   onDelete: () => void;
+  canDelete?: boolean;
+  onProcessComplete?: () => void;
 }
 
 export const CatalogueListItem: React.FC<CatalogueListItemProps> = ({
   catalogue,
   onDelete,
+  canDelete = true,
+  onProcessComplete,
 }) => {
   const formatDate = (dateStr: string) => {
     try {
@@ -22,6 +27,8 @@ export const CatalogueListItem: React.FC<CatalogueListItemProps> = ({
       return dateStr;
     }
   };
+
+  const hasPages = catalogue.pages && catalogue.pages.length > 0;
 
   return (
     <View style={styles.container}>
@@ -38,9 +45,11 @@ export const CatalogueListItem: React.FC<CatalogueListItemProps> = ({
               </Text>
             </View>
           </View>
-          <TouchableOpacity onPress={onDelete} style={styles.deleteButton}>
-            <Ionicons name="trash-outline" size={20} color={colors.error} />
-          </TouchableOpacity>
+          {canDelete && (
+            <TouchableOpacity onPress={onDelete} style={styles.deleteButton}>
+              <Ionicons name="trash-outline" size={20} color={colors.error} />
+            </TouchableOpacity>
+          )}
         </View>
 
         <View style={styles.info}>
@@ -56,11 +65,26 @@ export const CatalogueListItem: React.FC<CatalogueListItemProps> = ({
           </View>
         </View>
 
-        {catalogue.pdfUrl && (
-          <View style={styles.badge}>
-            <Ionicons name="cloud-done" size={14} color={colors.success} />
-            <Text style={styles.badgeText}>مرفوع على السحابة</Text>
-          </View>
+        <View style={styles.badges}>
+          {catalogue.pdfUrl && (
+            <View style={[styles.badge, styles.badgePdf]}>
+              <Ionicons name="document" size={14} color={colors.primary} />
+              <Text style={[styles.badgeText, styles.badgeTextPdf]}>PDF متوفر</Text>
+            </View>
+          )}
+          {hasPages && (
+            <View style={[styles.badge, styles.badgeProcessed]}>
+              <Ionicons name="images" size={14} color={colors.success} />
+              <Text style={[styles.badgeText, styles.badgeTextProcessed]}>
+                {catalogue.pages?.length || 0} صورة
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* PDF Processor - Only show for web platform and if PDF exists but no pages */}
+        {catalogue.pdfUrl && !hasPages && typeof window !== 'undefined' && (
+          <PDFProcessor catalogue={catalogue} onComplete={onProcessComplete} />
         )}
       </View>
     </View>
@@ -120,19 +144,33 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
   },
+  badges: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    gap: spacing.xs,
+    flexWrap: 'wrap',
+  },
   badge: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
-    alignSelf: I18nManager.isRTL ? 'flex-end' : 'flex-start',
-    backgroundColor: colors.success + '20',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.sm,
     gap: 4,
   },
+  badgePdf: {
+    backgroundColor: colors.primary + '20',
+  },
+  badgeProcessed: {
+    backgroundColor: colors.success + '20',
+  },
   badgeText: {
     fontSize: typography.fontSize.xs,
-    color: colors.success,
     fontWeight: '600',
+  },
+  badgeTextPdf: {
+    color: colors.primary,
+  },
+  badgeTextProcessed: {
+    color: colors.success,
   },
 });

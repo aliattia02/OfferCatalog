@@ -14,17 +14,22 @@ import {
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { ref, uploadBytes, uploadString, getDownloadURL } from 'firebase/storage';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { storage, db } from '../../config/firebase';
+import { pdfConverter } from '../../utils/pdfToImageConverter';
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
-import {
-  uploadCataloguePDF,
-  createCatalogue,
-  CatalogueMetadata,
-  UploadProgress,
-} from '../../services/adminService';
 
 interface CatalogueUploadFormProps {
   onSuccess: () => void;
   onCancel: () => void;
+}
+
+interface UploadProgress {
+  stage: string;
+  current: number;
+  total: number;
+  percentage: number;
 }
 
 export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
@@ -39,8 +44,12 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
   const [endDate, setEndDate] = useState('');
   const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [generatedFilename, setGeneratedFilename] = useState('');
+  const [progress, setProgress] = useState<UploadProgress>({
+    stage: '',
+    current: 0,
+    total: 0,
+    percentage: 0,
+  });
 
   const handlePickDocument = async () => {
     try {
@@ -51,18 +60,10 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setSelectedFile(result.assets[0]);
-        // Generate filename preview
-        const filename = `${storeId || 'store'}_${Date.now()}.pdf`;
-        setGeneratedFilename(filename);
       }
     } catch (error) {
       console.error('Error picking document:', error);
-
-      if (Platform.OS === 'web') {
-        alert('خطأ: فشل اختيار الملف');
-      } else {
-        Alert.alert('خطأ', 'فشل اختيار الملف');
-      }
+      showAlert('خطأ', 'فشل اختيار الملف');
     }
   };
 
@@ -114,44 +115,166 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
 
     try {
       setUploading(true);
-      setUploadProgress(0);
 
-      console.log('📤 [Upload] Starting upload...');
+      // Generate catalogue ID
+      const catalogueId = `${storeId}_${Date.now()}`;
 
-      // Upload PDF (to local/GitHub or Firebase)
-      const filename = `${storeId}_${Date.now()}.pdf`;
-      const pdfUrl = await uploadCataloguePDF(
-        selectedFile.uri,
-        filename,
-        (progress: UploadProgress) => {
-          setUploadProgress(progress.percentage);
-          console.log(`📊 [Upload] Progress: ${progress.percentage}%`);
+      console.log('📤 Starting upload process...');
+
+      // STEP 1: Upload PDF to Firebase Storage
+      setProgress({
+        stage: 'جاري رفع ملف PDF...',
+        current: 0,
+        total: 4,
+        percentage: 0,
+      });
+
+      const pdfBlob = await fetch(selectedFile.uri).then(r => r.blob());
+      const pdfRef = ref(storage, `catalogues/${catalogueId}.pdf`);
+      await uploadBytes(pdfRef, pdfBlob);
+      const pdfUrl = await getDownloadURL(pdfRef);
+
+      console.log('✅ PDF uploaded:', pdfUrl);
+
+      // STEP 2: Convert PDF to images
+      setProgress({
+        stage: 'جاري قراءة معلومات PDF...',
+        current: 1,
+        total: 4,
+        percentage: 25,
+      });
+
+      const pdfInfo = await pdfConverter.getPDFInfo(pdfUrl);
+      console.log(`📄 PDF has ${pdfInfo.numPages} pages`);
+
+      setProgress({
+        stage: 'جاري تحويل الصفحات إلى صور...',
+        current: 1,
+        total: 4,
+        percentage: 25,
+      });
+
+      const images = await pdfConverter.convertAllPages(
+        pdfUrl,
+        2.0,
+        (current, total) => {
+          const percentage = 25 + (current / total) * 25; // 25-50%
+          setProgress({
+            stage: `تحويل الصفحة ${current} من ${total}...`,
+            current: 1,
+            total: 4,
+            percentage,
+          });
         }
       );
 
-      console.log('✅ [Upload] PDF uploaded:', pdfUrl);
+      console.log(`✅ Converted ${images.length} pages to images`);
 
-      // Create catalogue entry in Firestore
-      const metadata: CatalogueMetadata = {
-        titleAr: titleAr.trim(),
-        titleEn: titleEn.trim(),
+      // STEP 3: Upload images to Firebase Storage
+      setProgress({
+        stage: 'جاري رفع صور الصفحات...',
+        current: 2,
+        total: 4,
+        percentage: 50,
+      });
+
+      const uploadedPages = [];
+
+      for (let i = 0; i < images.length; i++) {
+        const image = images[i];
+        const storageRef = ref(
+          storage,
+          `catalogue-pages/${catalogueId}/page-${image.pageNumber}.jpg`
+        );
+
+        const percentage = 50 + ((i + 1) / images.length) * 25; // 50-75%
+        setProgress({
+          stage: `رفع الصفحة ${i + 1} من ${images.length}...`,
+          current: 2,
+          total: 4,
+          percentage,
+        });
+
+        // Upload base64 image
+        await uploadString(storageRef, image.imageDataUrl, 'data_url');
+        const imageUrl = await getDownloadURL(storageRef);
+
+        uploadedPages.push({
+          pageNumber: image.pageNumber,
+          imageUrl,
+          offers: [], // Empty initially
+        });
+
+        console.log(`Uploaded page ${i + 1}/${images.length}`);
+      }
+
+      // STEP 4: Generate cover image (use first page as cover)
+      setProgress({
+        stage: 'جاري إنشاء صورة الغلاف...',
+        current: 3,
+        total: 4,
+        percentage: 75,
+      });
+
+      const coverRef = ref(storage, `catalogue-covers/${catalogueId}.jpg`);
+      await uploadString(coverRef, images[0].imageDataUrl, 'data_url');
+      const coverImageUrl = await getDownloadURL(coverRef);
+
+      console.log('✅ Cover image created');
+
+      // STEP 5: Create Firestore document
+      setProgress({
+        stage: 'جاري حفظ البيانات...',
+        current: 4,
+        total: 4,
+        percentage: 90,
+      });
+
+      const catalogueData = {
+        id: catalogueId,
         storeId: storeId.trim(),
         storeName: storeName.trim(),
+        titleAr: titleAr.trim(),
+        titleEn: titleEn.trim(),
         startDate: startDate.trim(),
         endDate: endDate.trim(),
+        coverImage: coverImageUrl,
+        pdfUrl: pdfUrl,
+        pages: uploadedPages,
+        totalPages: images.length,
+        pdfProcessed: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       };
 
-      await createCatalogue(metadata, pdfUrl);
-      console.log('✅ [Upload] Catalogue created in Firestore');
+      await addDoc(collection(db, 'catalogues'), catalogueData);
+
+      console.log('✅ Catalogue created in Firestore');
+
+      setProgress({
+        stage: 'تمت العملية بنجاح!',
+        current: 4,
+        total: 4,
+        percentage: 100,
+      });
 
       // Show success alert
-      showAlert('✅ نجح', 'تم رفع الكتالوج بنجاح!', onSuccess);
+      showAlert(
+        '✅ نجح',
+        `تم رفع الكتالوج بنجاح!\n${images.length} صفحة تم تحويلها ورفعها`,
+        onSuccess
+      );
     } catch (error: any) {
-      console.error('❌ [Upload] Upload error:', error);
+      console.error('❌ Upload error:', error);
       showAlert('❌ خطأ', 'فشل رفع الكتالوج: ' + (error.message || 'حدث خطأ غير متوقع'));
     } finally {
       setUploading(false);
-      setUploadProgress(0);
+      setProgress({
+        stage: '',
+        current: 0,
+        total: 0,
+        percentage: 0,
+      });
     }
   };
 
@@ -164,13 +287,13 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* GitHub Storage Notice */}
+      {/* Enhanced Notice */}
       <View style={styles.noticeBox}>
         <Ionicons name="information-circle" size={24} color={colors.primary} />
         <View style={styles.noticeTextContainer}>
-          <Text style={styles.noticeTitle}>وضع التخزين المؤقت</Text>
+          <Text style={styles.noticeTitle}>معالجة تلقائية</Text>
           <Text style={styles.noticeText}>
-            حالياً يتم استخدام التخزين المحلي (GitHub). بعد رفع الكتالوج، ستحتاج إلى نسخ ملف PDF يدوياً إلى مجلد public/catalogues/
+            سيتم تلقائياً تحويل ملف PDF إلى صور وحفظها في Firebase Storage. قد تستغرق العملية عدة دقائق حسب حجم الملف.
           </Text>
         </View>
       </View>
@@ -208,12 +331,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
           <TextInput
             style={styles.input}
             value={storeId}
-            onChangeText={(text) => {
-              setStoreId(text);
-              if (selectedFile) {
-                setGeneratedFilename(`${text}_${Date.now()}.pdf`);
-              }
-            }}
+            onChangeText={setStoreId}
             placeholder="kazyon"
             placeholderTextColor={colors.gray[400]}
             autoCapitalize="none"
@@ -241,7 +359,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
             style={styles.input}
             value={startDate}
             onChangeText={setStartDate}
-            placeholder="2025-12-23"
+            placeholder="2026-01-05"
             placeholderTextColor={colors.gray[400]}
             editable={!uploading}
           />
@@ -254,7 +372,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
             style={styles.input}
             value={endDate}
             onChangeText={setEndDate}
-            placeholder="2025-12-29"
+            placeholder="2026-02-02"
             placeholderTextColor={colors.gray[400]}
             editable={!uploading}
           />
@@ -274,25 +392,26 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
             </Text>
           </TouchableOpacity>
           {selectedFile && (
-            <>
-              <Text style={styles.fileSizeText}>
-                الحجم: {(selectedFile.size! / 1024 / 1024).toFixed(2)} MB
-              </Text>
-              <View style={styles.filenamePreview}>
-                <Text style={styles.filenameLabel}>اسم الملف المُولَّد:</Text>
-                <Text style={styles.filenameText}>{generatedFilename}</Text>
-              </View>
-            </>
+            <Text style={styles.fileSizeText}>
+              الحجم: {(selectedFile.size! / 1024 / 1024).toFixed(2)} MB
+            </Text>
           )}
         </View>
 
         {/* Upload Progress */}
         {uploading && (
           <View style={styles.progressContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.stageText}>{progress.stage}</Text>
             <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${uploadProgress}%` }]} />
+              <View style={[styles.progressFill, { width: `${progress.percentage}%` }]} />
             </View>
-            <Text style={styles.progressText}>{Math.round(uploadProgress)}%</Text>
+            <Text style={styles.progressText}>{Math.round(progress.percentage)}%</Text>
+            {progress.total > 0 && (
+              <Text style={styles.progressStepText}>
+                الخطوة {progress.current} من {progress.total}
+              </Text>
+            )}
           </View>
         )}
 
@@ -313,7 +432,10 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
             {uploading ? (
               <ActivityIndicator size="small" color={colors.white} />
             ) : (
-              <Text style={styles.uploadButtonText}>رفع الكتالوج</Text>
+              <>
+                <Ionicons name="cloud-upload-outline" size={20} color={colors.white} />
+                <Text style={styles.uploadButtonText}>رفع ومعالجة</Text>
+              </>
             )}
           </TouchableOpacity>
         </View>
@@ -409,42 +531,42 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
-  filenamePreview: {
-    marginTop: spacing.sm,
-    padding: spacing.sm,
-    backgroundColor: colors.gray[50],
-    borderRadius: borderRadius.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.primary,
-  },
-  filenameLabel: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-    marginBottom: 2,
-  },
-  filenameText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.text,
-    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-  },
   progressContainer: {
+    alignItems: 'center',
+    padding: spacing.md,
+    backgroundColor: colors.gray[50],
+    borderRadius: borderRadius.md,
     marginBottom: spacing.md,
   },
+  stageText: {
+    marginTop: spacing.sm,
+    fontSize: typography.fontSize.md,
+    color: colors.text,
+    textAlign: 'center',
+    fontWeight: '600',
+  },
   progressBar: {
+    width: '100%',
     height: 8,
     backgroundColor: colors.gray[200],
     borderRadius: borderRadius.sm,
+    marginTop: spacing.md,
     overflow: 'hidden',
-    marginBottom: spacing.xs,
   },
   progressFill: {
     height: '100%',
     backgroundColor: colors.primary,
   },
   progressText: {
+    marginTop: spacing.sm,
+    fontSize: typography.fontSize.lg,
+    color: colors.primary,
+    fontWeight: 'bold',
+  },
+  progressStepText: {
+    marginTop: spacing.xs,
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
-    textAlign: 'center',
   },
   actions: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
@@ -457,6 +579,8 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
   },
   cancelButton: {
     backgroundColor: colors.gray[200],

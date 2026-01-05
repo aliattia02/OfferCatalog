@@ -1,13 +1,21 @@
 # Dependencies (EAS installs these fresh)
 node_modules/
 
-# Native build folders (EAS generates these)
-android/
-ios/
+# Build outputs within native folders
+android/app/build/
+android/build/
+android/.gradle/
+ios/build/
+ios/Pods/
+
+# Expo build artifacts
+.expo/
+
+# Inspection output
+inspect-output/
 
 # Git
 .git/
-.gitignore
 
 # IDE and Editor folders
 .idea/
@@ -16,14 +24,6 @@ ios/
 *.swo
 .DS_Store
 Thumbs.db
-
-# Build outputs
-dist/
-build/
-*.apk
-*.aab
-*.ipa
-*.app
 
 # Logs
 *.log
@@ -43,15 +43,15 @@ __tests__/
 coverage/
 .jest/
 
-# Documentation
+# Documentation (keep README.md)
 docs/
 *.md
 !README.md
 
 # Environment files (use EAS secrets instead)
 .env
-.env.*
-!.env.example
+.env.local
+.env.*.local
 
 # TypeScript build info
 *.tsbuildinfo
@@ -61,18 +61,8 @@ tmp/
 temp/
 *.tmp
 
-# Python files (your upload script)
-scripts/
-*.py
-__pycache__/
-*.pyc
-.python-version
-venv/
-.venv/
-
 # Cache folders
 .cache/
-.expo/
 .turbo/
 
 # Package manager files
@@ -80,7 +70,7 @@ venv/
 .yarn/
 .pnpm-store/
 
-# Large media files
+# Large media files (adjust based on your needs)
 *.mp4
 *.mov
 *.avi
@@ -89,5 +79,16 @@ venv/
 *.tar.gz
 *.rar
 
-# Debug files
-*.map.js
+# Sensitive files
+key.txt
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Source maps (if not needed)
+*.map
+
+# Draft folder (if not needed for build)
+draft/

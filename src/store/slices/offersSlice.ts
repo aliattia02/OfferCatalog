@@ -1,12 +1,12 @@
-// src/store/slices/offersSlice.ts
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
 import type { OffersState, Offer, Catalogue } from '../../types';
 import { loadCataloguesFromFirestore } from '../../data/catalogueRegistry';
+import { serializeFirestoreDocument } from '../../utils/firestoreHelpers';
 
 const initialState: OffersState = {
   offers: [],
   catalogues: [],
-  loading:  false,
+  loading: false,
   error: null,
 };
 
@@ -16,10 +16,16 @@ const initialState: OffersState = {
 export const loadCatalogues = createAsyncThunk(
   'offers/loadCatalogues',
   async () => {
-    console.log('🔄 [offersSlice] Loading catalogues.. .');
+    console.log('📄 [offersSlice] Loading catalogues...');
     const catalogues = await loadCataloguesFromFirestore();
-    console.log(`✅ [offersSlice] Loaded ${catalogues.length} catalogues`);
-    return catalogues;
+    
+    // Serialize the catalogues to convert Firestore Timestamps to ISO strings
+    const serializedCatalogues = catalogues.map(catalogue => 
+      serializeFirestoreDocument(catalogue)
+    );
+    
+    console.log(`✅ [offersSlice] Loaded ${serializedCatalogues.length} catalogues`);
+    return serializedCatalogues;
   }
 );
 
@@ -27,13 +33,19 @@ export const offersSlice = createSlice({
   name: 'offers',
   initialState,
   reducers: {
-    setOffers: (state, action:  PayloadAction<Offer[]>) => {
-      state.offers = action.payload;
+    setOffers: (state, action: PayloadAction<Offer[]>) => {
+      // Serialize offers if they contain timestamps
+      state.offers = action.payload.map(offer => 
+        serializeFirestoreDocument(offer)
+      );
       console.log(`📝 [offersSlice] Set ${action.payload.length} offers`);
     },
     
     setCatalogues: (state, action: PayloadAction<Catalogue[]>) => {
-      state.catalogues = action.payload;
+      // Serialize catalogues if they contain timestamps
+      state.catalogues = action.payload.map(catalogue => 
+        serializeFirestoreDocument(catalogue)
+      );
       console.log(`📝 [offersSlice] Set ${action.payload.length} catalogues`);
     },
     
@@ -41,13 +53,18 @@ export const offersSlice = createSlice({
       state.loading = action.payload;
     },
     
-    setError:  (state, action: PayloadAction<string | null>) => {
+    setError: (state, action: PayloadAction<string | null>) => {
       state.error = action.payload;
     },
     
     hydrateOffers: (state, action: PayloadAction<OffersState>) => {
-      state.offers = action.payload. offers;
-      state.catalogues = action.payload.catalogues;
+      // Serialize the hydrated data
+      state.offers = action.payload.offers.map(offer => 
+        serializeFirestoreDocument(offer)
+      );
+      state.catalogues = action.payload.catalogues.map(catalogue => 
+        serializeFirestoreDocument(catalogue)
+      );
       state.loading = false;
       state.error = null;
       console.log(`💧 [offersSlice] Hydrated with ${action.payload.catalogues.length} catalogues`);
@@ -55,7 +72,7 @@ export const offersSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      .addCase(loadCatalogues. pending, (state) => {
+      .addCase(loadCatalogues.pending, (state) => {
         state.loading = true;
         state.error = null;
         console.log('⏳ [offersSlice] Loading catalogues...');
@@ -63,9 +80,9 @@ export const offersSlice = createSlice({
       .addCase(loadCatalogues.fulfilled, (state, action) => {
         state.loading = false;
         state.catalogues = action.payload;
-        console.log(`✅ [offersSlice] Catalogues loaded into Redux:  ${action.payload.length}`);
+        console.log(`✅ [offersSlice] Catalogues loaded into Redux: ${action.payload.length}`);
       })
-      .addCase(loadCatalogues. rejected, (state, action) => {
+      .addCase(loadCatalogues.rejected, (state, action) => {
         state.loading = false;
         state.error = action.error.message || 'Failed to load catalogues';
         console.error('❌ [offersSlice] Failed to load catalogues:', action.error);
@@ -79,6 +96,6 @@ export const {
   setLoading,
   setError,
   hydrateOffers,
-} = offersSlice. actions;
+} = offersSlice.actions;
 
 export default offersSlice.reducer;
