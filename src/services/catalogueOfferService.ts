@@ -17,16 +17,30 @@ import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage
 import { db, storage } from '../config/firebase';
 import { getCatalogueById } from '../data/catalogueRegistry';
 
+/**
+ * Helper function to remove undefined fields from objects
+ * Firestore does not accept undefined values
+ */
+const removeUndefinedFields = <T extends Record<string, any>>(obj: T): T => {
+  const cleaned = { ...obj };
+  Object.keys(cleaned).forEach(key => {
+    if (cleaned[key] === undefined) {
+      delete cleaned[key];
+    }
+  });
+  return cleaned;
+};
+
 export interface CatalogueOffer {
-  id: string;
-  catalogueId: string;
+  id:  string;
+  catalogueId:  string;
   pageNumber: number;
   nameAr: string;
   nameEn: string;
-  descriptionAr?: string;
+  descriptionAr?:  string;
   descriptionEn?: string;
   offerPrice: number;
-  originalPrice?: number;
+  originalPrice?:  number;
   unit?: string;
   imageUrl: string;
   categoryId: string;
@@ -34,23 +48,23 @@ export interface CatalogueOffer {
     x: number;
     y: number;
   };
-  createdAt: Timestamp;
+  createdAt:  Timestamp;
   updatedAt: Timestamp;
 }
 
 /**
  * Get all offers for a specific catalogue
  */
-export const getCatalogueOffers = async (catalogueId: string): Promise<CatalogueOffer[]> => {
+export const getCatalogueOffers = async (catalogueId:  string): Promise<CatalogueOffer[]> => {
   try {
-    console.log(`🔥 Fetching offers for catalogue: ${catalogueId}`);
+    console.log(`🔥 Fetching offers for catalogue:  ${catalogueId}`);
 
     const offersRef = collection(db, 'catalogues', catalogueId, 'offers');
     const snapshot = await getDocs(offersRef);
 
     const offers: CatalogueOffer[] = snapshot.docs.map(doc => ({
       id: doc.id,
-      ...doc.data()
+      ... doc.data()
     } as CatalogueOffer));
 
     console.log(`✅ Found ${offers.length} offers for catalogue ${catalogueId}`);
@@ -89,18 +103,18 @@ export const getPageOffers = async (
  */
 export const addCatalogueOffer = async (
   catalogueId: string,
-  offerData: Omit<CatalogueOffer, 'id' | 'createdAt' | 'updatedAt'>,
+  offerData:  Omit<CatalogueOffer, 'id' | 'createdAt' | 'updatedAt'>,
   imageFile?: File | Blob,
   catalogueData?: any // Optional: pass catalogue data directly to avoid extra read
 ): Promise<string> => {
   try {
-    console.log(`📤 Adding offer to catalogue ${catalogueId}:`, offerData);
+    console. log(`📤 Adding offer to catalogue ${catalogueId}: `, offerData);
 
     // 1. Get catalogue data for denormalization
     let catalogue = catalogueData;
 
-    if (!catalogue) {
-      console.log('⏳ Fetching catalogue data from Firestore...');
+    if (! catalogue) {
+      console.log('⏳ Fetching catalogue data from Firestore.. .');
       const catalogueDoc = await getDoc(doc(db, 'catalogues', catalogueId));
 
       if (!catalogueDoc.exists()) {
@@ -108,22 +122,22 @@ export const addCatalogueOffer = async (
         console.log('⚠️ Catalogue not in Firestore, checking local registry...');
         const localCatalogue = getCatalogueById(catalogueId);
 
-        if (!localCatalogue) {
+        if (! localCatalogue) {
           console.error(`❌ Catalogue ${catalogueId} not found anywhere`);
           throw new Error(
-            `Catalogue ${catalogueId} not found. Please ensure:\n` +
+            `Catalogue ${catalogueId} not found.  Please ensure:\n` +
             `1. The catalogue exists in catalogueRegistry.ts\n` +
             `2. Or create it in Firestore first`
           );
         }
 
         // Auto-create catalogue in Firestore
-        console.log('🔄 Auto-creating catalogue in Firestore...');
+        console. log('🔄 Auto-creating catalogue in Firestore...');
         const newCatalogueData = {
           id: localCatalogue.id,
-          storeId: localCatalogue.storeId,
-          storeName: localCatalogue.titleAr.replace('عروض ', ''),
-          titleAr: localCatalogue.titleAr,
+          storeId: localCatalogue. storeId,
+          storeName: localCatalogue.titleAr. replace('عروض ', ''),
+          titleAr: localCatalogue. titleAr,
           titleEn: localCatalogue.titleEn,
           startDate: localCatalogue.startDate,
           endDate: localCatalogue.endDate,
@@ -152,7 +166,7 @@ export const addCatalogueOffer = async (
     if (imageFile) {
       const imageRef = ref(
         storage,
-        `catalogue-offers/${catalogueId}/${Date.now()}_${offerData.nameEn}.jpg`
+        `catalogue-offers/${catalogueId}/${Date.now()}_${offerData.nameEn.replace(/\s+/g, '_')}.jpg`
       );
       await uploadBytes(imageRef, imageFile);
       imageUrl = await getDownloadURL(imageRef);
@@ -160,13 +174,13 @@ export const addCatalogueOffer = async (
     }
 
     const now = serverTimestamp();
-    const offerWithImage = {
+    const offerWithImage = removeUndefinedFields({
       ...offerData,
       imageUrl,
       catalogueId,
       createdAt: now,
       updatedAt: now,
-    };
+    });
 
     // 3. Add to SUBCOLLECTION (for admin management)
     const subcollectionRef = collection(db, 'catalogues', catalogueId, 'offers');
@@ -175,22 +189,24 @@ export const addCatalogueOffer = async (
     console.log(`✅ Offer added to subcollection with ID: ${docRef.id}`);
 
     // 4. Add to FLAT COLLECTION (for user app queries)
-    const endDate = catalogue.endDate instanceof Timestamp
+    const endDate = catalogue. endDate instanceof Timestamp
       ? catalogue.endDate.toDate()
       : new Date(catalogue.endDate);
     const isActive = endDate >= new Date();
 
-    await setDoc(doc(db, 'offers', docRef.id), {
+    const flatCollectionData = removeUndefinedFields({
       ...offerWithImage,
       id: docRef.id,
       // Denormalized catalogue data
       storeId: catalogue.storeId,
-      storeName: catalogue.storeName || catalogue.titleAr.replace('عروض ', ''),
+      storeName: catalogue. storeName || catalogue.titleAr. replace('عروض ', ''),
       catalogueTitle: catalogue.titleAr,
       catalogueStartDate: catalogue.startDate,
       catalogueEndDate: catalogue.endDate,
       isActive,
     });
+
+    await setDoc(doc(db, 'offers', docRef.id), flatCollectionData);
 
     console.log('✅ Offer synced to flat collection');
     console.log('✅ Dual write complete');
@@ -221,16 +237,16 @@ export const updateCatalogueOffer = async (
         storage,
         `catalogue-offers/${catalogueId}/${Date.now()}_${updates.nameEn || 'offer'}.jpg`
       );
-      await uploadBytes(imageRef, imageRef);
+      await uploadBytes(imageRef, imageFile);
       imageUrl = await getDownloadURL(imageRef);
       console.log('✅ New image uploaded:', imageUrl);
     }
 
-    const updateData = {
+    const updateData = removeUndefinedFields({
       ...updates,
       ...(imageUrl && { imageUrl }),
       updatedAt: serverTimestamp(),
-    };
+    });
 
     // 2. Update SUBCOLLECTION
     const subcollectionRef = doc(db, 'catalogues', catalogueId, 'offers', offerId);
@@ -309,7 +325,7 @@ export const syncOfferToFlatCollection = async (
     if (!catalogueDoc.exists()) {
       throw new Error(`Catalogue ${catalogueId} not found`);
     }
-    const catalogue = catalogueDoc.data();
+    const catalogue = catalogueDoc. data();
 
     // Get offer data from subcollection
     const offerDoc = await getDoc(doc(db, 'catalogues', catalogueId, 'offers', offerId));
@@ -325,17 +341,19 @@ export const syncOfferToFlatCollection = async (
     const isActive = endDate >= new Date();
 
     // Write to flat collection
-    await setDoc(doc(db, 'offers', offerId), {
+    const flatCollectionData = removeUndefinedFields({
       ...offer,
       id: offerId,
       catalogueId,
       storeId: catalogue.storeId,
-      storeName: catalogue.storeName || catalogue.titleAr.replace('عروض ', ''),
+      storeName: catalogue. storeName || catalogue.titleAr.replace('عروض ', ''),
       catalogueTitle: catalogue.titleAr,
       catalogueStartDate: catalogue.startDate,
-      catalogueEndDate: catalogue.endDate,
+      catalogueEndDate:  catalogue.endDate,
       isActive,
     });
+
+    await setDoc(doc(db, 'offers', offerId), flatCollectionData);
 
     console.log('✅ Offer synced to flat collection');
   } catch (error) {
@@ -387,17 +405,67 @@ export const getOffersGroupedByPage = async (
   try {
     const offers = await getCatalogueOffers(catalogueId);
 
-    const grouped: Record<number, CatalogueOffer[]> = {};
+    const grouped:  Record<number, CatalogueOffer[]> = {};
     offers.forEach(offer => {
       if (!grouped[offer.pageNumber]) {
         grouped[offer.pageNumber] = [];
       }
-      grouped[offer.pageNumber].push(offer);
+      grouped[offer.pageNumber]. push(offer);
     });
 
     return grouped;
   } catch (error) {
     console.error('❌ Error grouping offers by page:', error);
+    throw error;
+  }
+};
+
+/**
+ * Get all offers for a catalogue with their page information
+ */
+export const getCatalogueOffersWithPages = async (
+  catalogueId:  string
+): Promise<{ offers: CatalogueOffer[]; pageCount: number; offersByPage: Record<number, number> }> => {
+  try {
+    const offers = await getCatalogueOffers(catalogueId);
+
+    // Calculate statistics
+    const pageNumbers = [... new Set(offers.map(offer => offer.pageNumber))];
+    const pageCount = Math.max(...pageNumbers, 0);
+
+    const offersByPage:  Record<number, number> = {};
+    offers.forEach(offer => {
+      offersByPage[offer.pageNumber] = (offersByPage[offer.pageNumber] || 0) + 1;
+    });
+
+    return {
+      offers,
+      pageCount,
+      offersByPage,
+    };
+  } catch (error) {
+    console.error('❌ Error getting catalogue offers with pages:', error);
+    throw error;
+  }
+};
+
+/**
+ * Delete all offers from a catalogue
+ * WARNING: This is a destructive operation!
+ */
+export const deleteAllCatalogueOffers = async (catalogueId: string): Promise<void> => {
+  try {
+    console.log(`🗑️ Deleting all offers from catalogue ${catalogueId}`);
+
+    const offers = await getCatalogueOffers(catalogueId);
+
+    for (const offer of offers) {
+      await deleteCatalogueOffer(catalogueId, offer.id, offer.imageUrl);
+    }
+
+    console.log(`✅ Deleted ${offers.length} offers from catalogue ${catalogueId}`);
+  } catch (error) {
+    console.error('❌ Error deleting all catalogue offers:', error);
     throw error;
   }
 };
