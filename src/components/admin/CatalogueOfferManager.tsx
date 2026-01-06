@@ -11,20 +11,21 @@ import {
   Alert,
   Platform,
   I18nManager,
+  Image, // ADDED:  Import Image
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
-import { 
-  getCatalogueOffers, 
-  addCatalogueOffer, 
+import {
+  getCatalogueOffers,
+  addCatalogueOffer,
   updateCatalogueOffer,
   deleteCatalogueOffer,
-  CatalogueOffer 
+  CatalogueOffer
 } from '../../services/catalogueOfferService';
 
 interface CatalogueOfferManagerProps {
-  catalogueId: string;
+  catalogueId:  string;
   totalPages: number;
   onClose: () => void;
 }
@@ -38,7 +39,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editingOffer, setEditingOffer] = useState<CatalogueOffer | null>(null);
-  
+
   // Form state
   const [formData, setFormData] = useState({
     nameAr: '',
@@ -63,9 +64,9 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
     try {
       setLoading(true);
       const data = await getCatalogueOffers(catalogueId);
-      setOffers(data.sort((a, b) => a.pageNumber - b.pageNumber));
-    } catch (error: any) {
-      showAlert('خطأ', 'فشل تحميل العروض: ' + error.message);
+      setOffers(data. sort((a, b) => a.pageNumber - b.pageNumber));
+    } catch (error:  any) {
+      showAlert('خطأ', 'فشل تحميل العروض:  ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -73,40 +74,42 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
 
   const showAlert = (title: string, message: string) => {
     if (Platform.OS === 'web') {
-      alert(`${title}\n\n${message}`);
+      window.alert(`${title}\n${message}`);
     } else {
       Alert.alert(title, message);
     }
   };
 
   const handlePickImage = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      showAlert('تنبيه', 'نحتاج إلى إذن للوصول إلى الصور');
+      return;
+    }
 
-      if (!result.canceled && result.assets[0]) {
-        setSelectedImage(result.assets[0].uri);
-      }
-    } catch (error) {
-      showAlert('خطأ', 'فشل اختيار الصورة');
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes:  ImagePicker.MediaTypeOptions. Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality:  0.8,
+    });
+
+    if (!result.canceled && result.assets[0]) {
+      setSelectedImage(result.assets[0].uri);
     }
   };
 
   const resetForm = () => {
     setFormData({
       nameAr: '',
-      nameEn: '',
-      descriptionAr: '',
-      descriptionEn: '',
+      nameEn:  '',
+      descriptionAr:  '',
+      descriptionEn:  '',
       offerPrice: '',
       originalPrice: '',
       unit: '',
-      pageNumber: '1',
-      categoryId: 'general',
+      pageNumber:  '1',
+      categoryId:  'general',
       imageUrl: '',
     });
     setSelectedImage(null);
@@ -120,11 +123,11 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
       nameAr: offer.nameAr,
       nameEn: offer.nameEn,
       descriptionAr: offer.descriptionAr || '',
-      descriptionEn: offer.descriptionEn || '',
-      offerPrice: offer.offerPrice.toString(),
-      originalPrice: offer.originalPrice?.toString() || '',
+      descriptionEn:  offer.descriptionEn || '',
+      offerPrice: offer. offerPrice. toString(),
+      originalPrice: offer.originalPrice?. toString() || '',
       unit: offer.unit || '',
-      pageNumber: offer.pageNumber.toString(),
+      pageNumber: offer. pageNumber.toString(),
       categoryId: offer.categoryId,
       imageUrl: offer.imageUrl,
     });
@@ -138,7 +141,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
       : await new Promise(resolve => {
           Alert.alert(
             'تأكيد الحذف',
-            `هل أنت متأكد من حذف العرض "${offer.nameAr}"؟`,
+            `هل أنت متأكد من حذف العرض "${offer. nameAr}"؟`,
             [
               { text: 'إلغاء', style: 'cancel', onPress: () => resolve(false) },
               { text: 'حذف', style: 'destructive', onPress: () => resolve(true) },
@@ -152,18 +155,18 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
       await deleteCatalogueOffer(catalogueId, offer.id, offer.imageUrl);
       showAlert('نجح', 'تم حذف العرض بنجاح');
       loadOffers();
-    } catch (error: any) {
+    } catch (error:  any) {
       showAlert('خطأ', 'فشل حذف العرض: ' + error.message);
     }
   };
 
   const handleSubmit = async () => {
     // Validation
-    if (!formData.nameAr.trim() || !formData.nameEn.trim()) {
+    if (!formData.nameAr. trim() || !formData.nameEn.trim()) {
       showAlert('خطأ', 'يرجى إدخال اسم العرض بالعربية والإنجليزية');
       return;
     }
-    if (!formData.offerPrice || isNaN(Number(formData.offerPrice))) {
+    if (!formData.offerPrice || isNaN(Number(formData. offerPrice))) {
       showAlert('خطأ', 'يرجى إدخال سعر العرض');
       return;
     }
@@ -175,28 +178,39 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
     try {
       setSubmitting(true);
 
-      const offerData = {
+      // FIXED: Build offer data WITHOUT undefined fields
+      const offerData:  any = {
         nameAr: formData.nameAr.trim(),
         nameEn: formData.nameEn.trim(),
-        descriptionAr: formData.descriptionAr.trim(),
-        descriptionEn: formData.descriptionEn.trim(),
-        offerPrice: Number(formData.offerPrice),
-        originalPrice: formData.originalPrice ? Number(formData.originalPrice) : undefined,
-        unit: formData.unit.trim() || undefined,
+        offerPrice: Number(formData. offerPrice),
         pageNumber: Number(formData.pageNumber),
         categoryId: formData.categoryId,
         imageUrl: selectedImage || formData.imageUrl,
       };
 
+      // Only add optional fields if they have values
+      if (formData. descriptionAr?. trim()) {
+        offerData.descriptionAr = formData.descriptionAr.trim();
+      }
+      if (formData.descriptionEn?.trim()) {
+        offerData. descriptionEn = formData. descriptionEn.trim();
+      }
+      if (formData.originalPrice && !isNaN(Number(formData.originalPrice))) {
+        offerData.originalPrice = Number(formData.originalPrice);
+      }
+      if (formData.unit?.trim()) {
+        offerData.unit = formData.unit.trim();
+      }
+
       // Convert image to blob if it's a new local file
-      let imageBlob: Blob | undefined;
+      let imageBlob:  Blob | undefined;
       if (selectedImage && selectedImage.startsWith('file://')) {
         const response = await fetch(selectedImage);
         imageBlob = await response.blob();
       }
 
       if (editingOffer) {
-        await updateCatalogueOffer(catalogueId, editingOffer.id, offerData, imageBlob);
+        await updateCatalogueOffer(catalogueId, editingOffer. id, offerData, imageBlob);
         showAlert('نجح', 'تم تحديث العرض بنجاح');
       } else {
         await addCatalogueOffer(catalogueId, offerData as any, imageBlob);
@@ -214,7 +228,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={styles. loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>جاري تحميل العروض...</Text>
       </View>
@@ -228,7 +242,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
         <View style={styles.headerLeft}>
           <Text style={styles.title}>إدارة عروض الكتالوج</Text>
           <Text style={styles.subtitle}>
-            الكتالوج: {catalogueId} | {offers.length} عرض
+            الكتالوج:  {catalogueId} | {offers.length} عرض
           </Text>
         </View>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -236,7 +250,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
         </TouchableOpacity>
       </View>
 
-      {showForm ? (
+      {showForm ?  (
         <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
           <Text style={styles.formTitle}>
             {editingOffer ? 'تعديل العرض' : 'إضافة عرض جديد'}
@@ -245,7 +259,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
           {/* Image Picker */}
           <TouchableOpacity style={styles.imagePicker} onPress={handlePickImage}>
             {selectedImage ? (
-              <img src={selectedImage} style={styles.previewImage} alt="Preview" />
+              <Image source={{ uri: selectedImage }} style={styles.selectedImage} resizeMode="cover" />
             ) : (
               <View style={styles.imagePickerPlaceholder}>
                 <Ionicons name="image-outline" size={48} color={colors.gray[400]} />
@@ -254,90 +268,114 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
             )}
           </TouchableOpacity>
 
-          <TextInput
-            style={styles.input}
-            placeholder="الاسم (عربي) *"
-            value={formData.nameAr}
-            onChangeText={text => setFormData({ ...formData, nameAr: text })}
-            placeholderTextColor={colors.gray[400]}
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Name (English) *"
-            value={formData.nameEn}
-            onChangeText={text => setFormData({ ...formData, nameEn: text })}
-            placeholderTextColor={colors.gray[400]}
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="الوصف (عربي)"
-            value={formData.descriptionAr}
-            onChangeText={text => setFormData({ ...formData, descriptionAr: text })}
-            placeholderTextColor={colors.gray[400]}
-            multiline
-          />
-
-          <TextInput
-            style={styles.input}
-            placeholder="Description (English)"
-            value={formData.descriptionEn}
-            onChangeText={text => setFormData({ ...formData, descriptionEn: text })}
-            placeholderTextColor={colors.gray[400]}
-            multiline
-          />
-
-          <View style={styles.row}>
+          {/* Arabic Name */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>اسم العرض (عربي) *</Text>
             <TextInput
-              style={[styles.input, styles.halfInput]}
-              placeholder="سعر العرض *"
-              value={formData.offerPrice}
-              onChangeText={text => setFormData({ ...formData, offerPrice: text })}
-              keyboardType="decimal-pad"
-              placeholderTextColor={colors.gray[400]}
-            />
-
-            <TextInput
-              style={[styles.input, styles.halfInput]}
-              placeholder="السعر الأصلي"
-              value={formData.originalPrice}
-              onChangeText={text => setFormData({ ...formData, originalPrice: text })}
-              keyboardType="decimal-pad"
-              placeholderTextColor={colors.gray[400]}
+              style={styles.input}
+              value={formData.nameAr}
+              onChangeText={(text) => setFormData({ ...formData, nameAr: text })}
+              placeholder="أدخل اسم العرض بالعربية"
             />
           </View>
 
-          <View style={styles.row}>
+          {/* English Name */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>اسم العرض (إنجليزي) *</Text>
             <TextInput
-              style={[styles.input, styles.halfInput]}
-              placeholder="الوحدة (كجم، لتر...)"
-              value={formData.unit}
-              onChangeText={text => setFormData({ ...formData, unit: text })}
-              placeholderTextColor={colors.gray[400]}
-            />
-
-            <TextInput
-              style={[styles.input, styles.halfInput]}
-              placeholder={`رقم الصفحة (1-${totalPages})`}
-              value={formData.pageNumber}
-              onChangeText={text => setFormData({ ...formData, pageNumber: text })}
-              keyboardType="number-pad"
-              placeholderTextColor={colors.gray[400]}
+              style={styles.input}
+              value={formData.nameEn}
+              onChangeText={(text) => setFormData({ ...formData, nameEn: text })}
+              placeholder="Enter offer name in English"
             />
           </View>
 
-          <View style={styles.actions}>
+          {/* Arabic Description */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>الوصف (عربي)</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              value={formData.descriptionAr}
+              onChangeText={(text) => setFormData({ ...formData, descriptionAr: text })}
+              placeholder="أدخل وصف العرض بالعربية"
+              multiline
+              numberOfLines={3}
+            />
+          </View>
+
+          {/* English Description */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>الوصف (إنجليزي)</Text>
+            <TextInput
+              style={[styles. input, styles.textArea]}
+              value={formData.descriptionEn}
+              onChangeText={(text) => setFormData({ ...formData, descriptionEn: text })}
+              placeholder="Enter offer description in English"
+              multiline
+              numberOfLines={3}
+            />
+          </View>
+
+          {/* Prices */}
+          <View style={styles.row}>
+            <View style={[styles.inputGroup, styles.halfWidth]}>
+              <Text style={styles.label}>سعر العرض *</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.offerPrice}
+                onChangeText={(text) => setFormData({ ...formData, offerPrice: text })}
+                placeholder="0.00"
+                keyboardType="decimal-pad"
+              />
+            </View>
+
+            <View style={[styles. inputGroup, styles.halfWidth]}>
+              <Text style={styles.label}>السعر الأصلي</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.originalPrice}
+                onChangeText={(text) => setFormData({ ...formData, originalPrice: text })}
+                placeholder="0.00"
+                keyboardType="decimal-pad"
+              />
+            </View>
+          </View>
+
+          {/* Unit & Page Number */}
+          <View style={styles.row}>
+            <View style={[styles.inputGroup, styles.halfWidth]}>
+              <Text style={styles.label}>الوحدة</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.unit}
+                onChangeText={(text) => setFormData({ ...formData, unit: text })}
+                placeholder="كجم، لتر، قطعة..."
+              />
+            </View>
+
+            <View style={[styles.inputGroup, styles.halfWidth]}>
+              <Text style={styles.label}>رقم الصفحة *</Text>
+              <TextInput
+                style={styles.input}
+                value={formData.pageNumber}
+                onChangeText={(text) => setFormData({ ... formData, pageNumber: text })}
+                keyboardType="number-pad"
+              />
+            </View>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.formButtons}>
             <TouchableOpacity
-              style={[styles.button, styles.cancelButton]}
+              style={[styles. button, styles.cancelButton]}
               onPress={resetForm}
               disabled={submitting}
             >
-              <Text style={styles.cancelButtonText}>إلغاء</Text>
+              <Text style={styles. cancelButtonText}>إلغاء</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.button, styles.submitButton]}
+              style={[styles.button, styles.submitButton, submitting && styles.buttonDisabled]}
               onPress={handleSubmit}
               disabled={submitting}
             >
@@ -345,24 +383,24 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
                 <ActivityIndicator size="small" color={colors.white} />
               ) : (
                 <Text style={styles.submitButtonText}>
-                  {editingOffer ? 'تحديث' : 'إضافة'}
+                  {editingOffer ?  'تحديث' :  'إضافة'}
                 </Text>
               )}
             </TouchableOpacity>
           </View>
         </ScrollView>
       ) : (
-        <>
+        <View style={styles.content}>
           <TouchableOpacity
             style={styles.addButton}
             onPress={() => setShowForm(true)}
           >
-            <Ionicons name="add-circle" size={24} color={colors.white} />
-            <Text style={styles.addButtonText}>إضافة عرض جديد</Text>
+            <Ionicons name="add-circle-outline" size={24} color={colors.white} />
+            <Text style={styles. addButtonText}>إضافة عرض جديد</Text>
           </TouchableOpacity>
 
           <ScrollView style={styles.offersList} showsVerticalScrollIndicator={false}>
-            {offers.length === 0 ? (
+            {offers. length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="pricetag-outline" size={64} color={colors.gray[300]} />
                 <Text style={styles.emptyText}>لا توجد عروض في هذا الكتالوج</Text>
@@ -370,13 +408,18 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
             ) : (
               offers.map(offer => (
                 <View key={offer.id} style={styles.offerCard}>
-                  <img src={offer.imageUrl} style={styles.offerImage} alt={offer.nameAr} />
-                  
+                  {/* FIXED: Use Image component instead of <img> */}
+                  <Image
+                    source={{ uri: offer.imageUrl }}
+                    style={styles.offerImage}
+                    resizeMode="cover"
+                  />
+
                   <View style={styles.offerContent}>
                     <Text style={styles.offerName}>{offer.nameAr}</Text>
                     <Text style={styles.offerNameEn}>{offer.nameEn}</Text>
-                    
-                    <View style={styles.offerDetails}>
+
+                    <View style={styles. offerDetails}>
                       <Text style={styles.offerPrice}>
                         {offer.offerPrice} جنيه
                       </Text>
@@ -387,33 +430,33 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
                       )}
                     </View>
 
-                    <View style={styles.offerMeta}>
-                      <View style={styles.pageTag}>
-                        <Ionicons name="document-outline" size={14} color={colors.primary} />
-                        <Text style={styles.pageNumber}>صفحة {offer.pageNumber}</Text>
-                      </View>
-                    </View>
-                  </View>
+                    <Text style={styles.offerPage}>
+                      صفحة {offer.pageNumber}
+                    </Text>
 
-                  <View style={styles.offerActions}>
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() => handleEdit(offer)}
-                    >
-                      <Ionicons name="create-outline" size={20} color={colors.primary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.actionButton}
-                      onPress={() => handleDelete(offer)}
-                    >
-                      <Ionicons name="trash-outline" size={20} color={colors.error} />
-                    </TouchableOpacity>
+                    <View style={styles. offerActions}>
+                      <TouchableOpacity
+                        style={styles. actionButton}
+                        onPress={() => handleEdit(offer)}
+                      >
+                        <Ionicons name="create-outline" size={20} color={colors. primary} />
+                        <Text style={styles.actionButtonText}>تعديل</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity
+                        style={[styles.actionButton, styles.deleteButton]}
+                        onPress={() => handleDelete(offer)}
+                      >
+                        <Ionicons name="trash-outline" size={20} color={colors.error} />
+                        <Text style={[styles.actionButtonText, styles. deleteButtonText]}>حذف</Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 </View>
               ))
             )}
           </ScrollView>
-        </>
+        </View>
       )}
     </View>
   );
@@ -422,122 +465,225 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.white,
+    backgroundColor: colors.backgroundSecondary,
   },
   loadingContainer: {
-    flex: 1,
+    flex:  1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
   },
   loadingText: {
-    marginTop: spacing.md,
+    marginTop:  spacing.md,
     fontSize: typography.fontSize.md,
     color: colors.textSecondary,
   },
   header: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: spacing.md,
-    borderBottomWidth: 1,
+    padding: spacing. lg,
+    backgroundColor: colors.white,
+    borderBottomWidth:  1,
     borderBottomColor: colors.gray[200],
   },
   headerLeft: {
     flex: 1,
   },
   title: {
-    fontSize: typography.fontSize.xl,
+    fontSize:  typography.fontSize.xl,
     fontWeight: 'bold',
     color: colors.text,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
-  subtitle: {
+  subtitle:  {
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
     marginTop: spacing.xs,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   closeButton: {
     padding: spacing.sm,
   },
-  addButton: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    margin: spacing.md,
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    gap: spacing.sm,
-  },
-  addButtonText: {
-    fontSize: typography.fontSize.md,
-    fontWeight: '600',
-    color: colors.white,
-  },
-  form: {
+  content: {
     flex: 1,
     padding: spacing.md,
   },
-  formTitle: {
+  addButton: {
+    flexDirection:  'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
+  },
+  addButtonText: {
+    color: colors.white,
+    fontSize: typography.fontSize.md,
+    fontWeight: '600',
+  },
+  offersList: {
+    flex:  1,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xl * 2,
+  },
+  emptyText: {
+    fontSize:  typography.fontSize.md,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+  },
+  offerCard: {
+    flexDirection: 'row',
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+    marginBottom:  spacing.md,
+  },
+  offerImage: {
+    width: 120,
+    height: 120,
+    backgroundColor: colors.gray[100],
+  },
+  offerContent: {
+    flex: 1,
+    padding: spacing.md,
+  },
+  offerName:  {
+    fontSize: typography.fontSize.md,
+    fontWeight: '600',
+    color: colors. text,
+  },
+  offerNameEn: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  offerDetails:  {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  offerPrice:  {
     fontSize: typography.fontSize.lg,
     fontWeight: 'bold',
+    color: colors.primary,
+  },
+  offerOriginalPrice: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    textDecorationLine: 'line-through',
+  },
+  offerPage: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+  },
+  offerActions:  {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginTop: spacing.md,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing. xs,
+    paddingVertical: spacing.xs,
+    paddingHorizontal:  spacing.sm,
+    borderRadius: borderRadius.sm,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  actionButtonText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    borderColor: colors.error,
+  },
+  deleteButtonText: {
+    color: colors.error,
+  },
+  form: {
+    flex: 1,
+    padding: spacing.lg,
+  },
+  formTitle: {
+    fontSize: typography. fontSize.xl,
+    fontWeight: 'bold',
     color: colors.text,
-    marginBottom: spacing.md,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    marginBottom: spacing.lg,
   },
   imagePicker: {
+    width: '100%',
     height: 200,
     borderRadius: borderRadius.md,
-    borderWidth: 2,
-    borderColor: colors.gray[300],
-    borderStyle: 'dashed',
-    marginBottom: spacing.md,
     overflow: 'hidden',
-    cursor: 'pointer',
-  },
-  previewImage: {
-    width: '100%',
-    height: '100%',
-    objectFit: 'cover',
+    marginBottom: spacing.lg,
+    backgroundColor: colors.gray[100],
+    borderWidth: 2,
+    borderColor: colors. gray[300],
+    borderStyle: 'dashed',
   },
   imagePickerPlaceholder: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  imagePickerText: {
+  imagePickerText:  {
     marginTop: spacing.sm,
     fontSize: typography.fontSize.md,
-    color: colors.gray[400],
+    color: colors.textSecondary,
+  },
+  selectedImage: {
+    width: '100%',
+    height: '100%',
+  },
+  inputGroup: {
+    marginBottom: spacing.md,
+  },
+  label: {
+    fontSize: typography.fontSize. sm,
+    fontWeight: '600',
+    color: colors. text,
+    marginBottom: spacing.xs,
   },
   input: {
-    backgroundColor: colors.gray[100],
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
     borderRadius: borderRadius.md,
     padding: spacing.md,
-    marginBottom: spacing.md,
     fontSize: typography.fontSize.md,
     color: colors.text,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
-  row: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+  textArea: {
+    minHeight: 80,
+    textAlignVertical: 'top',
+  },
+  row:  {
+    flexDirection: 'row',
     gap: spacing.md,
   },
-  halfInput: {
+  halfWidth: {
     flex: 1,
   },
-  actions: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+  formButtons: {
+    flexDirection: 'row',
     gap: spacing.md,
-    marginTop: spacing.md,
+    marginTop: spacing.xl,
+    marginBottom: spacing.xl,
   },
   button: {
     flex: 1,
     padding: spacing.md,
     borderRadius: borderRadius.md,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   cancelButton: {
     backgroundColor: colors.gray[200],
@@ -551,93 +697,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   submitButtonText: {
-    fontSize: typography.fontSize.md,
+    fontSize: typography.fontSize. md,
     fontWeight: '600',
-    color: colors.white,
+    color: colors. white,
   },
-  offersList: {
-    flex: 1,
-    padding: spacing.md,
-  },
-  emptyState: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.xxl * 2,
-  },
-  emptyText: {
-    fontSize: typography.fontSize.md,
-    color: colors.textSecondary,
-    marginTop: spacing.md,
-  },
-  offerCard: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    backgroundColor: colors.gray[50],
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-  },
-  offerImage: {
-    width: 80,
-    height: 80,
-    borderRadius: borderRadius.md,
-    objectFit: 'cover',
-    marginRight: I18nManager.isRTL ? 0 : spacing.md,
-    marginLeft: I18nManager.isRTL ? spacing.md : 0,
-  },
-  offerContent: {
-    flex: 1,
-  },
-  offerName: {
-    fontSize: typography.fontSize.md,
-    fontWeight: '600',
-    color: colors.text,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-  },
-  offerNameEn: {
-    fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: 2,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-  },
-  offerDetails: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginTop: spacing.xs,
-  },
-  offerPrice: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: 'bold',
-    color: colors.primary,
-  },
-  offerOriginalPrice: {
-    fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
-    textDecorationLine: 'line-through',
-  },
-  offerMeta: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    marginTop: spacing.xs,
-  },
-  pageTag: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primary + '20',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.sm,
-    gap: spacing.xs,
-  },
-  pageNumber: {
-    fontSize: typography.fontSize.xs,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-  offerActions: {
-    flexDirection: 'column',
-    gap: spacing.sm,
-  },
-  actionButton: {
-    padding: spacing.sm,
+  buttonDisabled: {
+    opacity: 0.6,
   },
 });

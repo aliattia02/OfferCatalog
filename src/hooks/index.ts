@@ -2,7 +2,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
-import { databaseService } from '../services/database';
+import { databaseService } from '../services/database';  // ✅ FIXED: Changed from * as databaseService
 import { hydrateBasket } from '../store/slices/basketSlice';
 import { hydrateFavorites } from '../store/slices/favoritesSlice';
 import { hydrateSettings } from '../store/slices/settingsSlice';
@@ -11,9 +11,8 @@ import { setOffers, loadCatalogues } from '../store/slices/offersSlice';
 import { stores as mockStores } from '../data/stores';
 import { offers as mockOffers } from '../data/offers';
 import { setCataloguesCache } from '../data/catalogueRegistry';
-import type { BasketState, FavoritesState, SettingsState } from '../types';
 
-// Export the new hook
+// Export the useSafeTabBarHeight hook
 export * from './useSafeTabBarHeight';
 
 // Hook for app initialization
@@ -25,7 +24,7 @@ export const useAppInitialization = () => {
     const initializeApp = async () => {
       try {
         console.log('🚀 Initializing app data...');
-        
+
         // Load persisted data from AsyncStorage
         const [basket, favorites, settings] = await Promise.all([
           databaseService.getBasket(),
@@ -47,11 +46,11 @@ export const useAppInitialization = () => {
         // Load mock data for MVP
         dispatch(setStores(mockStores));
         dispatch(setOffers(mockOffers));
-        
+
         // Load catalogues from Firestore
-        console.log('🔥 Loading catalogues from Firestore...');
+        console.log('📥 Loading catalogues from Firestore...');
         const result = await dispatch(loadCatalogues()).unwrap();
-        
+
         // Update the catalogue registry cache with loaded catalogues
         setCataloguesCache(result);
         console.log(`✅ Catalogues synchronized: ${result.length} items`);
@@ -76,7 +75,7 @@ export const usePersistBasket = () => {
 
   useEffect(() => {
     const persistBasket = async () => {
-      await databaseService.saveBasket(basket);
+      await databaseService. saveBasket(basket);
     };
     persistBasket();
   }, [basket]);
@@ -96,7 +95,7 @@ export const usePersistFavorites = () => {
 
 // Hook for persisting settings changes
 export const usePersistSettings = () => {
-  const settings = useAppSelector(state => state.settings);
+  const settings = useAppSelector(state => state. settings);
 
   useEffect(() => {
     const persistSettings = async () => {
@@ -113,22 +112,30 @@ export const useLocalized = () => {
   const isRTL = language === 'ar';
 
   const getName = useCallback(
-    (item: { nameAr: string; nameEn: string }): string => {
-      return language === 'ar' ? item.nameAr : item.nameEn;
+    (item:  { nameAr: string; nameEn: string }): string => {
+      return language === 'ar' ? item. nameAr : item.nameEn;
     },
     [language]
   );
 
   const getAddress = useCallback(
-    (item: { addressAr: string; addressEn: string }): string => {
-      return language === 'ar' ? item.addressAr : item.addressEn;
+    (item: { addressAr:  string; addressEn: string }): string => {
+      return language === 'ar' ? item. addressAr : item.addressEn;
     },
     [language]
   );
 
   const getTitle = useCallback(
-    (item: { titleAr: string; titleEn: string }): string => {
-      return language === 'ar' ? item.titleAr : item.titleEn;
+    (item: { titleAr:  string; titleEn: string }): string => {
+      return language === 'ar' ? item. titleAr : item.titleEn;
+    },
+    [language]
+  );
+
+  // NEW: Add getDescription function
+  const getDescription = useCallback(
+    (item: { descriptionAr?:  string; descriptionEn?: string }): string | undefined => {
+      return language === 'ar' ? item.descriptionAr : item.descriptionEn;
     },
     [language]
   );
@@ -139,5 +146,6 @@ export const useLocalized = () => {
     getName,
     getAddress,
     getTitle,
+    getDescription,
   };
 };
