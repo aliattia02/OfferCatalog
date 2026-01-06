@@ -1,3 +1,4 @@
+// src/app/(tabs)/index.tsx
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -16,7 +17,7 @@ import { SearchBar } from '../../components/common';
 import { CategoryGrid, FeaturedOffers } from '../../components/home';
 import { StoreCard } from '../../components/stores';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
-import { useAppInitialization, usePersistBasket, usePersistFavorites } from '../../hooks';
+import { useAppInitialization, usePersistBasket, usePersistFavorites, useSafeTabBarHeight } from '../../hooks';
 import { addToBasket } from '../../store/slices/basketSlice';
 import { getMainCategories } from '../../data/categories';
 import { getFeaturedOffers } from '../../data/offers';
@@ -26,6 +27,7 @@ export default function HomeScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const { paddingBottom } = useSafeTabBarHeight();
   const [searchQuery, setSearchQuery] = useState('');
   
   // Initialize app and persist data
@@ -61,7 +63,11 @@ export default function HomeScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView 
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom }}
+      showsVerticalScrollIndicator={false}
+    >
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <SearchBar
@@ -124,8 +130,6 @@ export default function HomeScreen() {
           onAddToBasket={handleAddToBasket}
         />
       </View>
-
-      <View style={styles.bottomPadding} />
     </ScrollView>
   );
 }
@@ -160,8 +164,5 @@ const styles = StyleSheet.create({
   },
   storesList: {
     paddingHorizontal: spacing.md,
-  },
-  bottomPadding: {
-    height: spacing.xl,
   },
 });

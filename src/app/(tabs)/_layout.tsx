@@ -1,16 +1,23 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
-import { I18nManager, View, Text, StyleSheet } from 'react-native';
+import { I18nManager, View, Text, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, typography } from '../../constants/theme';
 import { useAppSelector } from '../../store/hooks';
 
 export default function TabLayout() {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const basketItems = useAppSelector(state => state.basket.items);
   const basketCount = basketItems.reduce((sum, item) => sum + item.quantity, 0);
+
+  // Calculate tab bar height based on platform and safe area
+  const tabBarHeight = Platform.OS === 'ios'
+    ? 60 + insets.bottom
+    : 60;
 
   return (
     <Tabs
@@ -20,22 +27,36 @@ export default function TabLayout() {
         tabBarStyle: {
           backgroundColor: colors.white,
           borderTopColor: colors.gray[200],
-          height: 60,
-          paddingBottom: 8,
+          borderTopWidth: 1,
+          height: tabBarHeight,
+          paddingBottom: Platform.OS === 'ios' ? insets.bottom : 8,
           paddingTop: 8,
+          elevation: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
         },
         tabBarLabelStyle: {
           fontSize: typography.fontSize.xs,
           fontWeight: '500',
+          marginBottom: Platform.OS === 'android' ? 4 : 0,
         },
         headerStyle: {
           backgroundColor: colors.white,
+          elevation: 0,
+          shadowOpacity: 0,
+          borderBottomWidth: 1,
+          borderBottomColor: colors.gray[200],
         },
         headerTitleStyle: {
           color: colors.text,
           fontWeight: 'bold',
+          fontSize: typography.fontSize.xl,
         },
         headerTitleAlign: 'center',
+        // Important: Let each screen handle its own safe area
+        headerStatusBarHeight: Platform.OS === 'ios' ? insets.top : undefined,
       }}
     >
       <Tabs.Screen
@@ -113,6 +134,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: colors.white,
   },
   badgeText: {
     color: colors.white,

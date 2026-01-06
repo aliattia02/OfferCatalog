@@ -8,20 +8,19 @@ import {
   ActivityIndicator,
   Alert,
   I18nManager,
+  Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
-import * as Google from 'expo-auth-session/providers/google';
-import * as WebBrowser from 'expo-web-browser';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import Constants from 'expo-constants';
 
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { signInWithGoogle } from '../../store/slices/authSlice';
-
-// Complete the auth session for web
-WebBrowser.maybeCompleteAuthSession();
+import { getAuthInstance } from '../../config/firebase';
 
 /**
  * Get Google OAuth client IDs from environment
@@ -29,9 +28,7 @@ WebBrowser.maybeCompleteAuthSession();
 const getGoogleClientIds = () => {
   return {
     webClientId: Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    iosClientId: Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || process.env. EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || process.env. EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    expoClientId: Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID || process.env. EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID,
+    androidClientId: Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
   };
 };
 
@@ -42,53 +39,42 @@ export default function SignInScreen() {
   const { loading, error, isAuthenticated } = useAppSelector((state) => state.auth);
 
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isConfigured, setIsConfigured] = useState(false);
 
   const clientIds = getGoogleClientIds();
 
-  // Configure Google Sign-In
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId: clientIds.webClientId,
-    iosClientId: clientIds.iosClientId,
-    androidClientId: clientIds.androidClientId,
-    expoClientId: clientIds. expoClientId,
-  });
-
-  // Handle auth response
+  // Configure Google Sign-In on component mount (Native only)
   useEffect(() => {
-    if (response?.type === 'success') {
-      // Debug: Log what we received
-      console.log('=== GOOGLE AUTH RESPONSE ===');
-      console.log('Response type:', response. type);
-      console.log('Response params:', JSON.stringify(response.params, null, 2));
-      console.log('============================');
+    if (Platform.OS !== 'web') {
+      configureGoogleSignIn();
+    } else {
+      // Web doesn't need configuration
+      setIsConfigured(true);
+    }
+  }, []);
 
-      // Get both tokens - web typically returns access_token, native may return id_token
-      const { id_token, access_token } = response.params;
+  const configureGoogleSignIn = async () => {
+    try {
+      console.log('🔧 Configuring Google Sign-In for native...');
+      console.log('Web Client ID:', clientIds.webClientId);
 
-      if (id_token || access_token) {
-        handleGoogleSignIn(id_token || null, access_token || null);
-      } else {
-        console.error('No tokens received from Google');
-        setIsSigningIn(false);
-        Alert.alert(
-          'خطأ في تسجيل الدخول',
-          'لم يتم الحصول على رمز المصادقة من Google',
-          [{ text: 'موافق' }]
-        );
-      }
-    } else if (response?.type === 'error') {
-      console.error('Google auth error:', response.error);
-      setIsSigningIn(false);
+      GoogleSignin.configure({
+        webClientId: clientIds.webClientId,
+        offlineAccess: true,
+        forceCodeForRefreshToken: true,
+      });
+
+      setIsConfigured(true);
+      console.log('✅ Google Sign-In configured successfully');
+    } catch (error) {
+      console.error('❌ Error configuring Google Sign-In:', error);
       Alert.alert(
-        'خطأ في تسجيل الدخول',
-        'فشل تسجيل الدخول باستخدام Google.  يرجى المحاولة مرة أخرى.',
+        'خطأ في التكوين',
+        'فشل تكوين تسجيل الدخول بواسطة Google. يرجى المحاولة مرة أخرى.',
         [{ text: 'موافق' }]
       );
-    } else if (response?.type === 'cancel') {
-      console.log('Google auth cancelled');
-      setIsSigningIn(false);
     }
-  }, [response]);
+  };
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -97,36 +83,121 @@ export default function SignInScreen() {
     }
   }, [isAuthenticated]);
 
-  const handleGoogleSignIn = async (idToken: string | null, accessToken: string | null) => {
+  /**
+   * Handle Google Sign-In for WEB platform
+   */
+  const handleWebGoogleSignIn = async () => {
     try {
       setIsSigningIn(true);
-      console.log('Calling signInWithGoogle with:', {
-        idToken:  idToken ?  'present' : 'null',
-        accessToken: accessToken ? 'present' : 'null'
-      });
+      console.log('🌐 Starting Web Google Sign-In...');
 
-      // Log token previews in development
-      if (__DEV__) {
-        console.log('ID Token preview:', idToken?. substring(0, 30) + '...');
-        console.log('Access Token preview:', accessToken?.substring(0, 30) + '...');
-      }
+      const auth = getAuthInstance();
+      const provider = new GoogleAuthProvider();
 
-      await dispatch(signInWithGoogle({ idToken, accessToken })).unwrap();
+      // Sign in with popup
+      const result = await signInWithPopup(auth, provider);
+      console.log('✅ Web sign-in successful:', result.user.email);
 
-      console.log('Sign-in successful, navigation will happen via useEffect');
-      // Navigation handled by useEffect above
-    } catch (err: any) {
-      console.error('Error in handleGoogleSignIn:', err);
-      console.error('Error details:', JSON.stringify(err, null, 2));
+      // Get credential
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      const idToken = credential?.idToken || null;
+      const accessToken = credential?.accessToken || null;
+
+      console.log('🔑 Web tokens obtained');
+      console.log('ID Token:', idToken ? 'present' : 'null');
+      console.log('Access Token:', accessToken ? 'present' : 'null');
+
+      // Sign in with Firebase using the tokens
+      console.log('🔥 Signing in with Firebase...');
+      await dispatch(signInWithGoogle({
+        idToken,
+        accessToken,
+      })).unwrap();
+
+      console.log('✅ Sign-in successful, navigation will happen via useEffect');
+    } catch (error: any) {
+      console.error('❌ Error in web Google sign-in:', error);
       setIsSigningIn(false);
 
-      // Provide more helpful error messages
-      let errorMessage = err.message || 'فشل تسجيل الدخول.  يرجى المحاولة مرة أخرى.';
+      // Handle popup closed by user
+      if (error.code === 'auth/popup-closed-by-user' || error.code === 'auth/cancelled-popup-request') {
+        console.log('User closed the popup');
+        return; // Don't show alert for user cancellation
+      }
 
-      if (err.message?. includes('network') || err.message?.includes('offline')) {
+      let errorMessage = 'فشل تسجيل الدخول. يرجى المحاولة مرة أخرى.';
+
+      if (error.message?.includes('network') || error.message?.includes('offline')) {
         errorMessage = 'يبدو أنك غير متصل بالإنترنت. يرجى التحقق من الاتصال والمحاولة مرة أخرى.';
-      } else if (err.message?.includes('popup')) {
-        errorMessage = 'تم حظر النافذة المنبثقة. يرجى السماح بالنوافذ المنبثقة والمحاولة مرة أخرى.';
+      } else if (error.code === 'auth/popup-blocked') {
+        errorMessage = 'تم حظر نافذة تسجيل الدخول. يرجى السماح بالنوافذ المنبثقة لهذا الموقع.';
+      }
+
+      if (Platform.OS === 'web') {
+        alert(errorMessage);
+      } else {
+        Alert.alert('خطأ في تسجيل الدخول', errorMessage, [{ text: 'موافق' }]);
+      }
+    }
+  };
+
+  /**
+   * Handle Google Sign-In for NATIVE platforms (Android/iOS)
+   */
+  const handleNativeGoogleSignIn = async () => {
+    if (!isConfigured) {
+      Alert.alert('خطأ', 'جاري تهيئة تسجيل الدخول. يرجى المحاولة مرة أخرى.');
+      return;
+    }
+
+    try {
+      setIsSigningIn(true);
+      console.log('🔐 Starting Native Google Sign-In...');
+
+      // Check if Google Play Services are available (Android only)
+      if (Platform.OS === 'android') {
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+        console.log('✅ Google Play Services available');
+      }
+
+      // Sign in and get user info
+      console.log('📱 Prompting for Google account...');
+      const userInfo = await GoogleSignin.signIn();
+      console.log('✅ User signed in:', userInfo.user.email);
+
+      // Get tokens
+      console.log('🔑 Getting tokens...');
+      const tokens = await GoogleSignin.getTokens();
+      console.log('✅ Tokens obtained');
+      console.log('ID Token:', tokens.idToken ? 'present' : 'null');
+      console.log('Access Token:', tokens.accessToken ? 'present' : 'null');
+
+      // Sign in with Firebase using the tokens
+      console.log('🔥 Signing in with Firebase...');
+      await dispatch(signInWithGoogle({
+        idToken: tokens.idToken || null,
+        accessToken: tokens.accessToken || null,
+      })).unwrap();
+
+      console.log('✅ Sign-in successful, navigation will happen via useEffect');
+    } catch (error: any) {
+      console.error('❌ Error in native Google sign-in:', error);
+      console.error('Error code:', error.code);
+      console.error('Error message:', error.message);
+      setIsSigningIn(false);
+
+      // Handle specific error cases
+      let errorMessage = 'فشل تسجيل الدخول. يرجى المحاولة مرة أخرى.';
+
+      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
+        console.log('User cancelled the sign-in');
+        return; // Don't show alert for user cancellation
+      } else if (error.code === statusCodes.IN_PROGRESS) {
+        errorMessage = 'تسجيل الدخول قيد التنفيذ بالفعل';
+      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
+        errorMessage = 'خدمات Google Play غير متوفرة أو قديمة. يرجى تحديثها.';
+      } else if (error.message?.includes('network') || error.message?.includes('offline')) {
+        errorMessage = 'يبدو أنك غير متصل بالإنترنت. يرجى التحقق من الاتصال والمحاولة مرة أخرى.';
       }
 
       Alert.alert(
@@ -137,13 +208,15 @@ export default function SignInScreen() {
     }
   };
 
-  const handleSignInPress = () => {
-    if (!request) {
-      Alert.alert('خطأ', 'جاري تهيئة تسجيل الدخول.  يرجى المحاولة مرة أخرى.');
-      return;
+  /**
+   * Main sign-in handler - routes to correct implementation based on platform
+   */
+  const handleGoogleSignIn = async () => {
+    if (Platform.OS === 'web') {
+      await handleWebGoogleSignIn();
+    } else {
+      await handleNativeGoogleSignIn();
     }
-    setIsSigningIn(true);
-    promptAsync();
   };
 
   const handleSkipPress = () => {
@@ -172,15 +245,15 @@ export default function SignInScreen() {
 
         {/* Google Sign-In Button */}
         <TouchableOpacity
-          style={[styles.googleButton, (isSigningIn || loading) && styles.buttonDisabled]}
-          onPress={handleSignInPress}
-          disabled={isSigningIn || loading || !request}
+          style={[styles.googleButton, (isSigningIn || loading || !isConfigured) && styles.buttonDisabled]}
+          onPress={handleGoogleSignIn}
+          disabled={isSigningIn || loading || !isConfigured}
         >
-          {isSigningIn || loading ?  (
+          {isSigningIn || loading ? (
             <ActivityIndicator size="small" color={colors.text} />
           ) : (
             <>
-              <Ionicons name="logo-google" size={24} color={colors. text} />
+              <Ionicons name="logo-google" size={24} color={colors.text} />
               <Text style={styles.googleButtonText}>
                 {I18nManager.isRTL ? 'تسجيل الدخول باستخدام Google' : 'Sign in with Google'}
               </Text>
@@ -190,12 +263,12 @@ export default function SignInScreen() {
 
         {/* Skip Button */}
         <TouchableOpacity
-          style={styles. skipButton}
+          style={styles.skipButton}
           onPress={handleSkipPress}
           disabled={isSigningIn || loading}
         >
           <Text style={styles.skipButtonText}>
-            {I18nManager. isRTL ? 'تخطي الآن' : 'Skip for now'}
+            {I18nManager.isRTL ? 'تخطي الآن' : 'Skip for now'}
           </Text>
         </TouchableOpacity>
 
@@ -203,19 +276,7 @@ export default function SignInScreen() {
         {error && (
           <View style={styles.errorContainer}>
             <Ionicons name="alert-circle" size={20} color={colors.error} />
-            <Text style={styles. errorText}>{error}</Text>
-          </View>
-        )}
-
-        {/* Debug Info (remove in production) */}
-        {__DEV__ && (
-          <View style={styles.debugContainer}>
-            <Text style={styles.debugText}>
-              Web Client ID: {clientIds.webClientId ?  '✓ Set' : '✗ Missing'}
-            </Text>
-            <Text style={styles.debugText}>
-              Request Ready: {request ?  '✓ Yes' : '✗ No'}
-            </Text>
+            <Text style={styles.errorText}>{error}</Text>
           </View>
         )}
       </View>
@@ -223,7 +284,7 @@ export default function SignInScreen() {
       {/* Footer */}
       <View style={styles.footer}>
         <Text style={styles.footerText}>
-          {I18nManager. isRTL
+          {I18nManager.isRTL
             ? 'بالمتابعة، أنت توافق على شروط الخدمة وسياسة الخصوصية'
             : 'By continuing, you agree to our Terms of Service and Privacy Policy'}
         </Text>
@@ -235,10 +296,10 @@ export default function SignInScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor:  colors.background,
+    backgroundColor: colors.background,
   },
   content: {
-    flex:  1,
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: spacing.xl,
@@ -252,14 +313,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.xl,
   },
-  title:  {
+  title: {
     fontSize: typography.fontSize.xxl,
     fontWeight: 'bold',
     color: colors.text,
     textAlign: 'center',
     marginBottom: spacing.md,
   },
-  subtitle:  {
+  subtitle: {
     fontSize: typography.fontSize.md,
     color: colors.textSecondary,
     textAlign: 'center',
@@ -267,36 +328,36 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   googleButton: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.white,
     paddingVertical: spacing.md,
-    paddingHorizontal: spacing. xl,
+    paddingHorizontal: spacing.xl,
     borderRadius: borderRadius.lg,
     width: '100%',
-    ... shadows.md,
+    ...shadows.md,
     gap: spacing.sm,
   },
   buttonDisabled: {
-    opacity:  0.6,
+    opacity: 0.6,
   },
   googleButtonText: {
     fontSize: typography.fontSize.md,
     fontWeight: '600',
-    color: colors. text,
+    color: colors.text,
   },
   skipButton: {
     marginTop: spacing.lg,
     paddingVertical: spacing.sm,
   },
   skipButtonText: {
-    fontSize: typography.fontSize. md,
+    fontSize: typography.fontSize.md,
     color: colors.primary,
     fontWeight: '600',
   },
   errorContainer: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     backgroundColor: colors.error + '20',
     padding: spacing.md,
@@ -306,27 +367,15 @@ const styles = StyleSheet.create({
   },
   errorText: {
     flex: 1,
-    fontSize:  typography.fontSize.sm,
+    fontSize: typography.fontSize.sm,
     color: colors.error,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
-  },
-  debugContainer: {
-    marginTop:  spacing.lg,
-    padding: spacing.md,
-    backgroundColor: colors.gray[100],
-    borderRadius: borderRadius.md,
-    width: '100%',
-  },
-  debugText: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-    marginBottom: spacing.xs,
   },
   footer: {
     padding: spacing.xl,
   },
   footerText: {
-    fontSize: typography.fontSize. xs,
+    fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,

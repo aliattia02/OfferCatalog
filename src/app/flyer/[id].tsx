@@ -10,6 +10,7 @@ import {
   I18nManager,
   Alert,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -21,63 +22,95 @@ import { OfferCard, PDFPageViewer, SavePageButton } from '../../components/flyer
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { useLocalized } from '../../hooks';
 import { addToBasket, addPageToBasket, addPdfPageToBasket } from '../../store/slices/basketSlice';
-// Use the NEW catalogue registry instead of old offers.ts
 import { getCatalogueById } from '../../data/catalogueRegistry';
-import { getOfferById } from '../../data/offers';
-import type { Offer } from '../../types';
+import { getOffersByCatalogue } from '../../services/offerService';
+import type { OfferWithCatalogue } from '../../services/offerService';
 
 const { width } = Dimensions.get('window');
 
 export default function FlyerDetailScreen() {
-  const { id } = useLocalSearchParams<{ id:  string }>();
+  const { id } = useLocalSearchParams<{ id: string }>();
   const { t } = useTranslation();
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { getTitle, getName } = useLocalized();
 
   const [currentPage, setCurrentPage] = useState(0);
-  const [showPDF, setShowPDF] = useState(false);
   const [showPDFPageViewer, setShowPDFPageViewer] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [loadingPdf, setLoadingPdf] = useState(false);
 
-  // Use ref for debug info to avoid re-renders
+  // NEW: State for real offers from Firestore
+  const [catalogueOffers, setCatalogueOffers] = useState<OfferWithCatalogue[]>([]);
+  const [loadingOffers, setLoadingOffers] = useState(true);
+
   const debugInfoRef = useRef<string[]>([]);
 
   const catalogue = getCatalogueById(id);
-  const stores = useAppSelector(state => state.stores. stores);
-  const basketItems = useAppSelector(state => state. basket.items);
+  const stores = useAppSelector(state => state.stores.stores);
+  const basketItems = useAppSelector(state => state.basket.items);
 
-  // Try to find store, or create a placeholder based on catalogue data
-  const store = stores.find(s => s.id === catalogue?. storeId) || (catalogue ?  {
+  const store = stores.find(s => s.id === catalogue?.storeId) || (catalogue ? {
     id: catalogue.storeId,
-    nameAr: catalogue.titleAr. replace('عروض ', ''),
-    nameEn: catalogue. titleEn.replace(' Offers', ''),
+    nameAr: catalogue.titleAr.replace('عروض ', ''),
+    nameEn: catalogue.titleEn.replace(' Offers', ''),
     logo: `https://placehold.co/100x100/e63946/ffffff?text=${catalogue.storeId}`,
     branches: [],
   } : null);
 
-  // Debug log function that doesn't cause re-renders
   const addDebugLog = (message: string) => {
     const logEntry = `${new Date().toLocaleTimeString()}: ${message}`;
-    debugInfoRef.current = [...debugInfoRef. current, logEntry];
+    debugInfoRef.current = [...debugInfoRef.current, logEntry];
     console.log('[PDF Debug]', message);
   };
 
-  // DEBUG: Log catalogue data on mount (only once)
+  // DEBUG: Log catalogue data on mount
   useEffect(() => {
     console.log('=== FLYER DETAIL DEBUG ===');
     console.log('Catalogue ID:', id);
-    console.log('Catalogue found:', catalogue ?  'YES' : 'NO');
+    console.log('Catalogue found:', catalogue ? 'YES' : 'NO');
     if (catalogue) {
       console.log('Catalogue data:', catalogue);
       console.log('PDF URL from catalogue:', catalogue.pdfUrl);
     }
-    console. log('Platform:', Platform.OS);
+    console.log('Platform:', Platform.OS);
     console.log('========================');
-  }, [id]); // Only run when id changes
+  }, [id]);
 
-  // Check if current page is saved (for image pages)
+  // NEW: Load real offers from Firestore flat collection
+  useEffect(() => {
+    const loadOffers = async () => {
+      if (!catalogue?.id) {
+        setLoadingOffers(false);
+        return;
+      }
+
+      try {
+        setLoadingOffers(true);
+        console.log('🔥 Loading offers for catalogue:', catalogue.id);
+
+        const offers = await getOffersByCatalogue(catalogue.id);
+        setCatalogueOffers(offers);
+
+        console.log(`✅ Loaded ${offers.length} offers from Firestore`);
+      } catch (error) {
+        console.error('❌ Error loading catalogue offers:', error);
+      } finally {
+        setLoadingOffers(false);
+      }
+    };
+
+    loadOffers();
+  }, [catalogue?.id]);
+
+  // Filter offers for current page
+  const pageOffers = useMemo(() => {
+    return catalogueOffers.filter(
+      offer => offer.pageNumber === currentPage + 1
+    );
+  }, [catalogueOffers, currentPage]);
+
+  // Check if current page is saved
   const isPageSaved = useMemo(() => {
     if (!catalogue || !catalogue.pages || catalogue.pages.length === 0) return false;
     return basketItems.some(
@@ -88,12 +121,12 @@ export default function FlyerDetailScreen() {
     );
   }, [basketItems, catalogue?.id, currentPage]);
 
-  // Get saved PDF page numbers for this catalogue
+  // Get saved PDF page numbers
   const savedPdfPageNumbers = useMemo(() => {
     if (!catalogue) return [];
     return basketItems
-      .filter(item => 
-        item.type === 'pdf-page' && 
+      .filter(item =>
+        item.type === 'pdf-page' &&
         item.pdfPage?.catalogueId === catalogue.id
       )
       .map(item => item.pdfPage!.pageNumber);
@@ -101,19 +134,19 @@ export default function FlyerDetailScreen() {
 
   // Load PDF URL on mount
   useEffect(() => {
-    if (catalogue?. pdfUrl) {
+    if (catalogue?.pdfUrl) {
       loadPdfUrl();
     }
   }, [catalogue?.pdfUrl]);
 
   const loadPdfUrl = async () => {
-    if (! catalogue?.pdfUrl) {
+    if (!catalogue?.pdfUrl) {
       addDebugLog('❌ loadPdfUrl called but no PDF URL');
       return;
     }
 
     setLoadingPdf(true);
-    addDebugLog(`🔄 Loading PDF:  ${catalogue.pdfUrl}`);
+    addDebugLog(`📄 Loading PDF: ${catalogue.pdfUrl}`);
 
     try {
       if (Platform.OS === 'web') {
@@ -124,28 +157,26 @@ export default function FlyerDetailScreen() {
 
         try {
           const response = await fetch(testUrl, { method: 'HEAD' });
-          addDebugLog(`Fetch response status: ${response. status}`);
+          addDebugLog(`Fetch response status: ${response.status}`);
 
-          if (response. ok) {
+          if (response.ok) {
             setPdfUrl(testUrl);
             addDebugLog('✅ PDF URL set successfully');
           } else {
-            addDebugLog(`❌ PDF not accessible:  ${response.status}`);
-            // Still set the URL, let the viewer handle the error
+            addDebugLog(`❌ PDF not accessible: ${response.status}`);
             setPdfUrl(testUrl);
           }
-        } catch (fetchError:  any) {
-          addDebugLog(`⚠️ Fetch warning: ${fetchError. message}`);
-          // Still set the URL for the viewer
+        } catch (fetchError: any) {
+          addDebugLog(`⚠️ Fetch warning: ${fetchError.message}`);
           setPdfUrl(testUrl);
         }
       } else {
         addDebugLog('📱 Native platform detected');
-        setPdfUrl(catalogue. pdfUrl);
+        setPdfUrl(catalogue.pdfUrl);
         addDebugLog('✅ PDF URL set');
       }
-    } catch (error:  any) {
-      addDebugLog(`❌ Error in loadPdfUrl:  ${error.message}`);
+    } catch (error: any) {
+      addDebugLog(`❌ Error in loadPdfUrl: ${error.message}`);
       console.error('Error loading PDF:', error);
     } finally {
       setLoadingPdf(false);
@@ -156,27 +187,26 @@ export default function FlyerDetailScreen() {
   const showDebugInfo = () => {
     Alert.alert(
       'معلومات التصحيح',
-      debugInfoRef.current. join('\n') || 'لا توجد سجلات',
+      debugInfoRef.current.join('\n') || 'لا توجد سجلات',
       [{ text: 'موافق' }]
     );
   };
 
   // Handle case where catalogue is not found
-  if (! catalogue) {
+  if (!catalogue) {
     return (
-      <View style={styles. errorContainer}>
-        <Ionicons name="document-text-outline" size={64} color={colors. gray[300]} />
-        <Text style={styles. errorText}>الكتالوج غير موجود</Text>
+      <View style={styles.errorContainer}>
+        <Ionicons name="document-text-outline" size={64} color={colors.gray[300]} />
+        <Text style={styles.errorText}>الكتالوج غير موجود</Text>
         <Text style={styles.errorSubtext}>ID: {id}</Text>
         <Button title="العودة" onPress={() => router.back()} />
       </View>
     );
   }
 
-  // Handle case where store is not found (shouldn't happen with our fix above)
   if (!store) {
     return (
-      <View style={styles. errorContainer}>
+      <View style={styles.errorContainer}>
         <Text style={styles.errorText}>المتجر غير موجود</Text>
         <Button title="العودة" onPress={() => router.back()} />
       </View>
@@ -184,50 +214,42 @@ export default function FlyerDetailScreen() {
   }
 
   const hasPages = catalogue.pages && catalogue.pages.length > 0;
-  const currentPageData = hasPages ?  catalogue.pages[currentPage] : null;
-  const pageOffers = currentPageData?.offers
-    ?  currentPageData.offers
-        .map(offerId => getOfferById(offerId))
-        .filter(Boolean) as Offer[]
-    : [];
+  const currentPageData = hasPages ? catalogue.pages[currentPage] : null;
 
-  const handleAddToBasket = (offer: Offer) => {
+  const handleAddToBasket = (offer: OfferWithCatalogue) => {
     dispatch(addToBasket({
       offer,
       storeName: store.nameAr,
     }));
   };
 
-  const handleOfferPress = (offer:  Offer) => {
-    router.push(`/offer/${offer. id}`);
+  const handleOfferPress = (offer: OfferWithCatalogue) => {
+    router.push(`/offer/${offer.id}`);
   };
 
   const handleOpenPDF = () => {
-  addDebugLog('🖱️ PDF button clicked');
+    addDebugLog('🖱️ PDF button clicked');
 
-  if (!catalogue.pdfUrl && (!catalogue.pages || catalogue.pages.length === 0)) {
-    addDebugLog('❌ No PDF URL or pages available');
-    Alert.alert('خطأ', 'لا يوجد محتوى متوفر لهذا الكتالوج');
-    return;
-  }
+    if (!catalogue.pdfUrl && (!catalogue.pages || catalogue.pages.length === 0)) {
+      addDebugLog('❌ No PDF URL or pages available');
+      Alert.alert('خطأ', 'لا يوجد محتوى متوفر لهذا الكتالوج');
+      return;
+    }
 
-  if (loadingPdf) {
-    addDebugLog('⏳ Still loading PDF');
-    Alert.alert('انتظر', 'جاري تحميل ملف PDF...');
-    return;
-  }
+    if (loadingPdf) {
+      addDebugLog('⏳ Still loading PDF');
+      Alert.alert('انتظر', 'جاري تحميل ملف PDF...');
+      return;
+    }
 
-  // Extract page images from catalogue if available
-  const pageImages = catalogue.pages && catalogue.pages.length > 0
-    ? catalogue.pages.map(page => page.imageUrl)
-    : [];
+    const pageImages = catalogue.pages && catalogue.pages.length > 0
+      ? catalogue.pages.map(page => page.imageUrl)
+      : [];
 
-  addDebugLog(`✅ Opening viewer with ${pageImages.length} images or PDF`);
+    addDebugLog(`✅ Opening viewer with ${pageImages.length} images or PDF`);
 
-  setShowPDFPageViewer(true);
-};
-
-
+    setShowPDFPageViewer(true);
+  };
 
   const handleSavePage = () => {
     if (!currentPageData) {
@@ -281,7 +303,7 @@ export default function FlyerDetailScreen() {
                   onPress={showDebugInfo}
                   style={styles.headerButton}
                 >
-                  <Ionicons name="bug-outline" size={20} color={colors. gray[600]} />
+                  <Ionicons name="bug-outline" size={20} color={colors.gray[600]} />
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -300,11 +322,11 @@ export default function FlyerDetailScreen() {
         }}
       />
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Debug Info Banner (visible in development) */}
+        {/* Debug Info Banner */}
         {__DEV__ && (
-          <View style={styles. debugBanner}>
+          <View style={styles.debugBanner}>
             <Text style={styles.debugText}>
-              🐛 PDF:  {pdfUrl ?  '✅' : '⏳'} | ID: {catalogue.id}
+              🛠 PDF: {pdfUrl ? '✅' : '⏳'} | Offers: {catalogueOffers.length} | ID: {catalogue.id}
             </Text>
             <Text style={styles.debugTextSmall}>
               Path: {catalogue.pdfUrl}
@@ -313,7 +335,7 @@ export default function FlyerDetailScreen() {
         )}
 
         {/* Store Header */}
-        <View style={styles. header}>
+        <View style={styles.header}>
           <Image
             source={{ uri: store.logo }}
             style={styles.storeLogo}
@@ -321,17 +343,17 @@ export default function FlyerDetailScreen() {
           />
           <View style={styles.headerInfo}>
             <Text style={styles.catalogueTitle}>{catalogue.titleAr}</Text>
-            <Text style={styles. validDate}>
+            <Text style={styles.validDate}>
               {t('flyers.validUntil')}: {catalogue.endDate}
             </Text>
           </View>
         </View>
 
-        {/* Flyer Page Viewer - Only show if pages exist */}
-        {hasPages ?  (
+        {/* Flyer Page Viewer */}
+        {hasPages ? (
           <View style={styles.pageContainer}>
             <Image
-              source={{ uri:  currentPageData?.imageUrl }}
+              source={{ uri: currentPageData?.imageUrl }}
               style={styles.pageImage}
               resizeMode="contain"
             />
@@ -351,15 +373,15 @@ export default function FlyerDetailScreen() {
               </TouchableOpacity>
 
               <Text style={styles.pageIndicator}>
-                {currentPage + 1} / {catalogue.pages. length}
+                {currentPage + 1} / {catalogue.pages.length}
               </Text>
 
               <TouchableOpacity
                 style={[
                   styles.navButton,
-                  currentPage === catalogue. pages.length - 1 && styles. navButtonDisabled,
+                  currentPage === catalogue.pages.length - 1 && styles.navButtonDisabled,
                 ]}
-                onPress={() => setCurrentPage(p => Math.min(catalogue. pages.length - 1, p + 1))}
+                onPress={() => setCurrentPage(p => Math.min(catalogue.pages.length - 1, p + 1))}
                 disabled={currentPage === catalogue.pages.length - 1}
               >
                 <Ionicons
@@ -374,7 +396,7 @@ export default function FlyerDetailScreen() {
           /* No pages - show PDF directly */
           <View style={styles.noPagesContainer}>
             <Ionicons name="document-text" size={64} color={colors.primary} />
-            <Text style={styles. noPagesText}>
+            <Text style={styles.noPagesText}>
               هذا الكتالوج متوفر كملف PDF فقط
             </Text>
             <TouchableOpacity
@@ -382,15 +404,15 @@ export default function FlyerDetailScreen() {
               onPress={handleOpenPDF}
               disabled={loadingPdf}
             >
-              <Ionicons name="eye-outline" size={20} color={colors. white} />
+              <Ionicons name="eye-outline" size={20} color={colors.white} />
               <Text style={styles.viewPdfButtonText}>
-                {loadingPdf ?  'جاري التحميل...' : 'عرض الكتالوج PDF'}
+                {loadingPdf ? 'جاري التحميل...' : 'عرض الكتالوج PDF'}
               </Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {/* Save Page Button - Only show if pages exist */}
+        {/* Save Page Button */}
         {hasPages && (
           <View style={styles.savePageSection}>
             <SavePageButton
@@ -409,25 +431,30 @@ export default function FlyerDetailScreen() {
                 <Ionicons
                   name="document-text-outline"
                   size={20}
-                  color={loadingPdf ? colors.gray[400] : colors. primary}
+                  color={loadingPdf ? colors.gray[400] : colors.primary}
                 />
                 <Text style={[
                   styles.pdfButtonText,
                   loadingPdf && styles.pdfButtonTextDisabled
                 ]}>
-                  {loadingPdf ?  'جاري التحميل.. .' : 'عرض PDF'}
+                  {loadingPdf ? 'جاري التحميل...' : 'عرض PDF'}
                 </Text>
               </TouchableOpacity>
             )}
           </View>
         )}
 
-        {/* Offers on Current Page */}
-        {pageOffers. length > 0 && (
-          <View style={styles. offersSection}>
+        {/* NEW: Real Offers from Firestore */}
+        {loadingOffers ? (
+          <View style={styles.loadingSection}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={styles.loadingText}>جاري تحميل العروض...</Text>
+          </View>
+        ) : pageOffers.length > 0 ? (
+          <View style={styles.offersSection}>
             <Text style={styles.sectionTitle}>عروض هذه الصفحة ({pageOffers.length})</Text>
             <View style={styles.offersGrid}>
-              {pageOffers. map(offer => (
+              {pageOffers.map(offer => (
                 <OfferCard
                   key={offer.id}
                   offer={offer}
@@ -437,41 +464,46 @@ export default function FlyerDetailScreen() {
               ))}
             </View>
           </View>
-        )}
+        ) : hasPages ? (
+          <View style={styles.noOffersContainer}>
+            <Ionicons name="pricetags-outline" size={48} color={colors.gray[400]} />
+            <Text style={styles.noOffersText}>لا توجد عروض في هذه الصفحة</Text>
+          </View>
+        ) : null}
 
-        <View style={styles. bottomPadding} />
+        <View style={styles.bottomPadding} />
       </ScrollView>
 
-      {/* New PDF Page Viewer Modal */}
-{showPDFPageViewer && (
-  <PDFPageViewer
-    visible={showPDFPageViewer}
-    pdfUrl={catalogue.pdfUrl || pdfUrl} // Pass PDF URL if available
-    pageImages={catalogue.pages?.map(page => page.imageUrl) || []} // Pass page images
-    catalogueTitle={catalogue.titleAr}
-    catalogueId={catalogue.id}
-    storeId={catalogue.storeId}
-    storeName={store?.nameAr || ''}
-    onClose={() => {
-      addDebugLog('🔒 Closing PDF page viewer');
-      setShowPDFPageViewer(false);
-    }}
-    onSavePage={handleSavePdfPage}
-    savedPageNumbers={savedPdfPageNumbers}
-  />
+      {/* PDF Page Viewer Modal */}
+      {showPDFPageViewer && (
+        <PDFPageViewer
+          visible={showPDFPageViewer}
+          pdfUrl={catalogue.pdfUrl || pdfUrl}
+          pageImages={catalogue.pages?.map(page => page.imageUrl) || []}
+          catalogueTitle={catalogue.titleAr}
+          catalogueId={catalogue.id}
+          storeId={catalogue.storeId}
+          storeName={store?.nameAr || ''}
+          onClose={() => {
+            addDebugLog('🔒 Closing PDF page viewer');
+            setShowPDFPageViewer(false);
+          }}
+          onSavePage={handleSavePdfPage}
+          savedPageNumbers={savedPdfPageNumbers}
+        />
       )}
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container:  {
-    flex:  1,
+  container: {
+    flex: 1,
     backgroundColor: colors.backgroundSecondary,
   },
   errorContainer: {
     flex: 1,
-    justifyContent:  'center',
+    justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.lg,
     backgroundColor: colors.background,
@@ -491,10 +523,10 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
   },
   debugBanner: {
-    backgroundColor: colors. warning,
-    padding:  spacing.sm,
+    backgroundColor: colors.warning,
+    padding: spacing.sm,
     borderBottomWidth: 1,
-    borderBottomColor: colors. gray[300],
+    borderBottomColor: colors.gray[300],
   },
   debugText: {
     fontSize: typography.fontSize.sm,
@@ -502,25 +534,25 @@ const styles = StyleSheet.create({
     color: colors.text,
   },
   debugTextSmall: {
-    fontSize: typography.fontSize. xs,
-    color:  colors.textSecondary,
-    marginTop: spacing. xs,
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
   },
   header: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems:  'center',
+    alignItems: 'center',
     backgroundColor: colors.white,
-    padding:  spacing.md,
+    padding: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: colors.gray[200],
   },
-  storeLogo:  {
-    width:  50,
-    height:  50,
+  storeLogo: {
+    width: 50,
+    height: 50,
     borderRadius: borderRadius.md,
-    backgroundColor:  colors.gray[100],
-    marginRight: I18nManager.isRTL ? 0 : spacing. md,
-    marginLeft: I18nManager.isRTL ? spacing.md :  0,
+    backgroundColor: colors.gray[100],
+    marginRight: I18nManager.isRTL ? 0 : spacing.md,
+    marginLeft: I18nManager.isRTL ? spacing.md : 0,
   },
   headerInfo: {
     flex: 1,
@@ -538,22 +570,22 @@ const styles = StyleSheet.create({
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   pageContainer: {
-    backgroundColor: colors. gray[900],
-    margin: spacing. md,
-    borderRadius: borderRadius. lg,
+    backgroundColor: colors.gray[900],
+    margin: spacing.md,
+    borderRadius: borderRadius.lg,
     overflow: 'hidden',
   },
   pageImage: {
     width: '100%',
     height: 400,
-    backgroundColor: colors. gray[200],
+    backgroundColor: colors.gray[200],
   },
   pageNavigation: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: spacing.md,
-    backgroundColor:  'rgba(0,0,0,0.7)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     position: 'absolute',
     bottom: 0,
     left: 0,
@@ -563,16 +595,16 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: borderRadius.full,
-    backgroundColor: colors. primary,
+    backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   navButtonDisabled: {
-    backgroundColor: colors. gray[600],
+    backgroundColor: colors.gray[600],
   },
   pageIndicator: {
-    color: colors. white,
-    fontSize: typography.fontSize. md,
+    color: colors.white,
+    fontSize: typography.fontSize.md,
     fontWeight: '600',
   },
   noPagesContainer: {
@@ -583,8 +615,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   noPagesText: {
-    fontSize: typography. fontSize.md,
-    color:  colors.textSecondary,
+    fontSize: typography.fontSize.md,
+    color: colors.textSecondary,
     marginTop: spacing.md,
     marginBottom: spacing.lg,
     textAlign: 'center',
@@ -600,31 +632,31 @@ const styles = StyleSheet.create({
   },
   viewPdfButtonText: {
     color: colors.white,
-    fontSize:  typography.fontSize.md,
+    fontSize: typography.fontSize.md,
     fontWeight: '600',
   },
   savePageSection: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    paddingHorizontal:  spacing.md,
-    paddingVertical:  spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
-  pdfButton:  {
+  pdfButton: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.white,
-    paddingVertical: spacing. sm,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,
     borderWidth: 1,
-    borderColor:  colors.primary,
+    borderColor: colors.primary,
   },
   pdfButtonDisabled: {
     borderColor: colors.gray[300],
   },
   pdfButtonText: {
-    fontSize: typography.fontSize. md,
+    fontSize: typography.fontSize.md,
     fontWeight: '600',
     color: colors.primary,
     marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
@@ -633,6 +665,18 @@ const styles = StyleSheet.create({
   pdfButtonTextDisabled: {
     color: colors.gray[400],
   },
+  loadingSection: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    margin: spacing.md,
+    borderRadius: borderRadius.lg,
+  },
+  loadingText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSize.md,
+    color: colors.textSecondary,
+  },
   offersSection: {
     padding: spacing.md,
   },
@@ -640,13 +684,26 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xl,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: spacing. md,
+    marginBottom: spacing.md,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   offersGrid: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+  },
+  noOffersContainer: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    margin: spacing.md,
+    borderRadius: borderRadius.lg,
+  },
+  noOffersText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSize.md,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
   bottomPadding: {
     height: spacing.xl,

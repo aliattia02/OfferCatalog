@@ -1,4 +1,5 @@
-import React from 'react';
+// src/app/offer/[id].tsx
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,6 +8,7 @@ import {
   ScrollView,
   TouchableOpacity,
   I18nManager,
+  ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -18,7 +20,8 @@ import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { useLocalized } from '../../hooks';
 import { addToBasket } from '../../store/slices/basketSlice';
 import { toggleFavoriteOffer } from '../../store/slices/favoritesSlice';
-import { getOfferById } from '../../data/offers';
+import { getOfferById } from '../../services/offerService';
+import type { OfferWithCatalogue } from '../../services/offerService';
 import { getCategoryById } from '../../data/categories';
 import { formatCurrency, calculateDiscount, formatDate, getDaysRemaining } from '../../utils/helpers';
 
@@ -29,27 +32,66 @@ export default function OfferDetailScreen() {
   const dispatch = useAppDispatch();
   const { getName, getDescription, language } = useLocalized();
   
+  const [offer, setOffer] = useState<OfferWithCatalogue | null>(null);
+  const [loading, setLoading] = useState(true);
+  
   const stores = useAppSelector(state => state.stores.stores);
   const favoriteOfferIds = useAppSelector(state => state.favorites.offerIds);
   
-  const offer = getOfferById(id);
-  const store = stores.find(s => s.id === offer?.storeId);
-  const category = offer ? getCategoryById(offer.categoryId) : undefined;
   const isFavorite = offer ? favoriteOfferIds.includes(offer.id) : false;
 
-  if (!offer || !store) {
+  // Load offer from Firestore flat collection
+  useEffect(() => {
+    const loadOffer = async () => {
+      try {
+        setLoading(true);
+        console.log('📥 Loading offer:', id);
+        const offerData = await getOfferById(id);
+        setOffer(offerData);
+        console.log('✅ Offer loaded:', offerData);
+      } catch (error) {
+        console.error('❌ Error loading offer:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadOffer();
+  }, [id]);
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={styles.loadingText}>جاري تحميل العرض...</Text>
+      </View>
+    );
+  }
+
+  if (!offer) {
     return (
       <View style={styles.errorContainer}>
+        <Ionicons name="pricetag-outline" size={64} color={colors.gray[300]} />
         <Text style={styles.errorText}>العرض غير موجود</Text>
+        <Text style={styles.errorSubtext}>ID: {id}</Text>
         <Button title="العودة" onPress={() => router.back()} />
       </View>
     );
   }
 
+  // Try to find store from Redux, or use store info from offer
+  const store = stores.find(s => s.id === offer.storeId) || {
+    id: offer.storeId,
+    nameAr: offer.storeName,
+    nameEn: offer.storeName,
+    logo: `https://placehold.co/100x100/e63946/ffffff?text=${offer.storeId}`,
+    branches: [],
+  };
+
+  const category = offer.categoryId ? getCategoryById(offer.categoryId) : undefined;
   const discount = offer.originalPrice
     ? calculateDiscount(offer.originalPrice, offer.offerPrice)
     : 0;
-  const daysRemaining = getDaysRemaining(offer.endDate);
+  const daysRemaining = getDaysRemaining(offer.catalogueEndDate);
 
   const handleToggleFavorite = () => {
     dispatch(toggleFavoriteOffer(offer.id));
@@ -58,7 +100,7 @@ export default function OfferDetailScreen() {
   const handleAddToBasket = () => {
     dispatch(addToBasket({
       offer,
-      storeName: store.nameAr,
+      storeName: offer.storeName,
     }));
   };
 
@@ -66,12 +108,16 @@ export default function OfferDetailScreen() {
     router.push(`/store/${store.id}`);
   };
 
+  const handleViewCatalogue = () => {
+    router.push(`/flyer/${offer.catalogueId}`);
+  };
+
   return (
     <>
       <Stack.Screen
         options={{
           headerShown: true,
-          title: getName(offer),
+          title: offer.nameAr || getName(offer),
           headerBackTitle: 'عودة',
           headerRight: () => (
             <TouchableOpacity onPress={handleToggleFavorite} style={styles.headerButton}>
@@ -93,11 +139,16 @@ export default function OfferDetailScreen() {
               <Text style={styles.discountText}>{discount}% {t('common.off')}</Text>
             </View>
           )}
+          {!offer.isActive && (
+            <View style={styles.inactiveBadge}>
+              <Text style={styles.inactiveBadgeText}>منتهي</Text>
+            </View>
+          )}
         </View>
 
         {/* Product Info */}
         <View style={styles.infoContainer}>
-          <Text style={styles.productName}>{getName(offer)}</Text>
+          <Text style={styles.productName}>{offer.nameAr}</Text>
           
           {category && (
             <View style={styles.categoryTag}>
@@ -106,12 +157,12 @@ export default function OfferDetailScreen() {
                 size={14}
                 color={colors.primary}
               />
-              <Text style={styles.categoryText}>{getName(category)}</Text>
+              <Text style={styles.categoryText}>{category.nameAr}</Text>
             </View>
           )}
           
-          {getDescription(offer) && (
-            <Text style={styles.description}>{getDescription(offer)}</Text>
+          {offer.descriptionAr && (
+            <Text style={styles.description}>{offer.descriptionAr}</Text>
           )}
 
           {/* Price Section */}
@@ -150,15 +201,34 @@ export default function OfferDetailScreen() {
               </Text>
             </View>
             <Text style={styles.dateText}>
-              {t('flyers.validUntil')}: {formatDate(offer.endDate, language)}
+              {t('flyers.validUntil')}: {formatDate(offer.catalogueEndDate, language)}
             </Text>
           </View>
+
+          {/* Catalogue Info */}
+          <TouchableOpacity style={styles.catalogueCard} onPress={handleViewCatalogue}>
+            <View style={styles.catalogueInfo}>
+              <View style={styles.catalogueHeader}>
+                <Ionicons name="book-outline" size={20} color={colors.primary} />
+                <Text style={styles.catalogueLabel}>الكتالوج</Text>
+              </View>
+              <Text style={styles.catalogueTitle}>{offer.catalogueTitle}</Text>
+              {offer.pageNumber && (
+                <Text style={styles.pageNumber}>صفحة {offer.pageNumber}</Text>
+              )}
+            </View>
+            <Ionicons
+              name={I18nManager.isRTL ? 'chevron-back' : 'chevron-forward'}
+              size={24}
+              color={colors.gray[400]}
+            />
+          </TouchableOpacity>
 
           {/* Store Info */}
           <TouchableOpacity style={styles.storeCard} onPress={handleViewStore}>
             <Image source={{ uri: store.logo }} style={styles.storeLogo} resizeMode="contain" />
             <View style={styles.storeInfo}>
-              <Text style={styles.storeName}>{getName(store)}</Text>
+              <Text style={styles.storeName}>{offer.storeName}</Text>
               <Text style={styles.storeAction}>{t('stores.viewOffers')}</Text>
             </View>
             <Ionicons
@@ -179,6 +249,7 @@ export default function OfferDetailScreen() {
           onPress={handleAddToBasket}
           fullWidth
           size="large"
+          disabled={!offer.isActive}
         />
       </View>
     </>
@@ -190,16 +261,34 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.backgroundSecondary,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundSecondary,
+  },
+  loadingText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSize.md,
+    color: colors.textSecondary,
+  },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: spacing.lg,
+    backgroundColor: colors.backgroundSecondary,
   },
   errorText: {
     fontSize: typography.fontSize.lg,
+    color: colors.text,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  errorSubtext: {
+    fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
-    marginBottom: spacing.md,
+    marginBottom: spacing.lg,
   },
   headerButton: {
     padding: spacing.sm,
@@ -229,6 +318,21 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: typography.fontSize.md,
     fontWeight: 'bold',
+  },
+  inactiveBadge: {
+    position: 'absolute',
+    top: spacing.lg,
+    right: I18nManager.isRTL ? undefined : spacing.lg,
+    left: I18nManager.isRTL ? spacing.lg : undefined,
+    backgroundColor: colors.gray[500],
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+  },
+  inactiveBadgeText: {
+    color: colors.white,
+    fontSize: typography.fontSize.sm,
+    fontWeight: '600',
   },
   infoContainer: {
     padding: spacing.md,
@@ -317,6 +421,41 @@ const styles = StyleSheet.create({
     color: colors.error,
   },
   dateText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  catalogueCard: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    ...shadows.sm,
+  },
+  catalogueInfo: {
+    flex: 1,
+  },
+  catalogueHeader: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  catalogueLabel: {
+    fontSize: typography.fontSize.sm,
+    color: colors.primary,
+    fontWeight: '600',
+    marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
+    marginRight: I18nManager.isRTL ? spacing.xs : 0,
+  },
+  catalogueTitle: {
+    fontSize: typography.fontSize.md,
+    color: colors.text,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    marginBottom: spacing.xs,
+  },
+  pageNumber: {
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
