@@ -14,11 +14,13 @@ import {
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { Picker } from '@react-native-picker/picker';
 import { ref, uploadBytes, uploadString, getDownloadURL } from 'firebase/storage';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { storage, db } from '../../config/firebase';
 import { pdfConverter } from '../../utils/pdfToImageConverter';
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
+import { useAppSelector } from '../../store/hooks';
 
 interface CatalogueUploadFormProps {
   onSuccess: () => void;
@@ -36,10 +38,11 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
   onSuccess,
   onCancel,
 }) => {
+  const stores = useAppSelector(state => state.stores.stores);
+
   const [titleAr, setTitleAr] = useState('');
   const [titleEn, setTitleEn] = useState('');
-  const [storeId, setStoreId] = useState('');
-  const [storeName, setStoreName] = useState('');
+  const [selectedStoreId, setSelectedStoreId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
@@ -85,12 +88,8 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       showAlert('خطأ', 'يرجى إدخال العنوان بالإنجليزية');
       return false;
     }
-    if (!storeId.trim()) {
-      showAlert('خطأ', 'يرجى إدخال معرف المتجر');
-      return false;
-    }
-    if (!storeName.trim()) {
-      showAlert('خطأ', 'يرجى إدخال اسم المتجر');
+    if (!selectedStoreId) {
+      showAlert('خطأ', 'يرجى اختيار المتجر');
       return false;
     }
     if (!startDate.trim()) {
@@ -113,11 +112,17 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       return;
     }
 
+    const selectedStore = stores.find(s => s.id === selectedStoreId);
+    if (!selectedStore) {
+      showAlert('خطأ', 'المتجر المحدد غير موجود');
+      return;
+    }
+
     try {
       setUploading(true);
 
       // Generate catalogue ID
-      const catalogueId = `${storeId}_${Date.now()}`;
+      const catalogueId = `${selectedStoreId}_${Date.now()}`;
 
       console.log('📤 Starting upload process...');
 
@@ -232,8 +237,8 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
 
       const catalogueData = {
         id: catalogueId,
-        storeId: storeId.trim(),
-        storeName: storeName.trim(),
+        storeId: selectedStore.id,
+        storeName: selectedStore.nameAr,
         titleAr: titleAr.trim(),
         titleEn: titleEn.trim(),
         startDate: startDate.trim(),
@@ -277,6 +282,9 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       });
     }
   };
+
+  // Get selected store name for display
+  const selectedStore = stores.find(s => s.id === selectedStoreId);
 
   return (
     <ScrollView style={styles.container}>
@@ -325,31 +333,55 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
           />
         </View>
 
-        {/* Store ID */}
+        {/* Store Dropdown */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>معرف المتجر *</Text>
-          <TextInput
-            style={styles.input}
-            value={storeId}
-            onChangeText={setStoreId}
-            placeholder="kazyon"
-            placeholderTextColor={colors.gray[400]}
-            autoCapitalize="none"
-            editable={!uploading}
-          />
-        </View>
-
-        {/* Store Name */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>اسم المتجر *</Text>
-          <TextInput
-            style={styles.input}
-            value={storeName}
-            onChangeText={setStoreName}
-            placeholder="كازيون"
-            placeholderTextColor={colors.gray[400]}
-            editable={!uploading}
-          />
+          <Text style={styles.label}>المتجر *</Text>
+          {Platform.OS === 'web' ? (
+            <select
+              value={selectedStoreId}
+              onChange={(e) => setSelectedStoreId(e.target.value)}
+              style={{
+                backgroundColor: colors.gray[100],
+                borderRadius: borderRadius.md,
+                padding: spacing.md,
+                fontSize: typography.fontSize.md,
+                color: colors.text,
+                border: `1px solid ${colors.gray[200]}`,
+                width: '100%',
+              }}
+              disabled={uploading}
+            >
+              <option value="">اختر المتجر</option>
+              {stores.map(store => (
+                <option key={store.id} value={store.id}>
+                  {store.nameAr} ({store.nameEn})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue={selectedStoreId}
+                onValueChange={(itemValue) => setSelectedStoreId(itemValue)}
+                enabled={!uploading}
+                style={styles.picker}
+              >
+                <Picker.Item label="اختر المتجر" value="" />
+                {stores.map(store => (
+                  <Picker.Item
+                    key={store.id}
+                    label={`${store.nameAr} (${store.nameEn})`}
+                    value={store.id}
+                  />
+                ))}
+              </Picker>
+            </View>
+          )}
+          {selectedStore && (
+            <Text style={styles.helperText}>
+              المتجر المحدد: {selectedStore.nameAr}
+            </Text>
+          )}
         </View>
 
         {/* Start Date */}
@@ -508,6 +540,22 @@ const styles = StyleSheet.create({
     textAlign: I18nManager.isRTL ? 'right' : 'left',
     borderWidth: 1,
     borderColor: colors.gray[200],
+  },
+  pickerContainer: {
+    backgroundColor: colors.gray[100],
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 50,
+  },
+  helperText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.primary,
+    marginTop: spacing.xs,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   filePickerButton: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',

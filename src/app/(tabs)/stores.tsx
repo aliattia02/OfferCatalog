@@ -18,17 +18,19 @@ import { StoreCard, LeafletMap } from '../../components/stores';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { toggleFavoriteStore } from '../../store/slices/favoritesSlice';
 import { getAllBranches } from '../../data/stores';
+import { useSafeTabBarHeight } from '../../hooks';
 
 export default function StoresScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const dispatch = useAppDispatch();
-  
+  const { paddingBottom } = useSafeTabBarHeight();
+
   const [viewMode, setViewMode] = useState<'list' | 'map'>('list');
-  
+
   const stores = useAppSelector(state => state.stores.stores);
   const favoriteStoreIds = useAppSelector(state => state.favorites.storeIds);
-  
+
   const allBranches = getAllBranches();
 
   const handleStorePress = (storeId: string) => {
@@ -80,11 +82,15 @@ export default function StoresScreen() {
   return (
     <View style={styles.container}>
       {renderViewToggle()}
-      
+
       {viewMode === 'map' ? (
         <View style={styles.mapContainer}>
           <LeafletMap branches={allBranches} height={400} />
-          <ScrollView style={styles.branchList}>
+          <ScrollView
+            style={styles.branchList}
+            contentContainerStyle={{ paddingBottom }}
+            showsVerticalScrollIndicator={false}
+          >
             {allBranches.map(branch => {
               const store = stores.find(s => s.id === branch.storeId);
               return (
@@ -109,7 +115,11 @@ export default function StoresScreen() {
           </ScrollView>
         </View>
       ) : (
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.content}
+          contentContainerStyle={{ paddingBottom }}
+          showsVerticalScrollIndicator={false}
+        >
           <Text style={styles.sectionTitle}>{t('stores.nearYou')}</Text>
           {stores.map(store => (
             <StoreCard

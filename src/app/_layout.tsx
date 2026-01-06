@@ -36,7 +36,6 @@ export default function RootLayout() {
         const unsubscribe = onAuthChange((user) => {
           console.log('👤 Auth state changed:', user ? user.email : 'Not logged in');
 
-          // FIX: Handle null user properly
           if (user) {
             store.dispatch(setUser(user));
           } else {
@@ -87,9 +86,19 @@ export default function RootLayout() {
           screenOptions={{
             headerShown: false,
             animation: 'slide_from_right',
+            // This is key - remove contentStyle background
+            contentStyle: {
+              backgroundColor: colors.background,
+            },
           }}
         >
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="(tabs)"
+            options={{
+              headerShown: false,
+              // Ensure tabs handle their own safe area
+            }}
+          />
           <Stack.Screen name="auth" options={{ headerShown: false }} />
           <Stack.Screen name="admin" options={{ headerShown: false }} />
           <Stack.Screen
@@ -98,6 +107,7 @@ export default function RootLayout() {
               headerShown: true,
               title: '',
               headerBackTitle: 'عودة',
+              presentation: 'card',
             }}
           />
           <Stack.Screen
@@ -106,6 +116,7 @@ export default function RootLayout() {
               headerShown: true,
               title: '',
               headerBackTitle: 'عودة',
+              presentation: 'card',
             }}
           />
           <Stack.Screen
@@ -114,6 +125,7 @@ export default function RootLayout() {
               headerShown: true,
               title: '',
               headerBackTitle: 'عودة',
+              presentation: 'card',
             }}
           />
         </Stack>

@@ -19,20 +19,22 @@ import { BasketItemCard, SavedPageCard, SavedPdfPageCard } from '../../component
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { updateQuantity, removeFromBasket, clearBasket } from '../../store/slices/basketSlice';
 import { formatCurrency } from '../../utils/helpers';
+import { useSafeTabBarHeight } from '../../hooks';
 
 export default function BasketScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const { paddingBottom } = useSafeTabBarHeight();
 
-  const { items, total } = useAppSelector(state => state. basket);
+  const { items, total } = useAppSelector(state => state.basket);
 
   // Separate items by type
   const savedPages = items.filter(item => item.type === 'page' || item.type === 'pdf-page');
   const offerItems = items.filter(item => item.type === 'offer');
 
   const handleUpdateQuantity = (itemId: string, quantity: number) => {
-    console.log(`📝 [BasketScreen] Update quantity:  ${itemId} -> ${quantity}`);
+    console.log(`🔄 [BasketScreen] Update quantity: ${itemId} -> ${quantity}`);
     dispatch(updateQuantity({ itemId, quantity }));
   };
 
@@ -53,7 +55,7 @@ export default function BasketScreen() {
           onPress: () => console.log('❌ [BasketScreen] Remove cancelled')
         },
         {
-          text: t('common. delete'),
+          text: t('common.delete'),
           style: 'destructive',
           onPress: () => {
             console.log(`✅ [BasketScreen] Confirmed removal of ${itemId}`);
@@ -77,7 +79,7 @@ export default function BasketScreen() {
           onPress: () => console.log('❌ [BasketScreen] Clear cancelled')
         },
         {
-          text:  t('common.confirm'),
+          text: t('common.confirm'),
           style: 'destructive',
           onPress: () => {
             console.log('✅ [BasketScreen] Confirmed clear basket');
@@ -119,7 +121,7 @@ export default function BasketScreen() {
             console.log(`🗑️ [BasketScreen] Remove page card: ${item.id}`);
             handleRemoveItem(item.id, 'page');
           }}
-          onViewPage={() => handleViewPage(item.cataloguePage! .catalogueId)}
+          onViewPage={() => handleViewPage(item.cataloguePage!.catalogueId)}
         />
       );
     }
@@ -174,8 +176,8 @@ export default function BasketScreen() {
           {savedPages.length > 0 && (
             <View style={styles.statItem}>
               <Ionicons name="bookmark" size={18} color={colors.primary} />
-              <Text style={styles. statText}>
-                {savedPages.length} {savedPages.length === 1 ?  'صفحة' :  'صفحات'} محفوظة
+              <Text style={styles.statText}>
+                {savedPages.length} {savedPages.length === 1 ? 'صفحة' : 'صفحات'} محفوظة
               </Text>
             </View>
           )}
@@ -190,12 +192,15 @@ export default function BasketScreen() {
         </View>
       )}
 
-      {/* Items List */}
+      {/* Items List with Dynamic Padding */}
       <FlatList
         data={items}
         renderItem={renderItem}
         keyExtractor={item => item.id}
-        contentContainerStyle={styles.listContainer}
+        contentContainerStyle={[
+          styles.listContainer,
+          { paddingBottom } // Dynamic padding based on tab bar height
+        ]}
         showsVerticalScrollIndicator={false}
       />
 
@@ -227,18 +232,18 @@ export default function BasketScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor:  colors.backgroundSecondary,
+    backgroundColor: colors.backgroundSecondary,
   },
   headerActions: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     justifyContent: 'space-between',
     padding: spacing.md,
     backgroundColor: colors.white,
     borderBottomWidth: 1,
-    borderBottomColor: colors. gray[200],
+    borderBottomColor: colors.gray[200],
   },
   actionButton: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     padding: spacing.xs,
   },
@@ -246,18 +251,18 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: colors.primary,
     marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
-    marginRight: I18nManager.isRTL ? spacing.xs :  0,
+    marginRight: I18nManager.isRTL ? spacing.xs : 0,
   },
   statsContainer: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     padding: spacing.md,
     backgroundColor: colors.white,
     borderBottomWidth: 1,
-    borderBottomColor: colors. gray[200],
+    borderBottomColor: colors.gray[200],
     gap: spacing.lg,
   },
   statItem: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     gap: spacing.xs,
   },
@@ -285,7 +290,7 @@ const styles = StyleSheet.create({
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   totalRow: {
-    flexDirection:  I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
@@ -295,8 +300,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   totalAmount: {
-    fontSize: typography. fontSize.xxl,
-    color: colors. primary,
+    fontSize: typography.fontSize.xxl,
+    color: colors.primary,
     fontWeight: 'bold',
   },
   compareButton: {

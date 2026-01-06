@@ -13,6 +13,9 @@ import { offers as mockOffers } from '../data/offers';
 import { setCataloguesCache } from '../data/catalogueRegistry';
 import type { BasketState, FavoritesState, SettingsState } from '../types';
 
+// Export the new hook
+export * from './useSafeTabBarHeight';
+
 // Hook for app initialization
 export const useAppInitialization = () => {
   const [isReady, setIsReady] = useState(false);
@@ -46,7 +49,7 @@ export const useAppInitialization = () => {
         dispatch(setOffers(mockOffers));
         
         // Load catalogues from Firestore
-        console.log('📥 Loading catalogues from Firestore...');
+        console.log('🔥 Loading catalogues from Firestore...');
         const result = await dispatch(loadCatalogues()).unwrap();
         
         // Update the catalogue registry cache with loaded catalogues
@@ -111,7 +114,7 @@ export const useLocalized = () => {
 
   const getName = useCallback(
     (item: { nameAr: string; nameEn: string }): string => {
-      return language === 'ar' ? item. nameAr : item.nameEn;
+      return language === 'ar' ? item.nameAr : item.nameEn;
     },
     [language]
   );

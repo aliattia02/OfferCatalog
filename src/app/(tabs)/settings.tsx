@@ -19,18 +19,18 @@ import { useRouter } from 'expo-router';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { setLanguage, setNotificationsEnabled } from '../../store/slices/settingsSlice';
-// FIX: Import signOut correctly (not renamed)
 import { signOut, clearUser } from '../../store/slices/authSlice';
 import { clearBasket } from '../../store/slices/basketSlice';
 import { clearFavorites } from '../../store/slices/favoritesSlice';
 import { changeLanguage } from '../../i18n';
-import { usePersistSettings } from '../../hooks';
+import { usePersistSettings, useSafeTabBarHeight } from '../../hooks';
 import { APP_CONFIG } from '../../constants/config';
 
 export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
   const dispatch = useAppDispatch();
   const router = useRouter();
+  const { paddingBottom } = useSafeTabBarHeight();
 
   usePersistSettings();
 
@@ -94,7 +94,7 @@ export default function SettingsScreen() {
           },
         ]
       );
-      return; // Exit here for native, the alert button will call performSignOut
+      return;
     }
 
     // For web, continue immediately if confirmed
@@ -108,9 +108,6 @@ export default function SettingsScreen() {
         isAuthenticated,
         userEmail: user?.email
       });
-
-      // IMPORTANT: Don't clear local data before syncing to Firestore
-      // The sign-out will trigger auth state change which will clear everything
 
       // Call signOut thunk
       console.log('🔵 [Settings] Dispatching signOut thunk...');
@@ -198,7 +195,11 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={{ paddingBottom }}
+      showsVerticalScrollIndicator={false}
+    >
       {/* Account Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('settings.account') || 'الحساب'}</Text>
@@ -281,7 +282,6 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      {/* Rest of your settings sections... */}
       {/* Language Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('settings.language')}</Text>
@@ -403,8 +403,6 @@ export default function SettingsScreen() {
           )}
         </View>
       </View>
-
-      <View style={styles.bottomPadding} />
     </ScrollView>
   );
 }
@@ -482,9 +480,6 @@ const styles = StyleSheet.create({
   languageTextActive: {
     color: colors.primary,
     fontWeight: '600',
-  },
-  bottomPadding: {
-    height: spacing.xxl,
   },
   profileContainer: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',

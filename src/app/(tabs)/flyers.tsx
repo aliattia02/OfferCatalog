@@ -25,6 +25,7 @@ import { setCataloguesCache } from '../../data/catalogueRegistry';
 import { offers } from '../../data/offers';
 import { categories } from '../../data/categories';
 import { formatDateRange } from '../../utils/catalogueUtils';
+import { useSafeTabBarHeight } from '../../hooks';
 import type { Offer, Catalogue } from '../../types';
 
 type FilterType = 'all' | 'active' | 'upcoming' | 'expired';
@@ -38,13 +39,14 @@ export default function FlyersScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const dispatch = useAppDispatch();
+  const { paddingBottom } = useSafeTabBarHeight();
 
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'catalogues' | 'offers'>('catalogues');
   const [statusFilter, setStatusFilter] = useState<FilterType>('all');
   const [refreshing, setRefreshing] = useState(false);
 
-  const stores = useAppSelector(state => state.stores. stores);
+  const stores = useAppSelector(state => state.stores.stores);
   const catalogues = useAppSelector(state => state.offers.catalogues);
   const cataloguesLoading = useAppSelector(state => state.offers.loading);
   const favoriteOfferIds = useAppSelector(state => state.favorites.offerIds);
@@ -55,7 +57,7 @@ export default function FlyersScreen() {
     console.log(`📦 [Flyers] Catalogues in Redux: ${catalogues.length}`);
 
     if (catalogues.length === 0 && !cataloguesLoading) {
-      console.log('📥 [Flyers] No catalogues, loading from Firestore...');
+      console.log('🔥 [Flyers] No catalogues, loading from Firestore...');
       dispatch(loadCatalogues());
     }
   }, []);
@@ -94,8 +96,8 @@ export default function FlyersScreen() {
   };
 
   // Get catalogues with status - COMPUTED FROM REDUX
-  const cataloguesWithStatus:  CatalogueWithStatus[] = useMemo(() => {
-    console.log(`🔄 [Flyers] Computing catalogues with status from ${catalogues.length} Redux items`);
+  const cataloguesWithStatus: CatalogueWithStatus[] = useMemo(() => {
+    console.log(`📄 [Flyers] Computing catalogues with status from ${catalogues.length} Redux items`);
     const result = catalogues.map(cat => ({
       ...cat,
       status: getCatalogueStatus(cat.startDate, cat.endDate),
@@ -109,7 +111,7 @@ export default function FlyersScreen() {
     const groups = {
       all: cataloguesWithStatus,
       active: cataloguesWithStatus.filter(c => c.status === 'active'),
-      upcoming: cataloguesWithStatus.filter(c => c. status === 'upcoming'),
+      upcoming: cataloguesWithStatus.filter(c => c.status === 'upcoming'),
       expired: cataloguesWithStatus.filter(c => c.status === 'expired'),
     };
 
@@ -125,7 +127,7 @@ export default function FlyersScreen() {
 
   // Filter catalogues based on selected status
   const filteredCatalogues = useMemo(() => {
-    let result:  CatalogueWithStatus[];
+    let result: CatalogueWithStatus[];
     switch (statusFilter) {
       case 'active':
         result = catalogueGroups.active;
@@ -152,7 +154,7 @@ export default function FlyersScreen() {
     router.push(`/offer/${offer.id}`);
   };
 
-  const handleAddToBasket = (offer:  Offer) => {
+  const handleAddToBasket = (offer: Offer) => {
     const store = stores.find(s => s.id === offer.storeId);
     dispatch(addToBasket({
       offer,
@@ -172,11 +174,11 @@ export default function FlyersScreen() {
   const getStatusBadgeStyle = (status: CatalogueStatus) => {
     switch (status) {
       case 'active':
-        return { backgroundColor: colors. success };
+        return { backgroundColor: colors.success };
       case 'upcoming':
         return { backgroundColor: colors.warning };
       case 'expired':
-        return { backgroundColor: colors. gray[400] };
+        return { backgroundColor: colors.gray[400] };
     }
   };
 
@@ -203,7 +205,7 @@ export default function FlyersScreen() {
       {(['all', 'active', 'upcoming', 'expired'] as FilterType[]).map((filter) => {
         const count = filter === 'all'
           ? catalogueGroups.all.length
-          : catalogueGroups[filter]. length;
+          : catalogueGroups[filter].length;
 
         return (
           <TouchableOpacity
@@ -214,13 +216,13 @@ export default function FlyersScreen() {
               filter === 'active' && statusFilter === filter && styles.filterChipActiveGreen,
             ]}
             onPress={() => {
-              console.log(`🔘 [Flyers] Filter changed to:  ${filter}`);
+              console.log(`📘 [Flyers] Filter changed to: ${filter}`);
               setStatusFilter(filter);
             }}
           >
             <Text
               style={[
-                styles. filterChipText,
+                styles.filterChipText,
                 statusFilter === filter && styles.filterChipTextActive,
               ]}
             >
@@ -242,14 +244,14 @@ export default function FlyersScreen() {
       <TouchableOpacity
         style={[
           styles.categoryChip,
-          ! selectedCategory && styles.categoryChipActive,
+          !selectedCategory && styles.categoryChipActive,
         ]}
         onPress={() => setSelectedCategory(null)}
       >
         <Text
           style={[
-            styles. categoryChipText,
-            ! selectedCategory && styles.categoryChipTextActive,
+            styles.categoryChipText,
+            !selectedCategory && styles.categoryChipTextActive,
           ]}
         >
           {t('categories.all')}
@@ -257,7 +259,7 @@ export default function FlyersScreen() {
       </TouchableOpacity>
       {categories.map(category => (
         <TouchableOpacity
-          key={category. id}
+          key={category.id}
           style={[
             styles.categoryChip,
             selectedCategory === category.id && styles.categoryChipActive,
@@ -286,7 +288,7 @@ export default function FlyersScreen() {
         <Ionicons
           name="book-outline"
           size={20}
-          color={viewMode === 'catalogues' ? colors. white : colors.text}
+          color={viewMode === 'catalogues' ? colors.white : colors.text}
         />
         <Text style={[styles.toggleText, viewMode === 'catalogues' && styles.toggleTextActive]}>
           كتالوجات
@@ -326,11 +328,11 @@ export default function FlyersScreen() {
         {/* Store Info */}
         <View style={styles.catalogueHeader}>
           <View style={styles.storeInfo}>
-            <Text style={styles. storeName}>
+            <Text style={styles.storeName}>
               {catalogue.storeName || catalogue.storeId}
             </Text>
-            <Text style={styles. storeNameEn}>
-              {catalogue.storeId. toUpperCase()}
+            <Text style={styles.storeNameEn}>
+              {catalogue.storeId.toUpperCase()}
             </Text>
           </View>
         </View>
@@ -355,11 +357,11 @@ export default function FlyersScreen() {
             <Ionicons
               name="eye-outline"
               size={18}
-              color={catalogue.status === 'expired' ?  colors.gray[500] : colors.primary}
+              color={catalogue.status === 'expired' ? colors.gray[500] : colors.primary}
             />
             <Text style={[
               styles.viewButtonText,
-              catalogue.status === 'expired' && styles. viewButtonTextExpired
+              catalogue.status === 'expired' && styles.viewButtonTextExpired
             ]}>
               عرض الكتالوج
             </Text>
@@ -376,9 +378,10 @@ export default function FlyersScreen() {
       {viewMode === 'catalogues' && renderStatusFilter()}
       {viewMode === 'offers' && renderCategoryFilter()}
 
-      {viewMode === 'catalogues' ?  (
+      {viewMode === 'catalogues' ? (
         <ScrollView
           style={styles.content}
+          contentContainerStyle={{ paddingBottom }}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
@@ -391,16 +394,16 @@ export default function FlyersScreen() {
           <View style={styles.summaryContainer}>
             <Text style={styles.summaryText}>
               📚 {catalogueGroups.all.length} كتالوج |
-              ✅ {catalogueGroups. active.length} نشط |
+              ✅ {catalogueGroups.active.length} نشط |
               ⏳ {catalogueGroups.upcoming.length} قادم |
-              ⌛ {catalogueGroups. expired.length} منتهي
+              ⌛ {catalogueGroups.expired.length} منتهي
             </Text>
           </View>
 
           {/* Section Title */}
           <Text style={styles.sectionTitle}>
             {statusFilter === 'all' ? 'جميع الكتالوجات' :
-             statusFilter === 'active' ?  'الكتالوجات النشطة' :
+             statusFilter === 'active' ? 'الكتالوجات النشطة' :
              statusFilter === 'upcoming' ? 'الكتالوجات القادمة' :
              'الكتالوجات المنتهية'}
           </Text>
@@ -414,9 +417,9 @@ export default function FlyersScreen() {
           )}
 
           {/* Catalogues List */}
-          {! cataloguesLoading && filteredCatalogues.length > 0 ? (
+          {!cataloguesLoading && filteredCatalogues.length > 0 ? (
             filteredCatalogues.map(renderCatalogueCard)
-          ) : !cataloguesLoading ?  (
+          ) : !cataloguesLoading ? (
             <View style={styles.emptyState}>
               <Ionicons name="document-text-outline" size={64} color={colors.gray[300]} />
               <Text style={styles.emptyStateText}>
@@ -424,9 +427,6 @@ export default function FlyersScreen() {
               </Text>
             </View>
           ) : null}
-
-          {/* Bottom Padding */}
-          <View style={{ height: 100 }} />
         </ScrollView>
       ) : (
         <FlatList
@@ -437,13 +437,13 @@ export default function FlyersScreen() {
               onPress={() => handleOfferPress(item)}
               onAddToBasket={() => handleAddToBasket(item)}
               isFavorite={favoriteOfferIds.includes(item.id)}
-              onToggleFavorite={() => handleToggleFavorite(item. id)}
+              onToggleFavorite={() => handleToggleFavorite(item.id)}
             />
           )}
           keyExtractor={item => item.id}
           numColumns={2}
           columnWrapperStyle={styles.offerRow}
-          contentContainerStyle={styles.offersContainer}
+          contentContainerStyle={[styles.offersContainer, { paddingBottom }]}
           showsVerticalScrollIndicator={false}
         />
       )}
@@ -451,13 +451,14 @@ export default function FlyersScreen() {
   );
 }
 
+// Styles remain the same...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.backgroundSecondary,
   },
   viewToggle: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     margin: spacing.md,
     backgroundColor: colors.gray[100],
     borderRadius: borderRadius.lg,
@@ -465,7 +466,7 @@ const styles = StyleSheet.create({
   },
   toggleButton: {
     flex: 1,
-    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: spacing.sm,
@@ -474,11 +475,11 @@ const styles = StyleSheet.create({
   toggleButtonActive: {
     backgroundColor: colors.primary,
   },
-  toggleText:  {
+  toggleText: {
     fontSize: typography.fontSize.md,
     color: colors.text,
     marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
-    marginRight: I18nManager.isRTL ? spacing.xs :  0,
+    marginRight: I18nManager.isRTL ? spacing.xs : 0,
   },
   toggleTextActive: {
     color: colors.white,
@@ -493,7 +494,7 @@ const styles = StyleSheet.create({
   },
   filterChip: {
     paddingHorizontal: spacing.md,
-    paddingVertical:  spacing.sm,
+    paddingVertical: spacing.sm,
     borderRadius: borderRadius.full,
     backgroundColor: colors.white,
     marginRight: I18nManager.isRTL ? 0 : spacing.sm,
@@ -502,11 +503,11 @@ const styles = StyleSheet.create({
     borderColor: colors.gray[200],
   },
   filterChipActive: {
-    backgroundColor:  colors.primary,
+    backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
   filterChipActiveGreen: {
-    backgroundColor:  colors.success,
+    backgroundColor: colors.success,
     borderColor: colors.success,
   },
   filterChipText: {
@@ -526,20 +527,20 @@ const styles = StyleSheet.create({
   },
   categoryChip: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing. sm,
+    paddingVertical: spacing.sm,
     borderRadius: borderRadius.full,
     backgroundColor: colors.white,
     marginRight: I18nManager.isRTL ? 0 : spacing.sm,
     marginLeft: I18nManager.isRTL ? spacing.sm : 0,
     borderWidth: 1,
-    borderColor: colors. gray[200],
+    borderColor: colors.gray[200],
   },
   categoryChipActive: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
   categoryChipText: {
-    fontSize: typography. fontSize.sm,
+    fontSize: typography.fontSize.sm,
     color: colors.text,
   },
   categoryChipTextActive: {
@@ -554,15 +555,15 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     padding: spacing.md,
     borderRadius: borderRadius.md,
-    marginBottom: spacing. md,
+    marginBottom: spacing.md,
   },
   summaryText: {
-    fontSize:  typography.fontSize.sm,
+    fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
     textAlign: 'center',
   },
   sectionTitle: {
-    fontSize: typography.fontSize. xl,
+    fontSize: typography.fontSize.xl,
     fontWeight: 'bold',
     color: colors.text,
     marginBottom: spacing.md,
@@ -595,7 +596,7 @@ const styles = StyleSheet.create({
     top: spacing.sm,
     right: spacing.sm,
     paddingHorizontal: spacing.sm,
-    paddingVertical:  spacing.xs,
+    paddingVertical: spacing.xs,
     borderRadius: borderRadius.full,
     zIndex: 1,
   },
@@ -605,7 +606,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   catalogueHeader: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     marginBottom: spacing.sm,
   },
@@ -615,13 +616,13 @@ const styles = StyleSheet.create({
   storeName: {
     fontSize: typography.fontSize.lg,
     fontWeight: 'bold',
-    color: colors. text,
+    color: colors.text,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
-  storeNameEn:  {
+  storeNameEn: {
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
-    textAlign: I18nManager.isRTL ? 'right' :  'left',
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   dateContainer: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
@@ -634,7 +635,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   catalogueTitle: {
-    fontSize: typography.fontSize. md,
+    fontSize: typography.fontSize.md,
     color: colors.text,
     marginBottom: spacing.md,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
@@ -645,7 +646,7 @@ const styles = StyleSheet.create({
   viewButton: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
-    justifyContent:  'center',
+    justifyContent: 'center',
     backgroundColor: colors.primaryLight + '20',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
@@ -653,7 +654,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   viewButtonExpired: {
-    backgroundColor:  colors.gray[100],
+    backgroundColor: colors.gray[100],
   },
   viewButtonText: {
     color: colors.primary,
@@ -669,7 +670,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xxl,
   },
   emptyStateText: {
-    fontSize:  typography.fontSize.md,
+    fontSize: typography.fontSize.md,
     color: colors.textSecondary,
     marginTop: spacing.md,
     textAlign: 'center',

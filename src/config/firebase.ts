@@ -47,7 +47,7 @@ export const initializeFirebase = async (): Promise<{
 
   // If already initialized, return existing instances
   if (app && auth && db && storage) {
-    console.log('✅ Firebase already initialized, returning existing instances');
+    console.log('âœ… Firebase already initialized, returning existing instances');
     return { app, auth, db, storage };
   }
 
@@ -56,22 +56,22 @@ export const initializeFirebase = async (): Promise<{
 
   initializationPromise = (async () => {
     try {
-      console.log('🚀 Initializing Firebase...');
+      console.log('ðŸš€ Initializing Firebase...');
 
       // Initialize Firebase App
       const existingApps = getApps();
       if (existingApps.length === 0) {
         app = initializeApp(firebaseConfig);
-        console.log('✅ Firebase app initialized');
+        console.log('âœ… Firebase app initialized');
       } else {
         app = existingApps[0];
-        console.log('✅ Using existing Firebase app');
+        console.log('âœ… Using existing Firebase app');
       }
 
       // Initialize Auth
       if (! auth) {
         auth = getAuth(app);
-        console.log('✅ Firebase Auth initialized');
+        console.log('âœ… Firebase Auth initialized');
       }
 
       // Initialize Firestore with platform-specific settings
@@ -84,28 +84,28 @@ export const initializeFirebase = async (): Promise<{
                 tabManager: persistentMultipleTabManager()
               })
             });
-            console.log('✅ Firestore initialized for web with persistent cache');
+            console.log('âœ… Firestore initialized for web with persistent cache');
           } catch (error:  any) {
             // If persistent cache fails, try without it
-            console.warn('⚠️ Persistent cache initialization failed, using default:', error.message);
+            console.warn('âš ï¸ Persistent cache initialization failed, using default:', error.message);
             db = getFirestore(app);
           }
         } else {
           // For native: Use default Firestore
           db = getFirestore(app);
-          console. log('✅ Firestore initialized for native');
+          console. log('âœ… Firestore initialized for native');
         }
       }
 
       // Initialize Storage
       if (!storage) {
         storage = getStorage(app);
-        console.log('✅ Firebase Storage initialized');
+        console.log('âœ… Firebase Storage initialized');
       }
 
-      console.log('✅ All Firebase services initialized successfully');
+      console.log('âœ… All Firebase services initialized successfully');
     } catch (error) {
-      console.error('❌ Error initializing Firebase:', error);
+      console.error('âŒ Error initializing Firebase:', error);
       // Reset state on error
       app = null;
       auth = null;
