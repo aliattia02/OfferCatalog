@@ -1,4 +1,4 @@
-// src/app/(tabs)/settings.tsx
+// src/app/(tabs)/settings.tsx - WITH STORES BUTTON
 import React from 'react';
 import {
   View,
@@ -35,7 +35,9 @@ export default function SettingsScreen() {
   usePersistSettings();
 
   const settings = useAppSelector(state => state.settings);
+  const stores = useAppSelector(state => state.stores.stores);
   const favoriteStoreIds = useAppSelector(state => state.favorites.storeIds);
+  const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds);
   const { user, isAuthenticated, isAdmin } = useAppSelector(state => state.auth);
 
   const handleLanguageChange = async (language: 'ar' | 'en') => {
@@ -60,18 +62,11 @@ export default function SettingsScreen() {
   };
 
   const handleSignOut = async () => {
-    console.log('🔴 [Settings] handleSignOut CALLED!');
-    console.log('🔴 [Settings] Current auth state:', {
-      isAuthenticated,
-      userEmail: user?.email,
-      isAdmin
-    });
+    console.log('🔴 [Settings] Sign out initiated');
 
     // Web-compatible confirmation
     if (Platform.OS === 'web') {
       const confirmed = window.confirm('هل أنت متأكد من تسجيل الخروج؟');
-      console.log('🔴 [Settings] Web confirm result:', confirmed);
-
       if (!confirmed) {
         console.log('🔴 [Settings] User cancelled sign out');
         return;
@@ -103,29 +98,21 @@ export default function SettingsScreen() {
 
   const performSignOut = async () => {
     try {
-      console.log('🔵 [Settings] User confirmed sign out');
-      console.log('🔵 [Settings] Auth state before:', {
-        isAuthenticated,
-        userEmail: user?.email
-      });
+      console.log('🔵 [Settings] Performing sign out');
 
       // Call signOut thunk
-      console.log('🔵 [Settings] Dispatching signOut thunk...');
       await dispatch(signOut()).unwrap();
-      console.log('✅ [Settings] Sign out from Firebase successful');
+      console.log('✅ [Settings] Sign out successful');
 
-      // Clear all user-related data AFTER sign out completes
-      console.log('🔵 [Settings] Clearing user data...');
+      // Clear all user-related data
       dispatch(clearUser());
       dispatch(clearBasket());
       dispatch(clearFavorites());
-      console.log('✅ [Settings] User data cleared');
 
       // Navigate to auth screen
-      console.log('🔵 [Settings] Navigating to sign-in...');
       router.replace('/auth/sign-in');
 
-      // Show success message after navigation
+      // Show success message
       setTimeout(() => {
         if (Platform.OS === 'web') {
           alert('تم تسجيل الخروج بنجاح');
@@ -135,21 +122,23 @@ export default function SettingsScreen() {
       }, 500);
     } catch (error: any) {
       console.error('❌ [Settings] Sign out error:', error);
-      console.error('❌ [Settings] Error details:', JSON.stringify(error, null, 2));
 
       if (Platform.OS === 'web') {
-        alert(`خطأ: ${error.message || 'فشل تسجيل الخروج. يرجى المحاولة مرة أخرى.'}`);
+        alert(`خطأ: ${error.message || 'فشل تسجيل الخروج'}`);
       } else {
-        Alert.alert(
-          'خطأ',
-          error.message || 'فشل تسجيل الخروج. يرجى المحاولة مرة أخرى.'
-        );
+        Alert.alert('خطأ', error.message || 'فشل تسجيل الخروج');
       }
     }
   };
 
   const handleAdminPanel = () => {
+    console.log('🔵 [Settings] Navigating to admin panel');
     router.push('/admin/dashboard');
+  };
+
+  const handleStores = () => {
+    console.log('🏪 [Settings] Navigating to stores');
+    router.push('/(tabs)/stores');
   };
 
   const renderSettingItem = (
@@ -159,20 +148,10 @@ export default function SettingsScreen() {
     rightElement?: React.ReactNode,
     onPress?: () => void
   ) => {
-    console.log(`🟡 [Settings] Rendering setting item: "${title}", onPress:`, onPress ? 'provided' : 'undefined');
-
     return (
       <TouchableOpacity
         style={styles.settingItem}
-        onPress={() => {
-          console.log(`🟢 [Settings] Item clicked: "${title}"`);
-          if (onPress) {
-            console.log(`🟢 [Settings] Calling onPress for: "${title}"`);
-            onPress();
-          } else {
-            console.log(`🟡 [Settings] No onPress handler for: "${title}"`);
-          }
-        }}
+        onPress={onPress}
         disabled={!onPress}
         activeOpacity={onPress ? 0.7 : 1}
       >
@@ -228,13 +207,13 @@ export default function SettingsScreen() {
               </View>
               <View style={styles.divider} />
 
-              {/* Admin Panel Link */}
-              {(__DEV__ || isAdmin) && (
+              {/* Admin Panel Link - ONLY shown to admin users */}
+              {isAdmin && (
                 <>
                   {renderSettingItem(
                     'settings',
                     'لوحة التحكم الإدارية',
-                    __DEV__ && !isAdmin ? 'وضع المطور' : 'إدارة الكتالوجات والعروض',
+                    'إدارة الكتالوجات والعروض',
                     undefined,
                     handleAdminPanel
                   )}
@@ -250,24 +229,6 @@ export default function SettingsScreen() {
                 undefined,
                 handleSignOut
               )}
-
-              {/* TEST BUTTON - Remove after debugging */}
-              {__DEV__ && (
-                <>
-                  <View style={styles.divider} />
-                  <TouchableOpacity
-                    style={[styles.settingItem, { backgroundColor: '#ffebee' }]}
-                    onPress={() => {
-                      console.log('🔴 TEST BUTTON CLICKED');
-                      handleSignOut();
-                    }}
-                  >
-                    <Text style={{ color: '#d32f2f', fontWeight: 'bold' }}>
-                      TEST: Click to Sign Out
-                    </Text>
-                  </TouchableOpacity>
-                </>
-              )}
             </>
           ) : (
             /* Sign In Button */
@@ -278,6 +239,34 @@ export default function SettingsScreen() {
               undefined,
               handleSignIn
             )
+          )}
+        </View>
+      </View>
+
+      {/* Shopping Section - NEW */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>التسوق</Text>
+        <View style={styles.card}>
+          {renderSettingItem(
+            'storefront',
+            'المتاجر',
+            `${stores.length} ${stores.length === 1 ? 'متجر' : 'متاجر'} متاح`,
+            undefined,
+            handleStores
+          )}
+        </View>
+      </View>
+
+      {/* Favorites Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{t('settings.favorites') || 'المفضلة'}</Text>
+        <View style={styles.card}>
+          {renderSettingItem(
+            'heart',
+            'المفضلة',
+            `${favoriteStoreIds.length} ${favoriteStoreIds.length === 1 ? 'متجر' : 'متاجر'} • ${favoriteSubcategoryIds.length} ${favoriteSubcategoryIds.length === 1 ? 'فئة' : 'فئات'}`,
+            undefined,
+            () => router.push('/(tabs)/favorites')
           )}
         </View>
       </View>
@@ -350,20 +339,6 @@ export default function SettingsScreen() {
             undefined,
             undefined,
             () => Alert.alert('قريباً', 'إعدادات الإشعارات قيد التطوير')
-          )}
-        </View>
-      </View>
-
-      {/* Favorites Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('settings.favorites')}</Text>
-        <View style={styles.card}>
-          {renderSettingItem(
-            'heart',
-            t('settings.favoriteStores'),
-            `${favoriteStoreIds.length} ${favoriteStoreIds.length === 1 ? 'متجر' : 'متاجر'}`,
-            undefined,
-            () => Alert.alert('قريباً', 'إدارة المفضلة قيد التطوير')
           )}
         </View>
       </View>

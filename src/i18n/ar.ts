@@ -6,8 +6,9 @@ export default {
     basket: 'السلة',
     stores: 'المتاجر',
     settings: 'الإعدادات',
+    favorites: 'المفضلة',
   },
-  
+
   // Home Screen
   home: {
     title: 'عروض مصر',
@@ -17,8 +18,9 @@ export default {
     trendingDeals: 'العروض الرائجة',
     searchPlaceholder: 'ابحث عن عروض...',
     viewAll: 'عرض الكل',
+    activeCatalogues: 'الكتالوجات النشطة',
   },
-  
+
   // Flyers Screen
   flyers: {
     title: 'الكتالوجات والعروض',
@@ -29,7 +31,21 @@ export default {
     filterByStore: 'تصفية حسب المتجر',
     filterByCategory: 'تصفية حسب القسم',
   },
-  
+
+  // Favorites Screen - NEW
+  favorites: {
+    title: 'المفضلة',
+    catalogues: 'كتالوجات',
+    offers: 'عروض',
+    stores: 'متاجر',
+    noFavoriteStores: 'لا توجد متاجر مفضلة',
+    noFavoriteOffers: 'لا توجد عروض مفضلة',
+    addFavoriteStoresHint: 'اضغط على ❤️ على أي متجر لإضافته للمفضلة',
+    addFavoriteOffersHint: 'اضغط على ❤️ على أي عرض لإضافته للمفضلة',
+    exploreCatalogues: 'تصفح الكتالوجات',
+    exploreOffers: 'تصفح العروض',
+  },
+
   // Basket Screen
   basket: {
     title: 'سلة التسوق',
@@ -45,7 +61,7 @@ export default {
     remove: 'حذف',
     storeComparison: 'مقارنة المتاجر',
   },
-  
+
   // Stores Screen
   stores: {
     title: 'المتاجر',
@@ -60,10 +76,11 @@ export default {
     branches: 'الفروع',
     nearYou: 'بالقرب منك',
   },
-  
+
   // Settings Screen
   settings: {
     title: 'الإعدادات',
+    account: 'الحساب',
     language: 'اللغة',
     arabic: 'العربية',
     english: 'English',
@@ -80,7 +97,7 @@ export default {
     privacyPolicy: 'سياسة الخصوصية',
     termsOfService: 'شروط الخدمة',
   },
-  
+
   // Categories
   categories: {
     all: 'الكل',
@@ -95,7 +112,7 @@ export default {
     electronics: 'إلكترونيات',
     babyProducts: 'منتجات أطفال',
   },
-  
+
   // Common
   common: {
     egp: 'ج.م',
@@ -114,13 +131,13 @@ export default {
     originalPrice: 'السعر الأصلي',
     offerPrice: 'سعر العرض',
   },
-  
+
   // Stores Names
   storeNames: {
     kazyon: 'كازيون',
     carrefour: 'كارفور',
   },
-  
+
   // Governorates
   governorates: {
     sharqia: 'الشرقية',
@@ -128,7 +145,7 @@ export default {
     giza: 'الجيزة',
     alexandria: 'الإسكندرية',
   },
-  
+
   // Cities
   cities: {
     zagazig: 'الزقازيق',

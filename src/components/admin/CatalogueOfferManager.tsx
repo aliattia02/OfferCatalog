@@ -1,4 +1,4 @@
-// src/components/admin/CatalogueOfferManager.tsx
+// src/components/admin/CatalogueOfferManager.tsx - WITH CATEGORY SELECTION
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -11,10 +11,11 @@ import {
   Alert,
   Platform,
   I18nManager,
-  Image, // ADDED:  Import Image
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import { Picker } from '@react-native-picker/picker';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import {
   getCatalogueOffers,
@@ -23,9 +24,10 @@ import {
   deleteCatalogueOffer,
   CatalogueOffer
 } from '../../services/catalogueOfferService';
+import { getMainCategories, getDetailedSubcategories } from '../../data/categories'; // NEW
 
 interface CatalogueOfferManagerProps {
-  catalogueId:  string;
+  catalogueId: string;
   totalPages: number;
   onClose: () => void;
 }
@@ -40,6 +42,11 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
   const [showForm, setShowForm] = useState(false);
   const [editingOffer, setEditingOffer] = useState<CatalogueOffer | null>(null);
 
+  // NEW - Category states
+  const mainCategories = getMainCategories();
+  const [selectedMainCategory, setSelectedMainCategory] = useState('');
+  const [availableSubcategories, setAvailableSubcategories] = useState<any[]>([]);
+
   // Form state
   const [formData, setFormData] = useState({
     nameAr: '',
@@ -50,7 +57,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
     originalPrice: '',
     unit: '',
     pageNumber: '1',
-    categoryId: 'general',
+    categoryId: '', // This will be the subcategory ID
     imageUrl: '',
   });
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -60,13 +67,29 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
     loadOffers();
   }, [catalogueId]);
 
+  // NEW - Update subcategories when main category changes
+  useEffect(() => {
+    if (selectedMainCategory) {
+      const subs = getDetailedSubcategories(selectedMainCategory);
+      setAvailableSubcategories(subs);
+
+      // Reset subcategory if it doesn't belong to new main category
+      const currentSub = subs.find(s => s.id === formData.categoryId);
+      if (!currentSub) {
+        setFormData(prev => ({ ...prev, categoryId: '' }));
+      }
+    } else {
+      setAvailableSubcategories([]);
+    }
+  }, [selectedMainCategory]);
+
   const loadOffers = async () => {
     try {
       setLoading(true);
       const data = await getCatalogueOffers(catalogueId);
-      setOffers(data. sort((a, b) => a.pageNumber - b.pageNumber));
-    } catch (error:  any) {
-      showAlert('خطأ', 'فشل تحميل العروض:  ' + error.message);
+      setOffers(data.sort((a, b) => a.pageNumber - b.pageNumber));
+    } catch (error: any) {
+      showAlert('خطأ', 'فشل تحميل العروض: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -88,10 +111,10 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes:  ImagePicker.MediaTypeOptions. Images,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality:  0.8,
+      quality: 0.8,
     });
 
     if (!result.canceled && result.assets[0]) {
@@ -102,18 +125,20 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
   const resetForm = () => {
     setFormData({
       nameAr: '',
-      nameEn:  '',
-      descriptionAr:  '',
-      descriptionEn:  '',
+      nameEn: '',
+      descriptionAr: '',
+      descriptionEn: '',
       offerPrice: '',
       originalPrice: '',
       unit: '',
-      pageNumber:  '1',
-      categoryId:  'general',
+      pageNumber: '1',
+      categoryId: '',
       imageUrl: '',
     });
     setSelectedImage(null);
     setEditingOffer(null);
+    setSelectedMainCategory('');
+    setAvailableSubcategories([]);
     setShowForm(false);
   };
 
@@ -123,15 +148,25 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
       nameAr: offer.nameAr,
       nameEn: offer.nameEn,
       descriptionAr: offer.descriptionAr || '',
-      descriptionEn:  offer.descriptionEn || '',
-      offerPrice: offer. offerPrice. toString(),
-      originalPrice: offer.originalPrice?. toString() || '',
+      descriptionEn: offer.descriptionEn || '',
+      offerPrice: offer.offerPrice.toString(),
+      originalPrice: offer.originalPrice?.toString() || '',
       unit: offer.unit || '',
-      pageNumber: offer. pageNumber.toString(),
+      pageNumber: offer.pageNumber.toString(),
       categoryId: offer.categoryId,
       imageUrl: offer.imageUrl,
     });
     setSelectedImage(offer.imageUrl);
+
+    // NEW - Set main category based on subcategory
+    const allSubs = mainCategories.map(main =>
+      getDetailedSubcategories(main.id)
+    ).flat();
+    const subcategory = allSubs.find(s => s.id === offer.categoryId);
+    if (subcategory?.parentId) {
+      setSelectedMainCategory(subcategory.parentId);
+    }
+
     setShowForm(true);
   };
 
@@ -141,7 +176,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
       : await new Promise(resolve => {
           Alert.alert(
             'تأكيد الحذف',
-            `هل أنت متأكد من حذف العرض "${offer. nameAr}"؟`,
+            `هل أنت متأكد من حذف العرض "${offer.nameAr}"؟`,
             [
               { text: 'إلغاء', style: 'cancel', onPress: () => resolve(false) },
               { text: 'حذف', style: 'destructive', onPress: () => resolve(true) },
@@ -155,45 +190,52 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
       await deleteCatalogueOffer(catalogueId, offer.id, offer.imageUrl);
       showAlert('نجح', 'تم حذف العرض بنجاح');
       loadOffers();
-    } catch (error:  any) {
+    } catch (error: any) {
       showAlert('خطأ', 'فشل حذف العرض: ' + error.message);
     }
   };
 
   const handleSubmit = async () => {
     // Validation
-    if (!formData.nameAr. trim() || !formData.nameEn.trim()) {
-      showAlert('خطأ', 'يرجى إدخال اسم العرض بالعربية والإنجليزية');
+    if (!formData.nameAr.trim() || !formData.nameEn.trim()) {
+      showAlert('خطأ', 'الرجاء إدخال اسم العرض بالعربية والإنجليزية');
       return;
     }
-    if (!formData.offerPrice || isNaN(Number(formData. offerPrice))) {
-      showAlert('خطأ', 'يرجى إدخال سعر العرض');
+
+    if (!formData.offerPrice || isNaN(Number(formData.offerPrice))) {
+      showAlert('خطأ', 'الرجاء إدخال سعر العرض');
       return;
     }
-    if (!selectedImage && !editingOffer) {
-      showAlert('خطأ', 'يرجى اختيار صورة للعرض');
+
+    // NEW - Validate category
+    if (!formData.categoryId) {
+      showAlert('خطأ', 'الرجاء اختيار الفئة الفرعية');
+      return;
+    }
+
+    if (!selectedImage && !editingOffer?.imageUrl) {
+      showAlert('خطأ', 'الرجاء اختيار صورة للعرض');
       return;
     }
 
     try {
       setSubmitting(true);
 
-      // FIXED: Build offer data WITHOUT undefined fields
-      const offerData:  any = {
+      const offerData = {
         nameAr: formData.nameAr.trim(),
         nameEn: formData.nameEn.trim(),
-        offerPrice: Number(formData. offerPrice),
+        offerPrice: Number(formData.offerPrice),
         pageNumber: Number(formData.pageNumber),
-        categoryId: formData.categoryId,
+        categoryId: formData.categoryId, // This is the subcategory ID
         imageUrl: selectedImage || formData.imageUrl,
       };
 
       // Only add optional fields if they have values
-      if (formData. descriptionAr?. trim()) {
+      if (formData.descriptionAr?.trim()) {
         offerData.descriptionAr = formData.descriptionAr.trim();
       }
       if (formData.descriptionEn?.trim()) {
-        offerData. descriptionEn = formData. descriptionEn.trim();
+        offerData.descriptionEn = formData.descriptionEn.trim();
       }
       if (formData.originalPrice && !isNaN(Number(formData.originalPrice))) {
         offerData.originalPrice = Number(formData.originalPrice);
@@ -202,15 +244,25 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
         offerData.unit = formData.unit.trim();
       }
 
-      // Convert image to blob if it's a new local file
-      let imageBlob:  Blob | undefined;
-      if (selectedImage && selectedImage.startsWith('file://')) {
-        const response = await fetch(selectedImage);
-        imageBlob = await response.blob();
+      // Convert image to blob for BOTH file:// and blob: URLs
+      let imageBlob: Blob | undefined;
+      if (selectedImage) {
+        // Check if it's a new image (not a Firebase Storage URL)
+        if (selectedImage.startsWith('file://') || selectedImage.startsWith('blob:')) {
+          try {
+            const response = await fetch(selectedImage);
+            imageBlob = await response.blob();
+            console.log('✅ Image converted to blob for upload');
+          } catch (error) {
+            console.error('❌ Error converting image to blob:', error);
+            showAlert('خطأ', 'فشل تحويل الصورة');
+            return;
+          }
+        }
       }
 
       if (editingOffer) {
-        await updateCatalogueOffer(catalogueId, editingOffer. id, offerData, imageBlob);
+        await updateCatalogueOffer(catalogueId, editingOffer.id, offerData, imageBlob);
         showAlert('نجح', 'تم تحديث العرض بنجاح');
       } else {
         await addCatalogueOffer(catalogueId, offerData as any, imageBlob);
@@ -228,7 +280,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
 
   if (loading) {
     return (
-      <View style={styles. loadingContainer}>
+      <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>جاري تحميل العروض...</Text>
       </View>
@@ -242,7 +294,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
         <View style={styles.headerLeft}>
           <Text style={styles.title}>إدارة عروض الكتالوج</Text>
           <Text style={styles.subtitle}>
-            الكتالوج:  {catalogueId} | {offers.length} عرض
+            الكتالوج: {catalogueId} | {offers.length} عرض
           </Text>
         </View>
         <TouchableOpacity onPress={onClose} style={styles.closeButton}>
@@ -250,7 +302,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
         </TouchableOpacity>
       </View>
 
-      {showForm ?  (
+      {showForm ? (
         <ScrollView style={styles.form} showsVerticalScrollIndicator={false}>
           <Text style={styles.formTitle}>
             {editingOffer ? 'تعديل العرض' : 'إضافة عرض جديد'}
@@ -290,6 +342,96 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
             />
           </View>
 
+          {/* NEW - Main Category Dropdown */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>الفئة الرئيسية *</Text>
+            {Platform.OS === 'web' ? (
+              <select
+                value={selectedMainCategory}
+                onChange={(e) => setSelectedMainCategory(e.target.value)}
+                style={{
+                  backgroundColor: colors.gray[100],
+                  borderRadius: borderRadius.md,
+                  padding: spacing.md,
+                  fontSize: typography.fontSize.md,
+                  color: colors.text,
+                  border: `1px solid ${colors.gray[200]}`,
+                  width: '100%',
+                }}
+              >
+                <option value="">اختر الفئة الرئيسية</option>
+                {mainCategories.map(category => (
+                  <option key={category.id} value={category.id}>
+                    {category.nameAr}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={selectedMainCategory}
+                  onValueChange={(itemValue) => setSelectedMainCategory(itemValue)}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="اختر الفئة الرئيسية" value="" />
+                  {mainCategories.map(category => (
+                    <Picker.Item
+                      key={category.id}
+                      label={category.nameAr}
+                      value={category.id}
+                    />
+                  ))}
+                </Picker>
+              </View>
+            )}
+          </View>
+
+          {/* NEW - Subcategory Dropdown (only shows when main category selected) */}
+          {selectedMainCategory && (
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>الفئة الفرعية *</Text>
+              {Platform.OS === 'web' ? (
+                <select
+                  value={formData.categoryId}
+                  onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+                  style={{
+                    backgroundColor: colors.gray[100],
+                    borderRadius: borderRadius.md,
+                    padding: spacing.md,
+                    fontSize: typography.fontSize.md,
+                    color: colors.text,
+                    border: `1px solid ${colors.gray[200]}`,
+                    width: '100%',
+                  }}
+                >
+                  <option value="">اختر الفئة الفرعية</option>
+                  {availableSubcategories.map(subcategory => (
+                    <option key={subcategory.id} value={subcategory.id}>
+                      {subcategory.nameAr}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <View style={styles.pickerContainer}>
+                  <Picker
+                    selectedValue={formData.categoryId}
+                    onValueChange={(itemValue) => setFormData({ ...formData, categoryId: itemValue })}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="اختر الفئة الفرعية" value="" />
+                    {availableSubcategories.map(subcategory => (
+                      <Picker.Item
+                        key={subcategory.id}
+                        label={subcategory.nameAr}
+                        value={subcategory.id}
+                      />
+                    ))}
+                  </Picker>
+                </View>
+              )}
+            </View>
+          )}
+
           {/* Arabic Description */}
           <View style={styles.inputGroup}>
             <Text style={styles.label}>الوصف (عربي)</Text>
@@ -307,7 +449,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
           <View style={styles.inputGroup}>
             <Text style={styles.label}>الوصف (إنجليزي)</Text>
             <TextInput
-              style={[styles. input, styles.textArea]}
+              style={[styles.input, styles.textArea]}
               value={formData.descriptionEn}
               onChangeText={(text) => setFormData({ ...formData, descriptionEn: text })}
               placeholder="Enter offer description in English"
@@ -329,7 +471,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
               />
             </View>
 
-            <View style={[styles. inputGroup, styles.halfWidth]}>
+            <View style={[styles.inputGroup, styles.halfWidth]}>
               <Text style={styles.label}>السعر الأصلي</Text>
               <TextInput
                 style={styles.input}
@@ -358,7 +500,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
               <TextInput
                 style={styles.input}
                 value={formData.pageNumber}
-                onChangeText={(text) => setFormData({ ... formData, pageNumber: text })}
+                onChangeText={(text) => setFormData({ ...formData, pageNumber: text })}
                 keyboardType="number-pad"
               />
             </View>
@@ -367,11 +509,11 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
           {/* Action Buttons */}
           <View style={styles.formButtons}>
             <TouchableOpacity
-              style={[styles. button, styles.cancelButton]}
+              style={[styles.button, styles.cancelButton]}
               onPress={resetForm}
               disabled={submitting}
             >
-              <Text style={styles. cancelButtonText}>إلغاء</Text>
+              <Text style={styles.cancelButtonText}>إلغاء</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -383,7 +525,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
                 <ActivityIndicator size="small" color={colors.white} />
               ) : (
                 <Text style={styles.submitButtonText}>
-                  {editingOffer ?  'تحديث' :  'إضافة'}
+                  {editingOffer ? 'تحديث' : 'إضافة'}
                 </Text>
               )}
             </TouchableOpacity>
@@ -396,11 +538,11 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
             onPress={() => setShowForm(true)}
           >
             <Ionicons name="add-circle-outline" size={24} color={colors.white} />
-            <Text style={styles. addButtonText}>إضافة عرض جديد</Text>
+            <Text style={styles.addButtonText}>إضافة عرض جديد</Text>
           </TouchableOpacity>
 
           <ScrollView style={styles.offersList} showsVerticalScrollIndicator={false}>
-            {offers. length === 0 ? (
+            {offers.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="pricetag-outline" size={64} color={colors.gray[300]} />
                 <Text style={styles.emptyText}>لا توجد عروض في هذا الكتالوج</Text>
@@ -408,7 +550,6 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
             ) : (
               offers.map(offer => (
                 <View key={offer.id} style={styles.offerCard}>
-                  {/* FIXED: Use Image component instead of <img> */}
                   <Image
                     source={{ uri: offer.imageUrl }}
                     style={styles.offerImage}
@@ -419,7 +560,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
                     <Text style={styles.offerName}>{offer.nameAr}</Text>
                     <Text style={styles.offerNameEn}>{offer.nameEn}</Text>
 
-                    <View style={styles. offerDetails}>
+                    <View style={styles.offerDetails}>
                       <Text style={styles.offerPrice}>
                         {offer.offerPrice} جنيه
                       </Text>
@@ -434,12 +575,12 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
                       صفحة {offer.pageNumber}
                     </Text>
 
-                    <View style={styles. offerActions}>
+                    <View style={styles.offerActions}>
                       <TouchableOpacity
-                        style={styles. actionButton}
+                        style={styles.actionButton}
                         onPress={() => handleEdit(offer)}
                       >
-                        <Ionicons name="create-outline" size={20} color={colors. primary} />
+                        <Ionicons name="create-outline" size={20} color={colors.primary} />
                         <Text style={styles.actionButtonText}>تعديل</Text>
                       </TouchableOpacity>
 
@@ -448,7 +589,7 @@ export const CatalogueOfferManager: React.FC<CatalogueOfferManagerProps> = ({
                         onPress={() => handleDelete(offer)}
                       >
                         <Ionicons name="trash-outline" size={20} color={colors.error} />
-                        <Text style={[styles.actionButtonText, styles. deleteButtonText]}>حذف</Text>
+                        <Text style={[styles.actionButtonText, styles.deleteButtonText]}>حذف</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -468,13 +609,13 @@ const styles = StyleSheet.create({
     backgroundColor: colors.backgroundSecondary,
   },
   loadingContainer: {
-    flex:  1,
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.background,
   },
   loadingText: {
-    marginTop:  spacing.md,
+    marginTop: spacing.md,
     fontSize: typography.fontSize.md,
     color: colors.textSecondary,
   },
@@ -482,20 +623,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: spacing. lg,
+    padding: spacing.lg,
     backgroundColor: colors.white,
-    borderBottomWidth:  1,
+    borderBottomWidth: 1,
     borderBottomColor: colors.gray[200],
   },
   headerLeft: {
     flex: 1,
   },
   title: {
-    fontSize:  typography.fontSize.xl,
+    fontSize: typography.fontSize.xl,
     fontWeight: 'bold',
     color: colors.text,
   },
-  subtitle:  {
+  subtitle: {
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
     marginTop: spacing.xs,
@@ -508,7 +649,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
   },
   addButton: {
-    flexDirection:  'row',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
@@ -523,7 +664,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   offersList: {
-    flex:  1,
+    flex: 1,
   },
   emptyState: {
     alignItems: 'center',
@@ -531,7 +672,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xl * 2,
   },
   emptyText: {
-    fontSize:  typography.fontSize.md,
+    fontSize: typography.fontSize.md,
     color: colors.textSecondary,
     marginTop: spacing.md,
   },
@@ -540,7 +681,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderRadius: borderRadius.md,
     overflow: 'hidden',
-    marginBottom:  spacing.md,
+    marginBottom: spacing.md,
   },
   offerImage: {
     width: 120,
@@ -551,23 +692,23 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: spacing.md,
   },
-  offerName:  {
+  offerName: {
     fontSize: typography.fontSize.md,
     fontWeight: '600',
-    color: colors. text,
+    color: colors.text,
   },
   offerNameEn: {
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
-  offerDetails:  {
+  offerDetails: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
     marginTop: spacing.sm,
   },
-  offerPrice:  {
+  offerPrice: {
     fontSize: typography.fontSize.lg,
     fontWeight: 'bold',
     color: colors.primary,
@@ -582,7 +723,7 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginTop: spacing.xs,
   },
-  offerActions:  {
+  offerActions: {
     flexDirection: 'row',
     gap: spacing.sm,
     marginTop: spacing.md,
@@ -590,9 +731,9 @@ const styles = StyleSheet.create({
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing. xs,
+    gap: spacing.xs,
     paddingVertical: spacing.xs,
-    paddingHorizontal:  spacing.sm,
+    paddingHorizontal: spacing.sm,
     borderRadius: borderRadius.sm,
     borderWidth: 1,
     borderColor: colors.primary,
@@ -613,7 +754,7 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   formTitle: {
-    fontSize: typography. fontSize.xl,
+    fontSize: typography.fontSize.xl,
     fontWeight: 'bold',
     color: colors.text,
     marginBottom: spacing.lg,
@@ -626,7 +767,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
     backgroundColor: colors.gray[100],
     borderWidth: 2,
-    borderColor: colors. gray[300],
+    borderColor: colors.gray[300],
     borderStyle: 'dashed',
   },
   imagePickerPlaceholder: {
@@ -634,7 +775,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  imagePickerText:  {
+  imagePickerText: {
     marginTop: spacing.sm,
     fontSize: typography.fontSize.md,
     color: colors.textSecondary,
@@ -647,9 +788,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   label: {
-    fontSize: typography.fontSize. sm,
+    fontSize: typography.fontSize.sm,
     fontWeight: '600',
-    color: colors. text,
+    color: colors.text,
     marginBottom: spacing.xs,
   },
   input: {
@@ -665,7 +806,17 @@ const styles = StyleSheet.create({
     minHeight: 80,
     textAlignVertical: 'top',
   },
-  row:  {
+  pickerContainer: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 50,
+  },
+  row: {
     flexDirection: 'row',
     gap: spacing.md,
   },
@@ -697,9 +848,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primary,
   },
   submitButtonText: {
-    fontSize: typography.fontSize. md,
+    fontSize: typography.fontSize.md,
     fontWeight: '600',
-    color: colors. white,
+    color: colors.white,
   },
   buttonDisabled: {
     opacity: 0.6,

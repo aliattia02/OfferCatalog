@@ -1,4 +1,4 @@
-
+// src/store/index.ts
 import { configureStore } from '@reduxjs/toolkit';
 import basketReducer from './slices/basketSlice';
 import favoritesReducer from './slices/favoritesSlice';
@@ -26,6 +26,7 @@ export const store = configureStore({
           'favorites/hydrateFavorites',
           'auth/signInWithGoogle/fulfilled',
           'auth/checkAuthState/fulfilled',
+          'auth/setUser', // Add this line - this is the action causing the error
         ],
         // Ignore these specific paths in case any timestamps slip through
         ignoredPaths: [

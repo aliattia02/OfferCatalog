@@ -1,28 +1,33 @@
+// src/components/home/FeaturedOffers.tsx - COMPLETE WITH SUBCATEGORY FAVORITES
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, borderRadius, typography, shadows } from '../../constants/theme';
 import { formatCurrency, calculateDiscount } from '../../utils/helpers';
-import { useLocalized } from '../../hooks';
-import type { Offer } from '../../types';
+import type { OfferWithCatalogue } from '../../services/offerService';
 
 interface FeaturedOffersProps {
-  offers: Offer[];
-  onOfferPress: (offer: Offer) => void;
-  onAddToBasket: (offer: Offer) => void;
+  offers: OfferWithCatalogue[];
+  onOfferPress: (offer: OfferWithCatalogue) => void;
+  onAddToBasket: (offer: OfferWithCatalogue) => void;
+  favoriteSubcategoryIds?: string[]; // NEW - Array of favorited subcategory IDs
+  onToggleFavorite?: (subcategoryId: string) => void; // NEW - Handler to toggle favorite
 }
 
 export const FeaturedOffers: React.FC<FeaturedOffersProps> = ({
   offers,
   onOfferPress,
   onAddToBasket,
+  favoriteSubcategoryIds = [], // NEW - Default to empty array
+  onToggleFavorite, // NEW
 }) => {
-  const { getName } = useLocalized();
-
-  const renderItem = ({ item }: { item: Offer }) => {
+  const renderItem = ({ item }: { item: OfferWithCatalogue }) => {
     const discount = item.originalPrice
       ? calculateDiscount(item.originalPrice, item.offerPrice)
       : 0;
+
+    // NEW: Check if this offer's subcategory is favorited
+    const isFavorite = favoriteSubcategoryIds.includes(item.categoryId);
 
     return (
       <TouchableOpacity
@@ -32,23 +37,40 @@ export const FeaturedOffers: React.FC<FeaturedOffersProps> = ({
       >
         <View style={styles.imageContainer}>
           <Image source={{ uri: item.imageUrl }} style={styles.image} resizeMode="cover" />
+
+          {/* Discount Badge */}
           {discount > 0 && (
             <View style={styles.discountBadge}>
               <Text style={styles.discountText}>{discount}%</Text>
             </View>
           )}
+
+          {/* NEW: Favorite Button - Only shown if onToggleFavorite is provided */}
+          {onToggleFavorite && (
+            <TouchableOpacity
+              style={styles.favoriteButton}
+              onPress={() => onToggleFavorite(item.categoryId)}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={isFavorite ? 'heart' : 'heart-outline'}
+                size={18}
+                color={isFavorite ? colors.primary : colors.white}
+              />
+            </TouchableOpacity>
+          )}
         </View>
-        
+
         <View style={styles.content}>
-          <Text style={styles.name} numberOfLines={2}>{getName(item)}</Text>
-          
+          <Text style={styles.name} numberOfLines={2}>{item.nameAr}</Text>
+
           <View style={styles.priceContainer}>
             <Text style={styles.offerPrice}>{formatCurrency(item.offerPrice)}</Text>
             {item.originalPrice && (
               <Text style={styles.originalPrice}>{formatCurrency(item.originalPrice)}</Text>
             )}
           </View>
-          
+
           <TouchableOpacity
             style={styles.addButton}
             onPress={() => onAddToBasket(item)}
@@ -110,6 +132,24 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs,
     fontWeight: 'bold',
   },
+  // NEW: Favorite button positioned in top-right corner
+  favoriteButton: {
+    position: 'absolute',
+    top: spacing.xs,
+    right: I18nManager.isRTL ? undefined : spacing.xs,
+    left: I18nManager.isRTL ? spacing.xs : undefined,
+    width: 28,
+    height: 28,
+    borderRadius: borderRadius.full,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
   content: {
     padding: spacing.sm,
   },
@@ -119,7 +159,7 @@ const styles = StyleSheet.create({
     color: colors.text,
     marginBottom: spacing.xs,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
-    height: 36,
+    height: 36, // Fixed height for consistent card sizes
   },
   priceContainer: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',

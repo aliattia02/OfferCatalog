@@ -1,76 +1,153 @@
+// src/components/basket/SavedPageCard.tsx - FAVORITE BUTTON TOP CENTER
 import React from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, borderRadius, typography, shadows } from '../../constants/theme';
-import { formatDate } from '../../utils/helpers';
-import { useLocalized } from '../../hooks';
+import { formatDateAr, getDaysRemaining, isDateExpired } from '../../utils/dateUtils';
 import type { BasketItem } from '../../types';
 
 interface SavedPageCardProps {
   item: BasketItem;
   onRemove: () => void;
   onViewPage: () => void;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
 }
 
 export const SavedPageCard: React.FC<SavedPageCardProps> = ({
   item,
   onRemove,
   onViewPage,
+  isFavorite = false,
+  onToggleFavorite,
 }) => {
-  const { language } = useLocalized();
-
   if (!item.cataloguePage) return null;
 
   const { cataloguePage, storeName, offerEndDate } = item;
 
+  // Get offers count safely
+  const offersCount = cataloguePage.offers?.length || 0;
+
+  // Calculate expiry status
+  const isExpired = offerEndDate ? isDateExpired(offerEndDate) : false;
+  const daysRemaining = offerEndDate ? getDaysRemaining(offerEndDate) : -1;
+
   return (
     <TouchableOpacity
-      style={styles.container}
+      style={[styles.container, isExpired && styles.containerExpired]}
       onPress={onViewPage}
       activeOpacity={0.7}
     >
+      {/* Expired Badge - Bottom Left */}
+      {isExpired && (
+        <View style={styles.expiredBadge}>
+          <Ionicons name="time-outline" size={14} color={colors.white} />
+          <Text style={styles.expiredBadgeText}>منتهي</Text>
+        </View>
+      )}
+
+      {/* Favorite Button - Top Center Border */}
+      {onToggleFavorite && (
+        <TouchableOpacity
+          style={styles.favoriteButton}
+          onPress={(e) => {
+            e.stopPropagation();
+            onToggleFavorite();
+          }}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={isFavorite ? 'heart' : 'heart-outline'}
+            size={24}
+            color={isFavorite ? colors.primary : colors.gray[400]}
+          />
+        </TouchableOpacity>
+      )}
+
       <Image
         source={{ uri: cataloguePage.imageUrl }}
-        style={styles.image}
+        style={[styles.image, isExpired && styles.imageExpired]}
         resizeMode="cover"
       />
-      
+
       <View style={styles.content}>
         <View style={styles.header}>
           <View style={styles.badgeContainer}>
             <Ionicons name="bookmark" size={16} color={colors.primary} />
             <Text style={styles.badge}>صفحة محفوظة</Text>
           </View>
-          <TouchableOpacity onPress={onRemove} style={styles.removeButton}>
+          <TouchableOpacity
+            onPress={(e) => {
+              e.stopPropagation();
+              onRemove();
+            }}
+            style={styles.removeButton}
+          >
             <Ionicons name="trash-outline" size={20} color={colors.error} />
           </TouchableOpacity>
         </View>
-        
-        <Text style={styles.title} numberOfLines={2}>
+
+        <Text style={[styles.title, isExpired && styles.textExpired]} numberOfLines={2}>
           {cataloguePage.catalogueTitle}
         </Text>
-        
-        <Text style={styles.storeName}>{storeName}</Text>
-        
+
+        <Text style={[styles.storeName, isExpired && styles.textExpired]}>
+          {storeName}
+        </Text>
+
         <View style={styles.infoRow}>
           <View style={styles.infoItem}>
-            <Ionicons name="document-outline" size={14} color={colors.textSecondary} />
-            <Text style={styles.infoText}>صفحة {cataloguePage.pageNumber}</Text>
-          </View>
-          <View style={styles.infoItem}>
-            <Ionicons name="pricetag-outline" size={14} color={colors.textSecondary} />
-            <Text style={styles.infoText}>
-              {cataloguePage.offerIds.length} عرض
+            <Ionicons
+              name="document-outline"
+              size={14}
+              color={isExpired ? colors.gray[400] : colors.textSecondary}
+            />
+            <Text style={[styles.infoText, isExpired && styles.textExpired]}>
+              صفحة {cataloguePage.pageNumber}
             </Text>
           </View>
+          {offersCount > 0 && (
+            <View style={styles.infoItem}>
+              <Ionicons
+                name="pricetag-outline"
+                size={14}
+                color={isExpired ? colors.gray[400] : colors.textSecondary}
+              />
+              <Text style={[styles.infoText, isExpired && styles.textExpired]}>
+                {offersCount} {offersCount === 1 ? 'عرض' : 'عروض'}
+              </Text>
+            </View>
+          )}
         </View>
-        
-        <View style={styles.expiryContainer}>
-          <Ionicons name="time-outline" size={14} color={colors.warning} />
-          <Text style={styles.expiryText}>
-            ينتهي {formatDate(offerEndDate, language)}
-          </Text>
-        </View>
+
+        {offerEndDate && (
+          <View style={[
+            styles.expiryContainer,
+            isExpired && styles.expiryContainerExpired,
+            !isExpired && daysRemaining <= 2 && styles.expiryContainerWarning
+          ]}>
+            <Ionicons
+              name="time-outline"
+              size={14}
+              color={isExpired ? colors.gray[500] : (daysRemaining <= 2 ? colors.error : colors.warning)}
+            />
+            <Text style={[
+              styles.expiryText,
+              isExpired && styles.textExpired,
+              !isExpired && daysRemaining <= 2 && styles.expiryTextUrgent
+            ]}>
+              {isExpired ? (
+                <>انتهى في {formatDateAr(offerEndDate)}</>
+              ) : daysRemaining === 0 ? (
+                <>ينتهي اليوم!</>
+              ) : daysRemaining === 1 ? (
+                <>ينتهي غداً</>
+              ) : (
+                <>ينتهي {formatDateAr(offerEndDate)}</>
+              )}
+            </Text>
+          </View>
+        )}
       </View>
     </TouchableOpacity>
   );
@@ -86,6 +163,47 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
     borderWidth: 2,
     borderColor: colors.primary + '20',
+    position: 'relative',
+  },
+  containerExpired: {
+    backgroundColor: colors.gray[50],
+    opacity: 0.7,
+    borderColor: colors.gray[300],
+  },
+  expiredBadge: {
+    position: 'absolute',
+    bottom: spacing.sm,
+    left: I18nManager.isRTL ? undefined : spacing.sm,
+    right: I18nManager.isRTL ? spacing.sm : undefined,
+    backgroundColor: colors.gray[500],
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    zIndex: 1,
+  },
+  expiredBadgeText: {
+    color: colors.white,
+    fontSize: typography.fontSize.xs,
+    fontWeight: '600',
+  },
+  favoriteButton: {
+    position: 'absolute',
+    top: -12,
+    left: '50%',
+    transform: [{ translateX: -20 }],
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+    ...shadows.md,
+    borderWidth: 2,
+    borderColor: colors.gray[100],
   },
   image: {
     width: 80,
@@ -94,6 +212,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[100],
     marginRight: I18nManager.isRTL ? 0 : spacing.md,
     marginLeft: I18nManager.isRTL ? spacing.md : 0,
+  },
+  imageExpired: {
+    opacity: 0.5,
   },
   content: {
     flex: 1,
@@ -153,12 +274,30 @@ const styles = StyleSheet.create({
   expiryContainer: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+    borderRadius: borderRadius.sm,
+  },
+  expiryContainerWarning: {
+    backgroundColor: colors.error + '15',
+  },
+  expiryContainerExpired: {
+    backgroundColor: 'transparent',
   },
   expiryText: {
     fontSize: typography.fontSize.xs,
     color: colors.warning,
     marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
     marginRight: I18nManager.isRTL ? spacing.xs : 0,
+    fontWeight: '500',
+  },
+  expiryTextUrgent: {
+    color: colors.error,
+    fontWeight: '600',
+  },
+  textExpired: {
+    color: colors.gray[500],
   },
 });
 

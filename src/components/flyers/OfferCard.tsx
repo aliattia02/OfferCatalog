@@ -1,3 +1,4 @@
+// src/components/flyers/OfferCard.tsx - UPDATED for subcategory favorites
 import React from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,6 +36,10 @@ export const OfferCard: React.FC<OfferCardProps> = ({
             <Text style={styles.discountText}>{discount}%</Text>
           </View>
         )}
+        {/* 
+          UPDATED: Now toggles the subcategory (categoryId) instead of individual offer
+          When clicked, it favorites/unfavorites the entire subcategory
+        */}
         {onToggleFavorite && (
           <TouchableOpacity style={styles.favoriteButton} onPress={onToggleFavorite}>
             <Ionicons

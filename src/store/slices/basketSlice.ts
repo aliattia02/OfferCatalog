@@ -1,172 +1,204 @@
+// src/store/slices/basketSlice.ts - COMPLETE WITH REMOVE EXPIRED
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { BasketState, BasketItem, Offer, CataloguePage, Catalogue } from '../../types';
-import { syncBasketToFirestore } from '../../services/userDataService';
+import type { BasketState, BasketItem, Offer, Catalogue, CataloguePage } from '../../types';
+import { normalizeDateString, isDateExpired } from '../../utils/dateUtils';
 
 const initialState: BasketState = {
   items: [],
   total: 0,
 };
 
-// Helper to calculate total
-const calculateTotal = (items: BasketItem[]): number => {
-  return items.reduce((sum, item) => {
-    if (item.type === 'offer' && item.offer) {
-      return sum + item.offer.offerPrice * item.quantity;
-    }
-    // Pages don't have a price
-    return sum;
-  }, 0);
-};
+interface AddOfferPayload {
+  offer: Offer & {
+    catalogueStartDate?: string;
+    catalogueEndDate?: string;
+    catalogueId?: string;
+    catalogueTitle?: string;
+  };
+  storeName: string;
+}
+
+interface AddPagePayload {
+  catalogue: Catalogue;
+  page: CataloguePage;
+  storeName: string;
+  offers: Offer[];
+}
 
 export const basketSlice = createSlice({
   name: 'basket',
   initialState,
   reducers: {
-    addToBasket: (state, action: PayloadAction<{ offer: Offer; storeName: string }>) => {
+    addToBasket: (state, action: PayloadAction<AddOfferPayload>) => {
       const { offer, storeName } = action.payload;
+
+      // Log what we received
+      console.log('🛒 [basketSlice] Adding offer to basket:', {
+        offerId: offer.id,
+        offerName: offer.nameAr,
+        hasEndDate: !!offer.endDate,
+        hasCatalogueEndDate: !!(offer as any).catalogueEndDate,
+        endDate: offer.endDate,
+        catalogueEndDate: (offer as any).catalogueEndDate,
+      });
+
       const existingItem = state.items.find(
-        item => item.type === 'offer' && item.offerId === offer.id
+        item => item.type === 'offer' && item.offer?.id === offer.id
       );
 
-      if (existingItem) {
+      if (existingItem && existingItem.type === 'offer') {
         existingItem.quantity += 1;
+        console.log(`🔄 [basketSlice] Updated quantity for ${offer.nameAr}: ${existingItem.quantity}`);
       } else {
+        // Extract dates - try catalogue dates first, then fall back to offer dates
+        let endDate = (offer as any).catalogueEndDate || offer.endDate;
+        let startDate = (offer as any).catalogueStartDate || offer.startDate;
+
+        // Normalize the dates
+        if (endDate) endDate = normalizeDateString(endDate);
+        if (startDate) startDate = normalizeDateString(startDate);
+
+        console.log(`✅ [basketSlice] Creating basket item with dates:`, {
+          startDate,
+          endDate,
+          source: (offer as any).catalogueEndDate ? 'catalogue' : 'offer',
+        });
+
         const newItem: BasketItem = {
-          id: `basket_offer_${Date.now()}`,
-          offerId: offer.id,
+          id: `offer-${offer.id}-${Date.now()}`,
+          type: 'offer',
           offer,
           quantity: 1,
-          addedAt: new Date().toISOString(),
           storeName,
-          offerEndDate: offer.endDate,
-          type: 'offer',
+          offerEndDate: endDate,
+          offerStartDate: startDate,
+          addedAt: new Date().toISOString(),
         };
         state.items.push(newItem);
       }
 
-      state.total = calculateTotal(state.items);
+      // Recalculate total
+      state.total = state.items.reduce((sum, item) => {
+        if (item.type === 'offer' && item.offer) {
+          return sum + (item.offer.offerPrice * item.quantity);
+        }
+        return sum;
+      }, 0);
     },
 
-    // NEW: Add entire catalogue page to basket
-    addPageToBasket: (
-      state,
-      action: PayloadAction<{
-        catalogue: Catalogue;
-        page: CataloguePage;
-        storeName: string;
-        offers: Offer[];
-      }>
-    ) => {
+    addPageToBasket: (state, action: PayloadAction<AddPagePayload>) => {
       const { catalogue, page, storeName, offers } = action.payload;
 
-      // Check if this page is already saved
-      const existingPage = state.items.find(
-        item =>
-          item.type === 'page' &&
-          item.cataloguePage?.catalogueId === catalogue.id &&
-          item.cataloguePage?.pageNumber === page.pageNumber
+      // Check if page already exists
+      const existingItem = state.items.find(
+        item => item.type === 'page' &&
+               item.cataloguePage?.catalogueId === catalogue.id &&
+               item.cataloguePage?.pageNumber === page.pageNumber
       );
 
-      if (existingPage) {
-        // Already saved, don't add duplicate
+      if (existingItem) {
+        console.log('⚠️ [basketSlice] Page already in basket');
         return;
       }
 
+      // Normalize catalogue dates
+      const endDate = normalizeDateString(catalogue.endDate);
+      const startDate = normalizeDateString(catalogue.startDate);
+
+      console.log(`📄 [basketSlice] Adding page to basket:`, {
+        catalogueId: catalogue.id,
+        pageNumber: page.pageNumber,
+        startDate,
+        endDate,
+      });
+
       const newItem: BasketItem = {
-        id: `basket_page_${Date.now()}`,
+        id: `page-${catalogue.id}-${page.pageNumber}-${Date.now()}`,
+        type: 'page',
         cataloguePage: {
-          id: page.id,
+          ...page,
           catalogueId: catalogue.id,
           catalogueTitle: catalogue.titleAr,
-          pageNumber: page.pageNumber,
-          imageUrl: page.imageUrl,
-          offerIds: page.offers,
-          savedAt: new Date().toISOString(),
+          offers: offers.map(o => o.id),
         },
-        quantity: 1, // Pages always have quantity 1
-        addedAt: new Date().toISOString(),
+        quantity: 1,
         storeName,
-        offerEndDate: catalogue.endDate,
-        type: 'page',
+        offerEndDate: endDate,
+        offerStartDate: startDate,
+        addedAt: new Date().toISOString(),
       };
 
-      state.items.unshift(newItem); // Add to beginning
-      state.total = calculateTotal(state.items);
+      state.items.push(newItem);
     },
 
-    // NEW: Add PDF page to basket
-    addPdfPageToBasket: (
-      state,
-      action: PayloadAction<{
-        catalogueId: string;
-        catalogueTitle: string;
-        storeId: string;
-        storeName: string;
-        pageNumber: number;
-        pageImageUri: string;
-      }>
-    ) => {
-      const { catalogueId, catalogueTitle, storeId, storeName, pageNumber, pageImageUri } = action.payload;
-
-      // Check if this PDF page is already saved
-      const existingPage = state.items.find(
-        item =>
-          item.type === 'pdf-page' &&
-          item.pdfPage?.catalogueId === catalogueId &&
-          item.pdfPage?.pageNumber === pageNumber
-      );
-
-      if (existingPage) {
-        // Already saved, don't add duplicate
-        return;
-      }
-
-      const newItem: BasketItem = {
-        id: `basket_pdf_page_${Date.now()}`,
-        pdfPage: {
-          id: `pdf_page_${catalogueId}_${pageNumber}_${Date.now()}`,
-          catalogueId,
-          catalogueTitle,
-          storeId,
-          storeName,
-          pageNumber,
-          pageImageUri,
-          savedAt: new Date().toISOString(),
-        },
-        quantity: 1, // PDF pages always have quantity 1
-        addedAt: new Date().toISOString(),
-        storeName,
-        offerEndDate: '', // PDF pages don't have offer end dates
-        type: 'pdf-page',
-      };
-
-      state.items.unshift(newItem); // Add to beginning
-      state.total = calculateTotal(state.items);
-    },
-
-    removeFromBasket: (state, action: PayloadAction<string>) => {
-      console.log(`🗑️ Removing item: ${action.payload}`);
-      state.items = state.items.filter(item => item.id !== action.payload);
-      state.total = calculateTotal(state.items);
-    },
-
-    updateQuantity: (state, action: PayloadAction<{ itemId: string; quantity: number }>) => {
-      const { itemId, quantity } = action.payload;
-      const item = state.items.find(i => i.id === itemId);
+    updateBasketItemQuantity: (state, action: PayloadAction<{ id: string; quantity: number }>) => {
+      const { id, quantity } = action.payload;
+      const item = state.items.find(i => i.id === id);
 
       if (item && item.type === 'offer') {
         if (quantity <= 0) {
-          state.items = state.items.filter(i => i.id !== itemId);
+          state.items = state.items.filter(i => i.id !== id);
+          console.log(`🗑️ [basketSlice] Removed item ${id} (quantity 0)`);
         } else {
           item.quantity = quantity;
+          console.log(`🔄 [basketSlice] Updated quantity for ${id}: ${quantity}`);
         }
-      }
 
-      state.total = calculateTotal(state.items);
+        // Recalculate total
+        state.total = state.items.reduce((sum, item) => {
+          if (item.type === 'offer' && item.offer) {
+            return sum + (item.offer.offerPrice * item.quantity);
+          }
+          return sum;
+        }, 0);
+      }
+    },
+
+    removeFromBasket: (state, action: PayloadAction<string>) => {
+      const itemId = action.payload;
+      state.items = state.items.filter(item => item.id !== itemId);
+      console.log(`🗑️ [basketSlice] Removed item ${itemId}`);
+
+      // Recalculate total
+      state.total = state.items.reduce((sum, item) => {
+        if (item.type === 'offer' && item.offer) {
+          return sum + (item.offer.offerPrice * item.quantity);
+        }
+        return sum;
+      }, 0);
+    },
+
+    removeExpiredItems: (state) => {
+      const beforeCount = state.items.length;
+
+      // Filter out items where offerEndDate is expired
+      state.items = state.items.filter(item => {
+        if (!item.offerEndDate) return true; // Keep items without expiry date
+        const expired = isDateExpired(item.offerEndDate);
+
+        if (expired) {
+          console.log(`🗑️ [basketSlice] Removing expired item: ${item.id}`);
+        }
+
+        return !expired;
+      });
+
+      const afterCount = state.items.length;
+      const removedCount = beforeCount - afterCount;
+
+      // Recalculate total
+      state.total = state.items.reduce((sum, item) => {
+        if (item.type === 'offer' && item.offer) {
+          return sum + item.offer.offerPrice * item.quantity;
+        }
+        return sum;
+      }, 0);
+
+      console.log(`🗑️ [basketSlice] Removed ${removedCount} expired items from basket (${beforeCount} → ${afterCount})`);
     },
 
     clearBasket: (state) => {
+      console.log('🗑️ [basketSlice] Clearing basket');
       state.items = [];
       state.total = 0;
     },
@@ -174,24 +206,7 @@ export const basketSlice = createSlice({
     hydrateBasket: (state, action: PayloadAction<BasketState>) => {
       state.items = action.payload.items;
       state.total = action.payload.total;
-    },
-
-    // Sync basket to Firestore for authenticated users
-    // Note: This is a fire-and-forget operation intentionally kept in the reducer
-    // for simplicity. The sync happens in the background without blocking the UI.
-    // Consider moving to middleware or async thunk for more complex sync logic.
-    syncBasket: (state, action: PayloadAction<string | null>) => {
-      const uid = action.payload;
-      
-      // Always save to AsyncStorage (local) first
-      AsyncStorage.setItem('basket', JSON.stringify(state.items)).catch(console.error);
-      
-      // Only sync to Firebase if user is authenticated
-      if (uid) {
-        syncBasketToFirestore(uid, state.items).catch((error) => {
-          console.error('Error syncing basket to Firebase:', error);
-        });
-      }
+      console.log(`💧 [basketSlice] Hydrated basket with ${state.items.length} items`);
     },
   },
 });
@@ -199,12 +214,11 @@ export const basketSlice = createSlice({
 export const {
   addToBasket,
   addPageToBasket,
-  addPdfPageToBasket,
+  updateBasketItemQuantity,
   removeFromBasket,
-  updateQuantity,
+  removeExpiredItems,
   clearBasket,
   hydrateBasket,
-  syncBasket,
 } = basketSlice.actions;
 
 export default basketSlice.reducer;

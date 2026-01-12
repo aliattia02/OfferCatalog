@@ -1,8 +1,10 @@
+// src/components/basket/BasketItemCard.tsx - FAVORITE BUTTON TOP CENTER
 import React from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, borderRadius, typography, shadows } from '../../constants/theme';
-import { formatCurrency, formatDate } from '../../utils/helpers';
+import { formatCurrency } from '../../utils/helpers';
+import { formatDateAr, getDaysRemaining } from '../../utils/dateUtils';
 import { useLocalized } from '../../hooks';
 import type { BasketItem } from '../../types';
 
@@ -10,65 +12,158 @@ interface BasketItemCardProps {
   item: BasketItem;
   onUpdateQuantity: (quantity: number) => void;
   onRemove: () => void;
+  onPress?: () => void;
+  isExpired?: boolean;
+  isFavorite?: boolean;
+  onToggleFavorite?: () => void;
 }
 
 export const BasketItemCard: React.FC<BasketItemCardProps> = ({
   item,
   onUpdateQuantity,
   onRemove,
+  onPress,
+  isExpired = false,
+  isFavorite = false,
+  onToggleFavorite,
 }) => {
-  const { getName, language } = useLocalized();
+  const { getName } = useLocalized();
 
   // Only render if this is an offer type basket item
   if (item.type !== 'offer' || !item.offer) {
     return null;
   }
 
-  return (
-    <View style={styles.container}>
-      <Image source={{ uri: item.offer.imageUrl }} style={styles.image} resizeMode="cover" />
-      
+  const daysRemaining = getDaysRemaining(item.offerEndDate);
+
+  const containerContent = (
+    <View style={[styles.container, isExpired && styles.containerExpired]}>
+      {/* Expired Badge - Bottom Left */}
+      {isExpired && (
+        <View style={styles.expiredBadge}>
+          <Ionicons name="time-outline" size={14} color={colors.white} />
+          <Text style={styles.expiredBadgeText}>منتهي</Text>
+        </View>
+      )}
+
+      {/* Favorite Button - Top Center Border */}
+      {onToggleFavorite && (
+        <TouchableOpacity
+          style={styles.favoriteButton}
+          onPress={(e) => {
+            e?.stopPropagation?.();
+            onToggleFavorite();
+          }}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={isFavorite ? 'heart' : 'heart-outline'}
+            size={24}
+            color={isFavorite ? colors.primary : colors.gray[400]}
+          />
+        </TouchableOpacity>
+      )}
+
+      <Image
+        source={{ uri: item.offer.imageUrl }}
+        style={[styles.image, isExpired && styles.imageExpired]}
+        resizeMode="cover"
+      />
+
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.name} numberOfLines={2}>{getName(item.offer)}</Text>
-          <TouchableOpacity onPress={onRemove} style={styles.removeButton}>
+          <Text style={[styles.name, isExpired && styles.textExpired]} numberOfLines={2}>
+            {getName(item.offer)}
+          </Text>
+          <TouchableOpacity
+            onPress={(e) => {
+              e?.stopPropagation?.();
+              onRemove();
+            }}
+            style={styles.removeButton}
+          >
             <Ionicons name="trash-outline" size={20} color={colors.error} />
           </TouchableOpacity>
         </View>
-        
-        <Text style={styles.storeName}>{item.storeName}</Text>
-        
-        <View style={styles.expiryContainer}>
-          <Ionicons name="time-outline" size={14} color={colors.warning} />
-          <Text style={styles.expiryText}>
-            ينتهي {formatDate(item.offerEndDate, language)}
+
+        <Text style={[styles.storeName, isExpired && styles.textExpired]}>
+          {item.storeName}
+        </Text>
+
+        {/* Expiry Info */}
+        <View style={[
+          styles.expiryContainer,
+          isExpired ? styles.expiryContainerExpired : (daysRemaining <= 2 ? styles.expiryContainerWarning : null)
+        ]}>
+          <Ionicons
+            name="time-outline"
+            size={14}
+            color={isExpired ? colors.gray[500] : (daysRemaining <= 2 ? colors.error : colors.warning)}
+          />
+          <Text style={[
+            styles.expiryText,
+            isExpired && styles.textExpired,
+            !isExpired && daysRemaining <= 2 && styles.expiryTextUrgent
+          ]}>
+            {isExpired ? (
+              <>انتهى في {formatDateAr(item.offerEndDate)}</>
+            ) : daysRemaining === 0 ? (
+              <>ينتهي اليوم!</>
+            ) : daysRemaining === 1 ? (
+              <>ينتهي غداً</>
+            ) : (
+              <>ينتهي بعد {daysRemaining} أيام</>
+            )}
           </Text>
         </View>
-        
+
         <View style={styles.footer}>
-          <Text style={styles.price}>{formatCurrency(item.offer.offerPrice * item.quantity)}</Text>
-          
+          <Text style={[styles.price, isExpired && styles.textExpired]}>
+            {formatCurrency(item.offer.offerPrice * item.quantity)}
+          </Text>
+
           <View style={styles.quantityContainer}>
             <TouchableOpacity
-              style={styles.quantityButton}
-              onPress={() => onUpdateQuantity(item.quantity - 1)}
+              style={[styles.quantityButton, isExpired && styles.quantityButtonExpired]}
+              onPress={(e) => {
+                e?.stopPropagation?.();
+                onUpdateQuantity(item.quantity - 1);
+              }}
+              disabled={isExpired}
             >
-              <Ionicons name="remove" size={18} color={colors.text} />
+              <Ionicons name="remove" size={18} color={isExpired ? colors.gray[400] : colors.text} />
             </TouchableOpacity>
-            
-            <Text style={styles.quantity}>{item.quantity}</Text>
-            
+
+            <Text style={[styles.quantity, isExpired && styles.textExpired]}>
+              {item.quantity}
+            </Text>
+
             <TouchableOpacity
-              style={styles.quantityButton}
-              onPress={() => onUpdateQuantity(item.quantity + 1)}
+              style={[styles.quantityButton, isExpired && styles.quantityButtonExpired]}
+              onPress={(e) => {
+                e?.stopPropagation?.();
+                onUpdateQuantity(item.quantity + 1);
+              }}
+              disabled={isExpired}
             >
-              <Ionicons name="add" size={18} color={colors.text} />
+              <Ionicons name="add" size={18} color={isExpired ? colors.gray[400] : colors.text} />
             </TouchableOpacity>
           </View>
         </View>
       </View>
     </View>
   );
+
+  // If onPress is provided, wrap in TouchableOpacity
+  if (onPress) {
+    return (
+      <TouchableOpacity onPress={onPress} activeOpacity={0.7}>
+        {containerContent}
+      </TouchableOpacity>
+    );
+  }
+
+  return containerContent;
 };
 
 const styles = StyleSheet.create({
@@ -79,6 +174,48 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     ...shadows.sm,
     marginBottom: spacing.md,
+    position: 'relative',
+  },
+  containerExpired: {
+    backgroundColor: colors.gray[50],
+    opacity: 0.7,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+  },
+  expiredBadge: {
+    position: 'absolute',
+    bottom: spacing.sm,
+    left: I18nManager.isRTL ? undefined : spacing.sm,
+    right: I18nManager.isRTL ? spacing.sm : undefined,
+    backgroundColor: colors.gray[500],
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    zIndex: 1,
+  },
+  expiredBadgeText: {
+    color: colors.white,
+    fontSize: typography.fontSize.xs,
+    fontWeight: '600',
+  },
+  favoriteButton: {
+    position: 'absolute',
+    top: -12,
+    left: '50%',
+    transform: [{ translateX: -20 }],
+    width: 40,
+    height: 40,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.white,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+    ...shadows.md,
+    borderWidth: 2,
+    borderColor: colors.gray[100],
   },
   image: {
     width: 80,
@@ -87,6 +224,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[100],
     marginRight: I18nManager.isRTL ? 0 : spacing.md,
     marginLeft: I18nManager.isRTL ? spacing.md : 0,
+  },
+  imageExpired: {
+    opacity: 0.5,
   },
   content: {
     flex: 1,
@@ -118,12 +258,30 @@ const styles = StyleSheet.create({
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     marginBottom: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+    borderRadius: borderRadius.sm,
+  },
+  expiryContainerWarning: {
+    backgroundColor: colors.error + '15',
+  },
+  expiryContainerExpired: {
+    backgroundColor: 'transparent',
   },
   expiryText: {
     fontSize: typography.fontSize.xs,
     color: colors.warning,
     marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
     marginRight: I18nManager.isRTL ? spacing.xs : 0,
+    fontWeight: '500',
+  },
+  expiryTextUrgent: {
+    color: colors.error,
+    fontWeight: '600',
+  },
+  textExpired: {
+    color: colors.gray[500],
   },
   footer: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
@@ -144,6 +302,9 @@ const styles = StyleSheet.create({
   },
   quantityButton: {
     padding: spacing.sm,
+  },
+  quantityButtonExpired: {
+    opacity: 0.5,
   },
   quantity: {
     fontSize: typography.fontSize.md,

@@ -1,4 +1,4 @@
-// src/app/offer/[id].tsx
+// src/app/offer/[id].tsx - UPDATED for subcategory favorites
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -19,7 +19,7 @@ import { Button } from '../../components/common';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { useLocalized } from '../../hooks';
 import { addToBasket } from '../../store/slices/basketSlice';
-import { toggleFavoriteOffer } from '../../store/slices/favoritesSlice';
+import { toggleFavoriteSubcategory } from '../../store/slices/favoritesSlice';
 import { getOfferById } from '../../services/offerService';
 import type { OfferWithCatalogue } from '../../services/offerService';
 import { getCategoryById } from '../../data/categories';
@@ -31,21 +31,21 @@ export default function OfferDetailScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { getName, getDescription, language } = useLocalized();
-  
+
   const [offer, setOffer] = useState<OfferWithCatalogue | null>(null);
   const [loading, setLoading] = useState(true);
-  
-  const stores = useAppSelector(state => state.stores.stores);
-  const favoriteOfferIds = useAppSelector(state => state.favorites.offerIds);
-  
-  const isFavorite = offer ? favoriteOfferIds.includes(offer.id) : false;
 
-  // Load offer from Firestore flat collection
+  const stores = useAppSelector(state => state.stores.stores);
+  const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds);
+
+  // UPDATED: Check if the offer's subcategory is favorited
+  const isFavorite = offer ? favoriteSubcategoryIds.includes(offer.categoryId) : false;
+
   useEffect(() => {
     const loadOffer = async () => {
       try {
         setLoading(true);
-        console.log('📥 Loading offer:', id);
+        console.log('🔥 Loading offer:', id);
         const offerData = await getOfferById(id);
         setOffer(offerData);
         console.log('✅ Offer loaded:', offerData);
@@ -78,7 +78,6 @@ export default function OfferDetailScreen() {
     );
   }
 
-  // Try to find store from Redux, or use store info from offer
   const store = stores.find(s => s.id === offer.storeId) || {
     id: offer.storeId,
     nameAr: offer.storeName,
@@ -93,13 +92,35 @@ export default function OfferDetailScreen() {
     : 0;
   const daysRemaining = getDaysRemaining(offer.catalogueEndDate);
 
+  // UPDATED: Toggle the subcategory instead of individual offer
   const handleToggleFavorite = () => {
-    dispatch(toggleFavoriteOffer(offer.id));
+    dispatch(toggleFavoriteSubcategory(offer.categoryId));
   };
 
   const handleAddToBasket = () => {
+    const serializableOffer = {
+      id: offer.id,
+      storeId: offer.storeId,
+      catalogueId: offer.catalogueId,
+      categoryId: offer.categoryId,
+      nameAr: offer.nameAr,
+      nameEn: offer.nameEn,
+      descriptionAr: offer.descriptionAr,
+      descriptionEn: offer.descriptionEn,
+      imageUrl: offer.imageUrl,
+      offerPrice: offer.offerPrice,
+      originalPrice: offer.originalPrice,
+      unit: offer.unit,
+      pageNumber: offer.pageNumber,
+      isActive: offer.isActive,
+      catalogueStartDate: offer.catalogueStartDate,
+      catalogueEndDate: offer.catalogueEndDate,
+      startDate: offer.startDate,
+      endDate: offer.endDate,
+    };
+
     dispatch(addToBasket({
-      offer,
+      offer: serializableOffer,
       storeName: offer.storeName,
     }));
   };
@@ -149,18 +170,29 @@ export default function OfferDetailScreen() {
         {/* Product Info */}
         <View style={styles.infoContainer}>
           <Text style={styles.productName}>{offer.nameAr}</Text>
-          
+
+          {/* UPDATED: Show category with favorite indicator */}
           {category && (
-            <View style={styles.categoryTag}>
+            <TouchableOpacity
+              style={styles.categoryTag}
+              onPress={handleToggleFavorite}
+              activeOpacity={0.7}
+            >
               <Ionicons
                 name={category.icon as keyof typeof Ionicons.glyphMap}
                 size={14}
                 color={colors.primary}
               />
               <Text style={styles.categoryText}>{category.nameAr}</Text>
-            </View>
+              <Ionicons
+                name={isFavorite ? 'heart' : 'heart-outline'}
+                size={14}
+                color={isFavorite ? colors.primary : colors.gray[400]}
+                style={styles.categoryHeartIcon}
+              />
+            </TouchableOpacity>
           )}
-          
+
           {offer.descriptionAr && (
             <Text style={styles.description}>{offer.descriptionAr}</Text>
           )}
@@ -357,6 +389,10 @@ const styles = StyleSheet.create({
   categoryText: {
     fontSize: typography.fontSize.sm,
     color: colors.primary,
+    marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
+    marginRight: I18nManager.isRTL ? spacing.xs : 0,
+  },
+  categoryHeartIcon: {
     marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
     marginRight: I18nManager.isRTL ? spacing.xs : 0,
   },

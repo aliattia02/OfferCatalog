@@ -9,8 +9,10 @@ import {
   Dimensions,
   I18nManager,
   Alert,
-  Platform,
   ActivityIndicator,
+  PanResponder,
+  Modal,
+  Animated,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -18,33 +20,33 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { Button } from '../../components/common';
-import { OfferCard, PDFPageViewer, SavePageButton } from '../../components/flyers';
+import { SavePageButton } from '../../components/flyers';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { useLocalized } from '../../hooks';
-import { addToBasket, addPageToBasket, addPdfPageToBasket } from '../../store/slices/basketSlice';
+import { addToBasket, addPageToBasket } from '../../store/slices/basketSlice';
 import { getCatalogueById } from '../../data/catalogueRegistry';
 import { getOffersByCatalogue } from '../../services/offerService';
+import { formatCurrency, calculateDiscount } from '../../utils/helpers';
 import type { OfferWithCatalogue } from '../../services/offerService';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
+const SWIPE_THRESHOLD = 50;
+const SWIPE_VELOCITY_THRESHOLD = 0.3;
 
 export default function FlyerDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, page } = useLocalSearchParams<{ id: string; page?: string }>();
   const { t } = useTranslation();
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { getTitle, getName } = useLocalized();
 
   const [currentPage, setCurrentPage] = useState(0);
-  const [showPDFPageViewer, setShowPDFPageViewer] = useState(false);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [loadingPdf, setLoadingPdf] = useState(false);
-
-  // NEW: State for real offers from Firestore
   const [catalogueOffers, setCatalogueOffers] = useState<OfferWithCatalogue[]>([]);
   const [loadingOffers, setLoadingOffers] = useState(true);
+  const [fullScreenImage, setFullScreenImage] = useState(false);
 
-  const debugInfoRef = useRef<string[]>([]);
+  // Use ref to track current page for PanResponder
+  const currentPageRef = useRef(0);
 
   const catalogue = getCatalogueById(id);
   const stores = useAppSelector(state => state.stores.stores);
@@ -58,26 +60,34 @@ export default function FlyerDetailScreen() {
     branches: [],
   } : null);
 
-  const addDebugLog = (message: string) => {
-    const logEntry = `${new Date().toLocaleTimeString()}: ${message}`;
-    debugInfoRef.current = [...debugInfoRef.current, logEntry];
-    console.log('[PDF Debug]', message);
-  };
+  const totalPages = catalogue?.pages?.length || 0;
 
-  // DEBUG: Log catalogue data on mount
+  // Set initial page from URL parameter
   useEffect(() => {
-    console.log('=== FLYER DETAIL DEBUG ===');
-    console.log('Catalogue ID:', id);
-    console.log('Catalogue found:', catalogue ? 'YES' : 'NO');
-    if (catalogue) {
-      console.log('Catalogue data:', catalogue);
-      console.log('PDF URL from catalogue:', catalogue.pdfUrl);
+    if (page) {
+      const pageNumber = parseInt(page, 10);
+      if (!isNaN(pageNumber) && pageNumber > 0 && pageNumber <= totalPages) {
+        const pageIndex = pageNumber - 1; // Convert to 0-based index
+        setCurrentPage(pageIndex);
+        console.log(`📄 [FlyerDetail] Navigated to page ${pageNumber} (index ${pageIndex})`);
+      }
     }
-    console.log('Platform:', Platform.OS);
-    console.log('========================');
-  }, [id]);
+  }, [page, totalPages]);
 
-  // NEW: Load real offers from Firestore flat collection
+  // Update ref whenever currentPage changes
+  useEffect(() => {
+    currentPageRef.current = currentPage;
+  }, [currentPage]);
+
+  // Zoom state for FULLSCREEN view only
+  const scale = useRef(new Animated.Value(1)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const lastScale = useRef(1);
+  const lastTranslateX = useRef(0);
+  const lastTranslateY = useRef(0);
+
+  // Load real offers from Firestore
   useEffect(() => {
     const loadOffers = async () => {
       if (!catalogue?.id) {
@@ -87,14 +97,10 @@ export default function FlyerDetailScreen() {
 
       try {
         setLoadingOffers(true);
-        console.log('🔥 Loading offers for catalogue:', catalogue.id);
-
         const offers = await getOffersByCatalogue(catalogue.id);
         setCatalogueOffers(offers);
-
-        console.log(`✅ Loaded ${offers.length} offers from Firestore`);
       } catch (error) {
-        console.error('❌ Error loading catalogue offers:', error);
+        console.error('Error loading catalogue offers:', error);
       } finally {
         setLoadingOffers(false);
       }
@@ -103,14 +109,145 @@ export default function FlyerDetailScreen() {
     loadOffers();
   }, [catalogue?.id]);
 
-  // Filter offers for current page
+  // Reset fullscreen zoom when page changes or modal closes
+  useEffect(() => {
+    scale.setValue(1);
+    translateX.setValue(0);
+    translateY.setValue(0);
+    lastScale.current = 1;
+    lastTranslateX.current = 0;
+    lastTranslateY.current = 0;
+  }, [currentPage, fullScreenImage]);
+
+  // Calculate distance between two touches
+  const distance = (touches: any[]) => {
+    const [touch1, touch2] = touches;
+    const dx = touch1.pageX - touch2.pageX;
+    const dy = touch1.pageY - touch2.pageY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  // NORMAL VIEW: Swipe only (NO pinch-to-zoom)
+  const normalViewPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => false,
+      onMoveShouldSetPanResponder: (_, gestureState) => {
+        // Only capture horizontal swipes, not taps
+        return Math.abs(gestureState.dx) > 10;
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        const { dx, vx } = gestureState;
+        const isRTL = I18nManager.isRTL;
+
+        const page = currentPageRef.current;
+        const maxPages = totalPages;
+
+        const isFastSwipe = Math.abs(vx) > SWIPE_VELOCITY_THRESHOLD;
+        const isLongSwipe = Math.abs(dx) > SWIPE_THRESHOLD;
+
+        if (isFastSwipe || isLongSwipe) {
+          let newPage = page;
+
+          if (isRTL) {
+            if (dx > 0 && page > 0) {
+              newPage = page - 1;
+            } else if (dx < 0 && page < maxPages - 1) {
+              newPage = page + 1;
+            }
+          } else {
+            if (dx > 0 && page > 0) {
+              newPage = page - 1;
+            } else if (dx < 0 && page < maxPages - 1) {
+              newPage = page + 1;
+            }
+          }
+
+          if (newPage !== page) {
+            setCurrentPage(newPage);
+          }
+        }
+      },
+    })
+  ).current;
+
+  // FULLSCREEN: Pinch to zoom + Swipe
+  const fullScreenPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => {
+        if (evt.nativeEvent.touches.length === 2) {
+          lastScale.current = scale._value;
+        } else if (evt.nativeEvent.touches.length === 1) {
+          lastTranslateX.current = translateX._value;
+          lastTranslateY.current = translateY._value;
+        }
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        const touches = evt.nativeEvent.touches;
+
+        if (touches.length === 2) {
+          const currentDistance = distance(touches);
+          const newScale = Math.max(1, Math.min(lastScale.current * (currentDistance / 200), 4));
+          scale.setValue(newScale);
+        } else if (touches.length === 1 && lastScale.current > 1) {
+          translateX.setValue(lastTranslateX.current + gestureState.dx);
+          translateY.setValue(lastTranslateY.current + gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        const currentScale = scale._value;
+        const { dx, vx } = gestureState;
+        const isRTL = I18nManager.isRTL;
+
+        const page = currentPageRef.current;
+        const maxPages = totalPages;
+
+        const isFastSwipe = Math.abs(vx) > SWIPE_VELOCITY_THRESHOLD;
+        const isLongSwipe = Math.abs(dx) > SWIPE_THRESHOLD;
+
+        if (currentScale <= 1.1 && (isFastSwipe || isLongSwipe)) {
+          scale.setValue(1);
+          translateX.setValue(0);
+          translateY.setValue(0);
+          lastScale.current = 1;
+          lastTranslateX.current = 0;
+          lastTranslateY.current = 0;
+
+          let newPage = page;
+
+          if (isRTL) {
+            if (dx > 0 && page > 0) {
+              newPage = page - 1;
+            } else if (dx < 0 && page < maxPages - 1) {
+              newPage = page + 1;
+            }
+          } else {
+            if (dx > 0 && page > 0) {
+              newPage = page - 1;
+            } else if (dx < 0 && page < maxPages - 1) {
+              newPage = page + 1;
+            }
+          }
+
+          if (newPage !== page) {
+            setCurrentPage(newPage);
+          }
+        } else {
+          lastScale.current = currentScale;
+          lastTranslateX.current = translateX._value;
+          lastTranslateY.current = translateY._value;
+        }
+      },
+    })
+  ).current;
+
   const pageOffers = useMemo(() => {
     return catalogueOffers.filter(
       offer => offer.pageNumber === currentPage + 1
     );
   }, [catalogueOffers, currentPage]);
 
-  // Check if current page is saved
   const isPageSaved = useMemo(() => {
     if (!catalogue || !catalogue.pages || catalogue.pages.length === 0) return false;
     return basketItems.some(
@@ -121,78 +258,6 @@ export default function FlyerDetailScreen() {
     );
   }, [basketItems, catalogue?.id, currentPage]);
 
-  // Get saved PDF page numbers
-  const savedPdfPageNumbers = useMemo(() => {
-    if (!catalogue) return [];
-    return basketItems
-      .filter(item =>
-        item.type === 'pdf-page' &&
-        item.pdfPage?.catalogueId === catalogue.id
-      )
-      .map(item => item.pdfPage!.pageNumber);
-  }, [basketItems, catalogue?.id]);
-
-  // Load PDF URL on mount
-  useEffect(() => {
-    if (catalogue?.pdfUrl) {
-      loadPdfUrl();
-    }
-  }, [catalogue?.pdfUrl]);
-
-  const loadPdfUrl = async () => {
-    if (!catalogue?.pdfUrl) {
-      addDebugLog('❌ loadPdfUrl called but no PDF URL');
-      return;
-    }
-
-    setLoadingPdf(true);
-    addDebugLog(`📄 Loading PDF: ${catalogue.pdfUrl}`);
-
-    try {
-      if (Platform.OS === 'web') {
-        addDebugLog('🌐 Web platform detected');
-
-        const testUrl = catalogue.pdfUrl;
-        addDebugLog(`Testing URL: ${testUrl}`);
-
-        try {
-          const response = await fetch(testUrl, { method: 'HEAD' });
-          addDebugLog(`Fetch response status: ${response.status}`);
-
-          if (response.ok) {
-            setPdfUrl(testUrl);
-            addDebugLog('✅ PDF URL set successfully');
-          } else {
-            addDebugLog(`❌ PDF not accessible: ${response.status}`);
-            setPdfUrl(testUrl);
-          }
-        } catch (fetchError: any) {
-          addDebugLog(`⚠️ Fetch warning: ${fetchError.message}`);
-          setPdfUrl(testUrl);
-        }
-      } else {
-        addDebugLog('📱 Native platform detected');
-        setPdfUrl(catalogue.pdfUrl);
-        addDebugLog('✅ PDF URL set');
-      }
-    } catch (error: any) {
-      addDebugLog(`❌ Error in loadPdfUrl: ${error.message}`);
-      console.error('Error loading PDF:', error);
-    } finally {
-      setLoadingPdf(false);
-      addDebugLog('🏁 loadPdfUrl completed');
-    }
-  };
-
-  const showDebugInfo = () => {
-    Alert.alert(
-      'معلومات التصحيح',
-      debugInfoRef.current.join('\n') || 'لا توجد سجلات',
-      [{ text: 'موافق' }]
-    );
-  };
-
-  // Handle case where catalogue is not found
   if (!catalogue) {
     return (
       <View style={styles.errorContainer}>
@@ -227,30 +292,6 @@ export default function FlyerDetailScreen() {
     router.push(`/offer/${offer.id}`);
   };
 
-  const handleOpenPDF = () => {
-    addDebugLog('🖱️ PDF button clicked');
-
-    if (!catalogue.pdfUrl && (!catalogue.pages || catalogue.pages.length === 0)) {
-      addDebugLog('❌ No PDF URL or pages available');
-      Alert.alert('خطأ', 'لا يوجد محتوى متوفر لهذا الكتالوج');
-      return;
-    }
-
-    if (loadingPdf) {
-      addDebugLog('⏳ Still loading PDF');
-      Alert.alert('انتظر', 'جاري تحميل ملف PDF...');
-      return;
-    }
-
-    const pageImages = catalogue.pages && catalogue.pages.length > 0
-      ? catalogue.pages.map(page => page.imageUrl)
-      : [];
-
-    addDebugLog(`✅ Opening viewer with ${pageImages.length} images or PDF`);
-
-    setShowPDFPageViewer(true);
-  };
-
   const handleSavePage = () => {
     if (!currentPageData) {
       Alert.alert('خطأ', 'لا توجد صفحة للحفظ');
@@ -274,19 +315,64 @@ export default function FlyerDetailScreen() {
     Alert.alert('نجح', 'تم حفظ الصفحة في السلة');
   };
 
-  const handleSavePdfPage = (pageNumber: number, pageImageUri: string) => {
-    dispatch(
-      addPdfPageToBasket({
-        catalogueId: catalogue.id,
-        catalogueTitle: catalogue.titleAr,
-        storeId: catalogue.storeId,
-        storeName: store?.nameAr || '',
-        pageNumber,
-        pageImageUri,
-      })
-    );
+  const handleNavPress = (direction: 'prev' | 'next') => {
+    if (direction === 'prev' && currentPage > 0) {
+      setCurrentPage(currentPage - 1);
+    } else if (direction === 'next' && currentPage < totalPages - 1) {
+      setCurrentPage(currentPage + 1);
+    }
+  };
 
-    Alert.alert('تم الحفظ', `تم حفظ الصفحة ${pageNumber} في السلة`);
+  const renderOfferThumbnail = (offer: OfferWithCatalogue) => {
+    const discount = offer.originalPrice
+      ? calculateDiscount(offer.originalPrice, offer.offerPrice)
+      : 0;
+
+    return (
+      <TouchableOpacity
+        key={offer.id}
+        style={styles.offerThumbnail}
+        onPress={() => handleOfferPress(offer)}
+        activeOpacity={0.7}
+      >
+        <View style={styles.thumbnailImageContainer}>
+          <Image
+            source={{ uri: offer.imageUrl }}
+            style={styles.thumbnailImage}
+            resizeMode="cover"
+          />
+          {discount > 0 && (
+            <View style={styles.thumbnailDiscountBadge}>
+              <Text style={styles.thumbnailDiscountText}>{discount}%</Text>
+            </View>
+          )}
+        </View>
+
+        <View style={styles.thumbnailContent}>
+          <Text style={styles.thumbnailName} numberOfLines={2}>
+            {offer.nameAr}
+          </Text>
+
+          <View style={styles.thumbnailPriceRow}>
+            <Text style={styles.thumbnailOfferPrice}>
+              {formatCurrency(offer.offerPrice)}
+            </Text>
+            {offer.originalPrice && (
+              <Text style={styles.thumbnailOriginalPrice}>
+                {formatCurrency(offer.originalPrice)}
+              </Text>
+            )}
+          </View>
+
+          <TouchableOpacity
+            style={styles.thumbnailAddButton}
+            onPress={() => handleAddToBasket(offer)}
+          >
+            <Ionicons name="add" size={16} color={colors.white} />
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    );
   };
 
   return (
@@ -296,155 +382,79 @@ export default function FlyerDetailScreen() {
           headerShown: true,
           title: catalogue.titleAr || getTitle(catalogue),
           headerBackTitle: 'عودة',
-          headerRight: () => (
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              {__DEV__ && (
-                <TouchableOpacity
-                  onPress={showDebugInfo}
-                  style={styles.headerButton}
-                >
-                  <Ionicons name="bug-outline" size={20} color={colors.gray[600]} />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity
-                onPress={handleOpenPDF}
-                style={styles.headerButton}
-                disabled={loadingPdf}
-              >
-                <Ionicons
-                  name="document-text-outline"
-                  size={24}
-                  color={loadingPdf ? colors.gray[400] : colors.primary}
-                />
-              </TouchableOpacity>
-            </View>
-          ),
         }}
       />
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Debug Info Banner */}
-        {__DEV__ && (
-          <View style={styles.debugBanner}>
-            <Text style={styles.debugText}>
-              🛠 PDF: {pdfUrl ? '✅' : '⏳'} | Offers: {catalogueOffers.length} | ID: {catalogue.id}
-            </Text>
-            <Text style={styles.debugTextSmall}>
-              Path: {catalogue.pdfUrl}
-            </Text>
-          </View>
-        )}
-
-        {/* Store Header */}
-        <View style={styles.header}>
-          <Image
-            source={{ uri: store.logo }}
-            style={styles.storeLogo}
-            resizeMode="contain"
-          />
-          <View style={styles.headerInfo}>
-            <Text style={styles.catalogueTitle}>{catalogue.titleAr}</Text>
-            <Text style={styles.validDate}>
-              {t('flyers.validUntil')}: {catalogue.endDate}
-            </Text>
-          </View>
-        </View>
-
-        {/* Flyer Page Viewer */}
         {hasPages ? (
           <View style={styles.pageContainer}>
-            <Image
-              source={{ uri: currentPageData?.imageUrl }}
-              style={styles.pageImage}
-              resizeMode="contain"
-            />
-
-            {/* Page Navigation */}
-            <View style={styles.pageNavigation}>
+            <View {...normalViewPan.panHandlers} style={styles.swipeContainer}>
               <TouchableOpacity
-                style={[styles.navButton, currentPage === 0 && styles.navButtonDisabled]}
-                onPress={() => setCurrentPage(p => Math.max(0, p - 1))}
-                disabled={currentPage === 0}
+                activeOpacity={0.9}
+                onPress={() => setFullScreenImage(true)}
               >
-                <Ionicons
-                  name={I18nManager.isRTL ? 'chevron-forward' : 'chevron-back'}
-                  size={24}
-                  color={currentPage === 0 ? colors.gray[400] : colors.white}
-                />
-              </TouchableOpacity>
-
-              <Text style={styles.pageIndicator}>
-                {currentPage + 1} / {catalogue.pages.length}
-              </Text>
-
-              <TouchableOpacity
-                style={[
-                  styles.navButton,
-                  currentPage === catalogue.pages.length - 1 && styles.navButtonDisabled,
-                ]}
-                onPress={() => setCurrentPage(p => Math.min(catalogue.pages.length - 1, p + 1))}
-                disabled={currentPage === catalogue.pages.length - 1}
-              >
-                <Ionicons
-                  name={I18nManager.isRTL ? 'chevron-back' : 'chevron-forward'}
-                  size={24}
-                  color={currentPage === catalogue.pages.length - 1 ? colors.gray[400] : colors.white}
+                <Image
+                  source={{ uri: currentPageData?.imageUrl }}
+                  style={styles.pageImage}
+                  resizeMode="contain"
                 />
               </TouchableOpacity>
             </View>
+
+            <View style={styles.pageNavigationCenter}>
+              <View style={styles.navControls}>
+                <TouchableOpacity
+                  style={[styles.navButton, currentPage === 0 && styles.navButtonDisabled]}
+                  onPress={() => handleNavPress('prev')}
+                  disabled={currentPage === 0}
+                >
+                  <Ionicons
+                    name={I18nManager.isRTL ? "chevron-forward" : "chevron-back"}
+                    size={24}
+                    color={currentPage === 0 ? colors.gray[400] : colors.white}
+                  />
+                </TouchableOpacity>
+
+                <View style={styles.pageIndicatorBadge}>
+                  <Text style={styles.pageIndicator}>
+                    {currentPage + 1} / {catalogue.pages.length}
+                  </Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[
+                    styles.navButton,
+                    currentPage === catalogue.pages.length - 1 && styles.navButtonDisabled,
+                  ]}
+                  onPress={() => handleNavPress('next')}
+                  disabled={currentPage === catalogue.pages.length - 1}
+                >
+                  <Ionicons
+                    name={I18nManager.isRTL ? "chevron-back" : "chevron-forward"}
+                    size={24}
+                    color={currentPage === catalogue.pages.length - 1 ? colors.gray[400] : colors.white}
+                  />
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         ) : (
-          /* No pages - show PDF directly */
           <View style={styles.noPagesContainer}>
             <Ionicons name="document-text" size={64} color={colors.primary} />
             <Text style={styles.noPagesText}>
-              هذا الكتالوج متوفر كملف PDF فقط
+              لا توجد صور لهذا الكتالوج
             </Text>
-            <TouchableOpacity
-              style={styles.viewPdfButton}
-              onPress={handleOpenPDF}
-              disabled={loadingPdf}
-            >
-              <Ionicons name="eye-outline" size={20} color={colors.white} />
-              <Text style={styles.viewPdfButtonText}>
-                {loadingPdf ? 'جاري التحميل...' : 'عرض الكتالوج PDF'}
-              </Text>
-            </TouchableOpacity>
           </View>
         )}
 
-        {/* Save Page Button */}
         {hasPages && (
           <View style={styles.savePageSection}>
             <SavePageButton
               isSaved={isPageSaved}
               onPress={handleSavePage}
             />
-            {catalogue.pdfUrl && (
-              <TouchableOpacity
-                style={[
-                  styles.pdfButton,
-                  loadingPdf && styles.pdfButtonDisabled
-                ]}
-                onPress={handleOpenPDF}
-                disabled={loadingPdf}
-              >
-                <Ionicons
-                  name="document-text-outline"
-                  size={20}
-                  color={loadingPdf ? colors.gray[400] : colors.primary}
-                />
-                <Text style={[
-                  styles.pdfButtonText,
-                  loadingPdf && styles.pdfButtonTextDisabled
-                ]}>
-                  {loadingPdf ? 'جاري التحميل...' : 'عرض PDF'}
-                </Text>
-              </TouchableOpacity>
-            )}
           </View>
         )}
 
-        {/* NEW: Real Offers from Firestore */}
         {loadingOffers ? (
           <View style={styles.loadingSection}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -452,46 +462,112 @@ export default function FlyerDetailScreen() {
           </View>
         ) : pageOffers.length > 0 ? (
           <View style={styles.offersSection}>
-            <Text style={styles.sectionTitle}>عروض هذه الصفحة ({pageOffers.length})</Text>
-            <View style={styles.offersGrid}>
-              {pageOffers.map(offer => (
-                <OfferCard
-                  key={offer.id}
-                  offer={offer}
-                  onPress={() => handleOfferPress(offer)}
-                  onAddToBasket={() => handleAddToBasket(offer)}
-                />
-              ))}
+            <View style={styles.thumbnailsGrid}>
+              {pageOffers.map(renderOfferThumbnail)}
             </View>
           </View>
         ) : hasPages ? (
           <View style={styles.noOffersContainer}>
             <Ionicons name="pricetags-outline" size={48} color={colors.gray[400]} />
-            <Text style={styles.noOffersText}>لا توجد عروض في هذه الصفحة</Text>
+            <Text style={styles.noOffersText}> يمكنك اضافة الصفحه بكاملها الي السله - لا توجد عروض مسجله </Text>
           </View>
         ) : null}
 
         <View style={styles.bottomPadding} />
       </ScrollView>
 
-      {/* PDF Page Viewer Modal */}
-      {showPDFPageViewer && (
-        <PDFPageViewer
-          visible={showPDFPageViewer}
-          pdfUrl={catalogue.pdfUrl || pdfUrl}
-          pageImages={catalogue.pages?.map(page => page.imageUrl) || []}
-          catalogueTitle={catalogue.titleAr}
-          catalogueId={catalogue.id}
-          storeId={catalogue.storeId}
-          storeName={store?.nameAr || ''}
-          onClose={() => {
-            addDebugLog('🔒 Closing PDF page viewer');
-            setShowPDFPageViewer(false);
-          }}
-          onSavePage={handleSavePdfPage}
-          savedPageNumbers={savedPdfPageNumbers}
-        />
-      )}
+      {/* Fullscreen Modal with Pinch-to-Zoom */}
+      <Modal
+        visible={fullScreenImage}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setFullScreenImage(false)}
+      >
+        <View style={styles.fullScreenContainer}>
+          <TouchableOpacity
+            style={styles.closeButton}
+            onPress={() => setFullScreenImage(false)}
+          >
+            <Ionicons name="close" size={32} color={colors.white} />
+          </TouchableOpacity>
+
+          <View
+            style={styles.fullScreenImageWrapper}
+            {...fullScreenPan.panHandlers}
+          >
+            <Animated.View
+              style={{
+                transform: [
+                  { scale: scale },
+                  { translateX: translateX },
+                  { translateY: translateY },
+                ],
+              }}
+            >
+              <Image
+                source={{ uri: currentPageData?.imageUrl }}
+                style={styles.fullScreenImage}
+                resizeMode="contain"
+              />
+            </Animated.View>
+          </View>
+
+          <Animated.View
+            style={[
+              styles.zoomIndicator,
+              {
+                opacity: scale.interpolate({
+                  inputRange: [1, 2],
+                  outputRange: [0, 1],
+                }),
+              },
+            ]}
+          >
+            <Ionicons name="expand" size={20} color={colors.white} />
+            <Animated.Text style={styles.zoomText}>
+              {scale.interpolate({
+                inputRange: [1, 4],
+                outputRange: ['1x', '4x'],
+              })}
+            </Animated.Text>
+          </Animated.View>
+
+          <View style={styles.fullScreenNav}>
+            <TouchableOpacity
+              style={[styles.fullScreenNavButton, currentPage === 0 && styles.navButtonDisabled]}
+              onPress={() => handleNavPress('prev')}
+              disabled={currentPage === 0}
+            >
+              <Ionicons
+                name={I18nManager.isRTL ? "chevron-forward" : "chevron-back"}
+                size={28}
+                color={colors.white}
+              />
+            </TouchableOpacity>
+
+            <View style={styles.fullScreenPageIndicator}>
+              <Text style={styles.fullScreenPageText}>
+                {currentPage + 1} / {totalPages}
+              </Text>
+            </View>
+
+            <TouchableOpacity
+              style={[
+                styles.fullScreenNavButton,
+                currentPage === totalPages - 1 && styles.navButtonDisabled,
+              ]}
+              onPress={() => handleNavPress('next')}
+              disabled={currentPage === totalPages - 1}
+            >
+              <Ionicons
+                name={I18nManager.isRTL ? "chevron-back" : "chevron-forward"}
+                size={28}
+                color={colors.white}
+              />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }
@@ -519,88 +595,62 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     marginBottom: spacing.lg,
   },
-  headerButton: {
-    padding: spacing.sm,
-  },
-  debugBanner: {
-    backgroundColor: colors.warning,
-    padding: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[300],
-  },
-  debugText: {
-    fontSize: typography.fontSize.sm,
-    fontWeight: '600',
-    color: colors.text,
-  },
-  debugTextSmall: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-  },
-  header: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    padding: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray[200],
-  },
-  storeLogo: {
-    width: 50,
-    height: 50,
-    borderRadius: borderRadius.md,
-    backgroundColor: colors.gray[100],
-    marginRight: I18nManager.isRTL ? 0 : spacing.md,
-    marginLeft: I18nManager.isRTL ? spacing.md : 0,
-  },
-  headerInfo: {
-    flex: 1,
-  },
-  catalogueTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: 'bold',
-    color: colors.text,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-  },
-  validDate: {
-    fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-  },
   pageContainer: {
     backgroundColor: colors.gray[900],
     margin: spacing.md,
     borderRadius: borderRadius.lg,
     overflow: 'hidden',
+    position: 'relative',
+  },
+  swipeContainer: {
+    overflow: 'hidden',
   },
   pageImage: {
     width: '100%',
-    height: 400,
+    height: 480,
     backgroundColor: colors.gray[200],
   },
-  pageNavigation: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.md,
-    backgroundColor: 'rgba(0,0,0,0.7)',
+  pageNavigationCenter: {
     position: 'absolute',
-    bottom: 0,
+    bottom: spacing.md,
     left: 0,
     right: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  navControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingHorizontal: spacing.md,
   },
   navButton: {
-    width: 40,
-    height: 40,
+    width: 50,
+    height: 50,
     borderRadius: borderRadius.full,
-    backgroundColor: colors.primary,
+    backgroundColor: 'rgba(230, 57, 70, 0.9)',
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   navButtonDisabled: {
-    backgroundColor: colors.gray[600],
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  pageIndicatorBadge: {
+    backgroundColor: 'rgba(100, 100, 100, 0.4)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
   pageIndicator: {
     color: colors.white,
@@ -618,52 +668,11 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.md,
     color: colors.textSecondary,
     marginTop: spacing.md,
-    marginBottom: spacing.lg,
     textAlign: 'center',
   },
-  viewPdfButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.md,
-    gap: spacing.sm,
-  },
-  viewPdfButtonText: {
-    color: colors.white,
-    fontSize: typography.fontSize.md,
-    fontWeight: '600',
-  },
   savePageSection: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    gap: spacing.sm,
-  },
-  pdfButton: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.white,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-    borderWidth: 1,
-    borderColor: colors.primary,
-  },
-  pdfButtonDisabled: {
-    borderColor: colors.gray[300],
-  },
-  pdfButtonText: {
-    fontSize: typography.fontSize.md,
-    fontWeight: '600',
-    color: colors.primary,
-    marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
-    marginRight: I18nManager.isRTL ? spacing.xs : 0,
-  },
-  pdfButtonTextDisabled: {
-    color: colors.gray[400],
   },
   loadingSection: {
     padding: spacing.xl,
@@ -680,17 +689,80 @@ const styles = StyleSheet.create({
   offersSection: {
     padding: spacing.md,
   },
-  sectionTitle: {
-    fontSize: typography.fontSize.xl,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: spacing.md,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
-  },
-  offersGrid: {
+  thumbnailsGrid: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+  },
+  offerThumbnail: {
+    width: '23.5%',
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.sm,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  thumbnailImageContainer: {
+    position: 'relative',
+    height: 80,
+    backgroundColor: colors.gray[100],
+  },
+  thumbnailImage: {
+    width: '100%',
+    height: '100%',
+  },
+  thumbnailDiscountBadge: {
+    position: 'absolute',
+    top: spacing.xs,
+    left: I18nManager.isRTL ? undefined : spacing.xs,
+    right: I18nManager.isRTL ? spacing.xs : undefined,
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: borderRadius.xs,
+  },
+  thumbnailDiscountText: {
+    color: colors.white,
+    fontSize: 8,
+    fontWeight: 'bold',
+  },
+  thumbnailContent: {
+    padding: spacing.xs,
+  },
+  thumbnailName: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.text,
+    marginBottom: 2,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    minHeight: 28,
+  },
+  thumbnailPriceRow: {
+    flexDirection: 'column',
+    alignItems: I18nManager.isRTL ? 'flex-end' : 'flex-start',
+    marginBottom: spacing.xs,
+    gap: 2,
+  },
+  thumbnailOfferPrice: {
+    fontSize: 11,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  thumbnailOriginalPrice: {
+    fontSize: 9,
+    color: colors.textSecondary,
+    textDecorationLine: 'line-through',
+  },
+  thumbnailAddButton: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.sm,
+    padding: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   noOffersContainer: {
     padding: spacing.xl,
@@ -707,5 +779,82 @@ const styles = StyleSheet.create({
   },
   bottomPadding: {
     height: spacing.xl,
+  },
+  fullScreenContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: 50,
+    right: I18nManager.isRTL ? undefined : 20,
+    left: I18nManager.isRTL ? 20 : undefined,
+    zIndex: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: borderRadius.full,
+    padding: spacing.sm,
+  },
+  fullScreenImageWrapper: {
+    flex: 1,
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullScreenImage: {
+    width: width,
+    height: height * 0.8,
+  },
+  zoomIndicator: {
+    position: 'absolute',
+    top: 100,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
+  zoomText: {
+    color: colors.white,
+    fontSize: typography.fontSize.sm,
+    fontWeight: '600',
+  },
+  fullScreenNav: {
+    position: 'absolute',
+    bottom: 40,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.lg,
+  },
+  fullScreenNavButton: {
+    width: 60,
+    height: 60,
+    borderRadius: borderRadius.full,
+    backgroundColor: 'rgba(230, 57, 70, 0.9)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    elevation: 8,
+  },
+  fullScreenPageIndicator: {
+    backgroundColor: 'rgba(100, 100, 100, 0.6)',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.full,
+  },
+  fullScreenPageText: {
+    color: colors.white,
+    fontSize: typography.fontSize.lg,
+    fontWeight: 'bold',
   },
 });
