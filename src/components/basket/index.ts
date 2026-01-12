@@ -1,3 +1,4 @@
+// src/components/basket/index.ts
 export { BasketItemCard } from './BasketItemCard';
 export { SavedPageCard } from './SavedPageCard';
-export { SavedPdfPageCard } from './SavedPdfPageCard';
+// SavedPdfPageCard removed - no longer needed

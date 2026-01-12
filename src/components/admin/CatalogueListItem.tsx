@@ -1,11 +1,10 @@
+// src/components/admin/CatalogueListItem.tsx
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, I18nManager, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
 import { Catalogue } from '../../types';
-import { PDFProcessor } from './PDFProcessor';
 import { CatalogueOfferManager } from './CatalogueOfferManager';
-import * as Clipboard from 'expo-clipboard';
 
 interface CatalogueListItemProps {
   catalogue: Catalogue;
@@ -21,7 +20,6 @@ export const CatalogueListItem: React.FC<CatalogueListItemProps> = ({
   onProcessComplete,
 }) => {
   const [showOfferManager, setShowOfferManager] = useState(false);
-  const [copied, setCopied] = useState(false);
 
   const formatDate = (dateStr: string) => {
     try {
@@ -32,21 +30,51 @@ export const CatalogueListItem: React.FC<CatalogueListItemProps> = ({
     }
   };
 
-  const handleCopyId = async () => {
-    await Clipboard.setStringAsync(catalogue.id);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+  const hasPages = catalogue.pages && catalogue.pages.length > 0;
+  const hasPDF = !!catalogue.pdfUrl;
+  const isPending = catalogue.processingStatus === 'pending';
+
+  // Determine upload type and status
+  let uploadTypeInfo = {
+    icon: 'images' as const,
+    color: colors.success,
+    text: 'صور فقط',
   };
 
-  const hasPages = catalogue.pages && catalogue.pages.length > 0;
+  if (hasPDF) {
+    if (isPending) {
+      uploadTypeInfo = {
+        icon: 'hourglass-outline' as const,
+        color: colors.warning,
+        text: 'PDF (بانتظار المعالجة)',
+      };
+    } else if (hasPages) {
+      uploadTypeInfo = {
+        icon: 'document-text' as const,
+        color: colors.primary,
+        text: 'PDF (تم تحويله)',
+      };
+    } else {
+      uploadTypeInfo = {
+        icon: 'document' as const,
+        color: colors.info,
+        text: 'PDF فقط',
+      };
+    }
+  }
 
   return (
     <>
       <View style={styles.container}>
         <View style={styles.content}>
+          {/* Header with title and delete button */}
           <View style={styles.header}>
             <View style={styles.titleContainer}>
-              <Ionicons name="document-text" size={24} color={colors.primary} />
+              <Ionicons
+                name={uploadTypeInfo.icon}
+                size={24}
+                color={uploadTypeInfo.color}
+              />
               <View style={styles.titleText}>
                 <Text style={styles.title} numberOfLines={1}>
                   {catalogue.titleAr}
@@ -63,13 +91,28 @@ export const CatalogueListItem: React.FC<CatalogueListItemProps> = ({
             )}
           </View>
 
-          {/* Catalogue ID - Clickable to copy */}
-          <TouchableOpacity onPress={handleCopyId} style={styles.idContainer}>
-            <Ionicons name="key-outline" size={14} color={colors.textSecondary} />
-            <Text style={styles.idText}>{catalogue.id}</Text>
-            {copied && <Text style={styles.copiedText}>تم النسخ!</Text>}
-          </TouchableOpacity>
+          {/* Upload Type Badge */}
+          <View style={styles.uploadTypeBadge}>
+            <Ionicons
+              name={uploadTypeInfo.icon}
+              size={14}
+              color={uploadTypeInfo.color}
+            />
+            <Text style={[
+              styles.uploadTypeText,
+              { color: uploadTypeInfo.color }
+            ]}>
+              {uploadTypeInfo.text}
+            </Text>
+          </View>
 
+          {/* Catalogue ID - Display only (no copy functionality) */}
+          <View style={styles.idContainer}>
+            <Ionicons name="key-outline" size={14} color={colors.textSecondary} />
+            <Text style={styles.idText} selectable>{catalogue.id}</Text>
+          </View>
+
+          {/* Info section */}
           <View style={styles.info}>
             <View style={styles.infoItem}>
               <Ionicons name="storefront-outline" size={16} color={colors.textSecondary} />
@@ -83,8 +126,9 @@ export const CatalogueListItem: React.FC<CatalogueListItemProps> = ({
             </View>
           </View>
 
+          {/* Badges section */}
           <View style={styles.badges}>
-            {catalogue.pdfUrl && (
+            {hasPDF && (
               <View style={[styles.badge, styles.badgePdf]}>
                 <Ionicons name="document" size={14} color={colors.primary} />
                 <Text style={[styles.badgeText, styles.badgeTextPdf]}>PDF متوفر</Text>
@@ -98,6 +142,12 @@ export const CatalogueListItem: React.FC<CatalogueListItemProps> = ({
                 </Text>
               </View>
             )}
+            {isPending && (
+              <View style={[styles.badge, styles.badgePending]}>
+                <Ionicons name="time-outline" size={14} color={colors.warning} />
+                <Text style={[styles.badgeText, styles.badgeTextPending]}>قيد المعالجة</Text>
+              </View>
+            )}
           </View>
 
           {/* Manage Offers Button */}
@@ -108,11 +158,6 @@ export const CatalogueListItem: React.FC<CatalogueListItemProps> = ({
             <Ionicons name="pricetag-outline" size={18} color={colors.white} />
             <Text style={styles.manageOffersText}>إدارة العروض</Text>
           </TouchableOpacity>
-
-          {/* PDF Processor - Only show for web platform and if PDF exists but no pages */}
-          {catalogue.pdfUrl && !hasPages && typeof window !== 'undefined' && (
-            <PDFProcessor catalogue={catalogue} onComplete={onProcessComplete} />
-          )}
         </View>
       </View>
 
@@ -175,6 +220,21 @@ const styles = StyleSheet.create({
   deleteButton: {
     padding: spacing.xs,
   },
+  uploadTypeBadge: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    alignSelf: I18nManager.isRTL ? 'flex-end' : 'flex-start',
+    backgroundColor: colors.gray[100],
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.sm,
+    marginBottom: spacing.sm,
+    gap: spacing.xs,
+  },
+  uploadTypeText: {
+    fontSize: typography.fontSize.xs,
+    fontWeight: '600',
+  },
   idContainer: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
@@ -190,12 +250,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
     fontFamily: 'monospace',
-  },
-  copiedText: {
-    fontSize: typography.fontSize.xs,
-    color: colors.success,
-    fontWeight: '600',
-    marginLeft: spacing.xs,
   },
   info: {
     gap: spacing.xs,
@@ -230,6 +284,9 @@ const styles = StyleSheet.create({
   badgeProcessed: {
     backgroundColor: colors.success + '20',
   },
+  badgePending: {
+    backgroundColor: colors.warning + '20',
+  },
   badgeText: {
     fontSize: typography.fontSize.xs,
     fontWeight: '600',
@@ -239,6 +296,9 @@ const styles = StyleSheet.create({
   },
   badgeTextProcessed: {
     color: colors.success,
+  },
+  badgeTextPending: {
+    color: colors.warning,
   },
   manageOffersButton: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',

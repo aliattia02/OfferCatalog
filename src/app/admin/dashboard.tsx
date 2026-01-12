@@ -15,7 +15,15 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
 import { getAllCatalogues, deleteCatalogue } from '../../services/adminService';
-import { refreshCatalogues, setCataloguesCache } from '../../data/catalogueRegistry';
+import { refreshCatalogues } from '../../data/catalogueRegistry';
+import {
+  fixExistingCatalogues,
+  deleteAllOffers,
+  deleteOrphanedOffers,
+  getDatabaseStats,
+  migrateBTechCatalogue,
+  validateCatalogueStructure
+} from '../../utils/cleanupCatalogues';
 import { Catalogue } from '../../types';
 import { CatalogueUploadForm } from '../../components/admin/CatalogueUploadForm';
 import { CatalogueListItem } from '../../components/admin/CatalogueListItem';
@@ -26,6 +34,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showUploadForm, setShowUploadForm] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [runningCleanup, setRunningCleanup] = useState(false);
 
   // Get admin status
   const { isAdmin } = useAppSelector((state) => state.auth);
@@ -34,13 +44,164 @@ export default function AdminDashboard() {
     loadCatalogues();
   }, []);
 
+  const handleRunCleanup = async () => {
+    const options = [
+      '1. تنظيف الكتالوجات (إضافة حقل ID)',
+      '2. حذف العروض اليتيمة',
+      '3. حذف جميع العروض (خطير!)',
+      '4. عرض إحصائيات قاعدة البيانات',
+      '5. 🚀 ترحيل عروض B.TECH (تحديث المعرف)',
+      '6. ✅ التحقق من صحة البيانات',
+    ];
+
+    const choice = Platform.OS === 'web'
+      ? window.prompt(
+          'اختر عملية التنظيف:\n\n' +
+          options.join('\n') +
+          '\n\nأدخل الرقم (1-6):'
+        )
+      : await new Promise<string | null>(resolve => {
+          Alert.alert(
+            'أداة التنظيف',
+            'اختر عملية:',
+            [
+              { text: 'إلغاء', style: 'cancel', onPress: () => resolve(null) },
+              { text: '1. تنظيف الكتالوجات', onPress: () => resolve('1') },
+              { text: '2. حذف العروض ', onPress: () => resolve('2') },
+              { text: '3. حذف جميع العروض', style: 'destructive', onPress: () => resolve('3') },
+              { text: '4. عرض الإحصائيات', onPress: () => resolve('4') },
+              { text: '5. ترحيل B.TECH', onPress: () => resolve('5') },
+              { text: '6. التحقق', onPress: () => resolve('6') },
+            ]
+          );
+        });
+
+    if (!choice) return;
+
+    try {
+      setRunningCleanup(true);
+
+      switch (choice) {
+        case '1':
+          await fixExistingCatalogues();
+          showAlert('✅ نجح', 'تم تنظيف الكتالوجات بنجاح!');
+          await loadCatalogues();
+          break;
+
+        case '2':
+          await deleteOrphanedOffers();
+          showAlert('✅ نجح', 'تم حذف العروض اليتيمة بنجاح!');
+          break;
+
+        case '3':
+          const confirmNuclear = Platform.OS === 'web'
+            ? window.confirm(
+                '⚠️ تحذير خطير!\n\n' +
+                'هذا سيحذف جميع العروض من:\n' +
+                '• المجموعة المسطحة (offers)\n' +
+                '• جميع المجموعات الفرعية\n\n' +
+                'هل أنت متأكد تماماً؟'
+              )
+            : await new Promise(resolve => {
+                Alert.alert(
+                  '⚠️ تحذير خطير!',
+                  'هذا سيحذف جميع العروض!\n\nهل أنت متأكد؟',
+                  [
+                    { text: 'إلغاء', style: 'cancel', onPress: () => resolve(false) },
+                    { text: 'حذف الكل', style: 'destructive', onPress: () => resolve(true) },
+                  ]
+                );
+              });
+
+          if (confirmNuclear) {
+            await deleteAllOffers();
+            showAlert('✅ تم', 'تم حذف جميع العروض!');
+          }
+          break;
+
+        case '4':
+          await getDatabaseStats();
+          showAlert('📊 الإحصائيات', 'تحقق من Console للتفاصيل');
+          break;
+
+        case '5':
+          // B.TECH Migration - Updated message
+          const confirmMigration = Platform.OS === 'web'
+            ? window.confirm(
+                '🚀 ترحيل عروض B.TECH\n\n' +
+                'سيتم تحديث العروض لتستخدم:\n' +
+                'المعرف الجديد: btech-2026-01-01-0200\n\n' +
+                'سيتم تحديث:\n' +
+                '• العروض في المجموعة المسطحة (offers)\n' +
+                '• العروض في المجموعات الفرعية\n\n' +
+                'هل تريد المتابعة؟'
+              )
+            : await new Promise(resolve => {
+                Alert.alert(
+                  '🚀 ترحيل B.TECH',
+                  'سيتم تحديث عروض الكتالوج\n\nهل تريد المتابعة؟',
+                  [
+                    { text: 'إلغاء', style: 'cancel', onPress: () => resolve(false) },
+                    { text: 'ترحيل', onPress: () => resolve(true) },
+                  ]
+                );
+              });
+
+          if (confirmMigration) {
+            const result = await migrateBTechCatalogue();
+
+            if (result.success) {
+              showAlert(
+                '✅ تم الترحيل',
+                `تم ترحيل كتالوج B.TECH بنجاح!\n\n` +
+                `المعرف الجديد: ${result.newId}\n` +
+                `العروض المحدثة: ${result.flatOffersCount || 0} (مسطح) + ${result.subcollectionOffersCount || 0} (فرعي)`
+              );
+            } else {
+              showAlert('ℹ️ معلومات', result.message);
+            }
+
+            await loadCatalogues();
+          }
+          break;
+
+        case '6':
+          // Validation
+          await validateCatalogueStructure();
+          showAlert('🔍 التحقق', 'تحقق من Console للتفاصيل');
+          break;
+      }
+
+    } catch (error: any) {
+      showAlert('❌ خطأ', error.message);
+    } finally {
+      setRunningCleanup(false);
+    }
+  };
+
+  const showAlert = (title: string, message: string) => {
+    if (Platform.OS === 'web') {
+      alert(`${title}\n\n${message}`);
+    } else {
+      Alert.alert(title, message);
+    }
+  };
+
   const loadCatalogues = async () => {
     try {
       console.log('📄 [Admin] Loading catalogues...');
       setLoading(true);
       const data = await getAllCatalogues();
-      setCatalogues(data);
-      console.log(`✅ [Admin] Loaded ${data.length} catalogues`);
+
+      // Sort by creation date (newest first)
+      const sorted = data.sort((a, b) => {
+        const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return dateB - dateA;
+      });
+
+      setCatalogues(sorted);
+      console.log(`✅ [Admin] Loaded ${sorted.length} catalogues`);
     } catch (error: any) {
       console.error('❌ [Admin] Error loading catalogues:', error);
 
@@ -71,12 +232,29 @@ export default function AdminDashboard() {
       return;
     }
 
+    // Prepare deletion details
+    const hasPages = catalogue.pages && catalogue.pages.length > 0;
+    const hasPDF = !!catalogue.pdfUrl;
+    const pageCount = catalogue.pages?.length || 0;
+
+    const deletionInfo = [
+      `📦 الكتالوج: ${catalogue.titleAr}`,
+      `📝 نوع الرفع: ${hasPDF ? 'PDF (تم تحويله)' : 'صور فقط'}`,
+      `📄 عدد الصفحات: ${pageCount}`,
+      '',
+      '⚠️ سيتم حذف:',
+      '• بيانات Firestore',
+      hasPDF ? '• ملف PDF الأصلي' : '',
+      '• صورة الغلاف',
+      `• ${pageCount} صورة صفحة`,
+      '• جميع العروض المرتبطة',
+      '',
+      '⚫ هذا الإجراء لا يمكن التراجع عنه.'
+    ].filter(Boolean).join('\n');
+
     // Web-compatible confirmation
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm(
-        `هل أنت متأكد من حذف كتالوج "${catalogue.titleAr}"؟\n\n` +
-        'هذا الإجراء لا يمكن التراجع عنه.'
-      );
+      const confirmed = window.confirm(deletionInfo);
 
       if (!confirmed) {
         console.log('🔴 [Admin] User cancelled delete');
@@ -89,7 +267,7 @@ export default function AdminDashboard() {
       // Native Alert
       Alert.alert(
         'تأكيد الحذف',
-        `هل أنت متأكد من حذف كتالوج "${catalogue.titleAr}"؟`,
+        deletionInfo,
         [
           {
             text: 'إلغاء',
@@ -108,26 +286,49 @@ export default function AdminDashboard() {
 
   const performDelete = async (catalogue: Catalogue) => {
     try {
-      console.log(`🗑️ [Admin] Deleting catalogue: ${catalogue.id}`);
-      await deleteCatalogue(catalogue.id, catalogue.pdfUrl || '');
+      setDeletingId(catalogue.id);
+      console.log(`🗑️ [Admin] Starting deletion: ${catalogue.id}`);
 
+      // Show progress indicator
       if (Platform.OS === 'web') {
-        alert('✅ تم حذف الكتالوج بنجاح');
-      } else {
-        Alert.alert('✅ نجح', 'تم حذف الكتالوج بنجاح');
+        console.log('⏳ جاري الحذف...');
       }
 
+      // Call the improved delete function with pdfUrl
+      await deleteCatalogue(catalogue.id, catalogue.pdfUrl);
+
+      console.log('✅ [Admin] Catalogue deleted successfully');
+
+      if (Platform.OS === 'web') {
+        alert('✅ تم حذف الكتالوج بنجاح\n\nتم حذف جميع الملفات المرتبطة');
+      } else {
+        Alert.alert(
+          '✅ نجح',
+          'تم حذف الكتالوج بنجاح\n\nتم حذف جميع الملفات المرتبطة'
+        );
+      }
+
+      // Reload catalogues
       await loadCatalogues();
+
       // Also refresh the cache
       await refreshCatalogues();
+
     } catch (error: any) {
       console.error('❌ [Admin] Error deleting catalogue:', error);
 
+      const errorMessage = error.message || 'حدث خطأ غير متوقع';
+
       if (Platform.OS === 'web') {
-        alert('❌ خطأ: فشل حذف الكتالوج - ' + (error.message || 'حدث خطأ غير متوقع'));
+        alert('❌ خطأ: فشل حذف الكتالوج\n\n' + errorMessage);
       } else {
-        Alert.alert('❌ خطأ', 'فشل حذف الكتالوج: ' + (error.message || 'حدث خطأ غير متوقع'));
+        Alert.alert(
+          '❌ خطأ',
+          'فشل حذف الكتالوج:\n\n' + errorMessage
+        );
       }
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -193,8 +394,34 @@ export default function AdminDashboard() {
               <Text style={styles.devBannerText}>
                 وضع المطور: يمكنك حذف الكتالوجات بدون قيود
               </Text>
+              <TouchableOpacity
+                style={styles.cleanupButton}
+                onPress={handleRunCleanup}
+                disabled={runningCleanup}
+              >
+                {runningCleanup ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name="build" size={16} color={colors.white} />
+                    <Text style={styles.cleanupButtonText}>تنظيف</Text>
+                  </>
+                )}
+              </TouchableOpacity>
             </View>
           )}
+
+          {/* Info Banner */}
+          <View style={styles.infoBanner}>
+            <Ionicons name="information-circle" size={20} color={colors.primary} />
+            <View style={styles.infoBannerContent}>
+              <Text style={styles.infoBannerText}>
+                • رفع PDF: يتم تحويله تلقائياً إلى صور{'\n'}
+                • رفع صور: تبقى كما هي بدون تحويل{'\n'}
+                • المعرف: storeId-YYYY-MM-DD-HHMM
+              </Text>
+            </View>
+          </View>
 
           {/* Catalogues List */}
           <ScrollView
@@ -214,13 +441,27 @@ export default function AdminDashboard() {
               </View>
             ) : (
               catalogues.map((catalogue) => (
-<CatalogueListItem
-  key={catalogue.id}
-  catalogue={catalogue}
-  onDelete={() => handleDelete(catalogue)}
-  canDelete={__DEV__ || isAdmin}
-  onProcessComplete={loadCatalogues} // Add this line
-/>
+                <View key={catalogue.id} style={styles.catalogueItemWrapper}>
+                  <CatalogueListItem
+                    catalogue={catalogue}
+                    onDelete={() => handleDelete(catalogue)}
+                    canDelete={(__DEV__ || isAdmin) && deletingId !== catalogue.id}
+                    onProcessComplete={loadCatalogues}
+                  />
+
+                  {/* Deletion Overlay */}
+                  {deletingId === catalogue.id && (
+                    <View style={styles.deletingOverlay}>
+                      <View style={styles.deletingBox}>
+                        <ActivityIndicator size="large" color={colors.white} />
+                        <Text style={styles.deletingText}>جاري الحذف...</Text>
+                        <Text style={styles.deletingSubtext}>
+                          حذف الملفات والبيانات
+                        </Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
               ))
             )}
             <View style={styles.bottomPadding} />
@@ -315,6 +556,36 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
+  cleanupButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.warning,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.sm,
+    gap: spacing.xs,
+  },
+  cleanupButtonText: {
+    color: colors.white,
+    fontSize: typography.fontSize.sm,
+    fontWeight: '600',
+  },
+  infoBanner: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.primary + '10',
+    padding: spacing.md,
+    gap: spacing.sm,
+  },
+  infoBannerContent: {
+    flex: 1,
+  },
+  infoBannerText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.primary,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    lineHeight: 20,
+  },
   formContainer: {
     flex: 1,
     backgroundColor: colors.background,
@@ -322,6 +593,42 @@ const styles = StyleSheet.create({
   listContainer: {
     flex: 1,
     padding: spacing.md,
+  },
+  catalogueItemWrapper: {
+    position: 'relative',
+  },
+  deletingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: borderRadius.lg,
+    zIndex: 10,
+  },
+  deletingBox: {
+    backgroundColor: colors.error,
+    padding: spacing.xl,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    minWidth: 200,
+  },
+  deletingText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSize.lg,
+    fontWeight: 'bold',
+    color: colors.white,
+    textAlign: 'center',
+  },
+  deletingSubtext: {
+    marginTop: spacing.xs,
+    fontSize: typography.fontSize.sm,
+    color: colors.white,
+    textAlign: 'center',
+    opacity: 0.9,
   },
   emptyContainer: {
     flex: 1,

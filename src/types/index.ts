@@ -1,135 +1,170 @@
-// Store
-export interface Store {
-  id: string;
-  nameAr: string;
-  nameEn: string;
-  logo: string;
-  branches: Branch[];
-  currentCatalogueId?: string;
-}
+// src/types/index.ts - COMPLETE UPDATED VERSION
 
-// Branch
-export interface Branch {
-  id: string;
-  storeId: string;
-  addressAr: string;
-  addressEn: string;
-  governorate: string;
-  city: string;
-  latitude?: number;
-  longitude?: number;
-  openingHours: string;
-  phone?: string;
-}
+import { Timestamp } from 'firebase/firestore';
 
-// Catalogue (Weekly Flyer)
-export interface Catalogue {
-  id: string;
-  storeId: string;
-  titleAr: string;
-  titleEn: string;
-  startDate: string;
-  endDate: string;
-  coverImage: string;
-  pdfUrl?: string; // NEW: URL to PDF file
-  pages: CataloguePage[];
-}
-
-// CataloguePage
-export interface CataloguePage {
-  id: string;
-  catalogueId: string;
-  pageNumber: number;
-  imageUrl: string;
-  offers: string[]; // Offer IDs on this page
-}
-
-// Offer
-export interface Offer {
-  id: string;
-  storeId: string;
-  catalogueId: string;
-  nameAr: string;
-  nameEn: string;
-  descriptionAr?: string;
-  descriptionEn?: string;
-  originalPrice?: number;
-  offerPrice: number;
-  currency: 'EGP';
-  unit?: string;
-  categoryId: string;
-  imageUrl: string;
-  startDate: string;
-  endDate: string;
-  isFeatured?: boolean;
-}
-
-// Category
+/**
+ * Category Type - Supports hierarchical structure
+ */
 export interface Category {
   id: string;
   nameAr: string;
   nameEn: string;
   icon: string;
-  parentId?: string;
+  color?: string; // For main categories
+  parentId?: string; // For subcategories - references main category
 }
 
-// BasketItem
-export interface BasketItem {
+/**
+ * Store Type
+ */
+export interface Store {
   id: string;
-  offerId?: string; // Optional now
-  offer?: Offer; // Optional for saved pages
-  cataloguePage?: SavedCataloguePage; // NEW: For saved pages
-  pdfPage?: SavedPdfPage; // NEW: For saved PDF pages
-  quantity: number;
-  addedAt: string;
-  storeName: string;
-  offerEndDate: string;
-  type: 'offer' | 'page' | 'pdf-page'; // NEW: Distinguish between offers, pages and PDF pages
+  nameAr: string;
+  nameEn: string;
+  logo: string;
+  branches: StoreBranch[];
 }
 
-// NEW: Saved Catalogue Page
-export interface SavedCataloguePage {
+/**
+ * Store Branch Type
+ */
+export interface StoreBranch {
   id: string;
-  catalogueId: string;
-  catalogueTitle: string;
+  storeId: string;
+  addressAr: string;
+  addressEn: string;
+  latitude?: number;
+  longitude?: number;
+  phone?: string;
+  openingHours: string;
+}
+
+/**
+ * Catalogue Page Type
+ */
+export interface CataloguePage {
   pageNumber: number;
   imageUrl: string;
-  offerIds: string[];
-  savedAt: string;
+  offers: Offer[];
 }
 
-// NEW: Saved PDF Page
-export interface SavedPdfPage {
+/**
+ * Catalogue Type - UPDATED with categoryId
+ */
+export interface Catalogue {
   id: string;
-  catalogueId: string;
-  catalogueTitle: string;
   storeId: string;
-  storeName: string;
-  pageNumber: number;
-  pageImageUri: string; // Base64 data URL
-  savedAt: string; // ISO timestamp
+  storeName?: string;
+  categoryId?: string; // Main category ID (one of 4 main categories)
+  titleAr: string;
+  titleEn: string;
+  startDate: string;
+  endDate: string;
+  coverImage: string;
+  pdfUrl?: string;
+  pages: CataloguePage[];
+  totalPages?: number;
+  pdfProcessed?: boolean;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
 }
 
-// Settings
-export interface AppSettings {
-  language: 'ar' | 'en';
-  notificationsEnabled: boolean;
-  favoriteStoreIds: string[];
-  favoriteOfferIds: string[];
+/**
+ * Offer Type - Base offer structure
+ */
+export interface Offer {
+  id: string;
+  storeId: string;
+  catalogueId: string;
+  categoryId: string; // This is the subcategory ID
+  nameAr: string;
+  nameEn: string;
+  descriptionAr?: string;
+  descriptionEn?: string;
+  imageUrl: string;
+  offerPrice: number;
+  originalPrice?: number;
+  unit?: string;
+  pageNumber?: number;
+  isActive: boolean;
+  // Optional fields that may come from OfferWithCatalogue
+  catalogueStartDate?: string;
+  catalogueEndDate?: string;
+  startDate?: string;
+  endDate?: string;
 }
 
-// User Profile
+/**
+ * Basket Item Type - COMPLETE WITH ALL REQUIRED FIELDS
+ */
+export interface BasketItem {
+  id: string;
+  type: 'offer' | 'page' | 'pdf-page';
+  quantity: number;
+  storeName: string; // Required for all types
+  offerEndDate?: string; // For expiry checking
+  offerStartDate?: string; // For validity checking
+  addedAt: string; // When item was added to basket
+
+  // For offer items
+  offer?: Offer & {
+    storeName?: string;
+    catalogueTitle?: string;
+    catalogueStartDate?: string;
+    catalogueEndDate?: string;
+  };
+
+  // For page items
+  cataloguePage?: {
+    catalogueId: string;
+    catalogueTitle: string;
+    pageNumber: number;
+    imageUrl: string;
+    storeName?: string;
+    offers?: string[]; // Array of offer IDs
+  };
+
+  // For PDF page items
+  pdfPage?: {
+    catalogueId: string;
+    catalogueTitle: string;
+    storeId: string;
+    storeName: string;
+    pageNumber: number;
+    pageImageUri: string;
+    savedAt?: string;
+  };
+}
+
+/**
+ * User Profile Type
+ */
 export interface UserProfile {
   uid: string;
-  email: string | null;
-  displayName: string | null;
-  photoURL: string | null;
-  isAdmin: boolean;
-  createdAt: any; // Firebase FieldValue (serverTimestamp) - will be Timestamp after write
-  lastLoginAt: any; // Firebase FieldValue (serverTimestamp) - will be Timestamp after write
+  email: string;
+  displayName?: string;
+  photoURL?: string;
+  location?: string;
+  preferences?: {
+    language: 'ar' | 'en';
+    notifications: boolean;
+  };
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
 }
 
-// Auth State
+/**
+ * Favorites State Type - UPDATED for subcategories
+ */
+export interface FavoritesState {
+  subcategoryIds: string[]; // Changed from offerIds
+  storeIds: string[];
+  catalogueIds?: string[];
+}
+
+/**
+ * Auth State Type
+ */
 export interface AuthState {
   user: UserProfile | null;
   isAuthenticated: boolean;
@@ -138,43 +173,99 @@ export interface AuthState {
   error: string | null;
 }
 
-// Redux State Types
-export interface BasketState {
-  items: BasketItem[];
-  total: number;
+/**
+ * Stores State Type
+ */
+export interface StoresState {
+  stores: Store[];
+  loading: boolean;
+  error: string | null;
 }
 
-export interface FavoritesState {
-  storeIds: string[];
-  offerIds: string[];
-}
-
+/**
+ * Offers State Type
+ */
 export interface OffersState {
-  offers: Offer[];
   catalogues: Catalogue[];
   loading: boolean;
   error: string | null;
 }
 
-export interface StoresState {
-  stores: Store[];
-  selectedStoreId: string | null;
-  loading: boolean;
-  error: string | null;
+/**
+ * Basket State Type
+ */
+export interface BasketState {
+  items: BasketItem[];
+  total: number;
 }
 
-export interface SettingsState {
-  language: 'ar' | 'en';
-  notificationsEnabled: boolean;
-  isRTL: boolean;
-}
-
-// Root State
+/**
+ * Root State Type (for Redux)
+ */
 export interface RootState {
+  auth: AuthState;
+  stores: StoresState;
+  offers: OffersState;
   basket: BasketState;
   favorites: FavoritesState;
-  offers: OffersState;
-  stores: StoresState;
-  settings: SettingsState;
-  auth: AuthState;
+}
+
+/**
+ * Helper Types for Category Filtering
+ */
+export type MainCategoryId = 'food_groceries' | 'electronics' | 'home' | 'fashion';
+
+export interface CategoryFilter {
+  mainCategory?: MainCategoryId;
+  subcategory?: string;
+}
+
+/**
+ * Offer with Catalogue Info (from Firestore flat collection)
+ */
+export interface OfferWithCatalogueInfo extends Offer {
+  storeName: string;
+  catalogueTitle: string;
+  catalogueStartDate: string;
+  catalogueEndDate: string;
+}
+
+/**
+ * Catalogue with Category Info
+ */
+export interface CatalogueWithCategory extends Catalogue {
+  categoryName?: string;
+  categoryNameEn?: string;
+}
+
+/**
+ * Category Hierarchy Helper Type
+ */
+export interface CategoryHierarchy {
+  main: Category;
+  sub?: Category;
+}
+
+/**
+ * Search/Filter Parameters
+ */
+export interface OfferSearchParams {
+  categoryId?: string;
+  storeId?: string;
+  catalogueId?: string;
+  minPrice?: number;
+  maxPrice?: number;
+  searchTerm?: string;
+  isActive?: boolean;
+}
+
+/**
+ * Catalogue Search Parameters
+ */
+export interface CatalogueSearchParams {
+  storeId?: string;
+  categoryId?: string; // Main category ID
+  status?: 'active' | 'upcoming' | 'expired';
+  startDate?: string;
+  endDate?: string;
 }

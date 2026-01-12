@@ -1,5 +1,5 @@
-// src/components/admin/CatalogueUploadForm.tsx
-import React, { useState } from 'react';
+// src/components/admin/CatalogueUploadForm.tsx - WITH CATEGORY SELECTION
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,14 +13,18 @@ import {
   ScrollView,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { ref, uploadBytes, uploadString, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
 import { storage, db } from '../../config/firebase';
 import { pdfConverter } from '../../utils/pdfToImageConverter';
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
 import { useAppSelector } from '../../store/hooks';
+import { getMainCategories, getCategoryById } from '../../data/categories';
+import { getSuggestedCategoryForStore } from '../../utils/catalogueUtils';
 
 interface CatalogueUploadFormProps {
   onSuccess: () => void;
@@ -34,18 +38,26 @@ interface UploadProgress {
   percentage: number;
 }
 
+type UploadType = 'pdf' | 'images' | null;
+
 export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
   onSuccess,
   onCancel,
 }) => {
   const stores = useAppSelector(state => state.stores.stores);
+  const mainCategories = getMainCategories();
 
   const [titleAr, setTitleAr] = useState('');
   const [titleEn, setTitleEn] = useState('');
   const [selectedStoreId, setSelectedStoreId] = useState('');
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [uploadType, setUploadType] = useState<UploadType>(null);
   const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
+  const [selectedImages, setSelectedImages] = useState<ImagePicker.ImagePickerAsset[]>([]);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState<UploadProgress>({
     stage: '',
@@ -54,7 +66,15 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
     percentage: 0,
   });
 
-  const handlePickDocument = async () => {
+  // Auto-select category when store changes
+  useEffect(() => {
+    if (selectedStoreId && !selectedCategoryId) {
+      const suggestedCategory = getSuggestedCategoryForStore(selectedStoreId);
+      setSelectedCategoryId(suggestedCategory);
+    }
+  }, [selectedStoreId]);
+
+  const handlePickPDF = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/pdf',
@@ -63,10 +83,38 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
         setSelectedFile(result.assets[0]);
+        setSelectedImages([]);
+        setUploadType('pdf');
       }
     } catch (error) {
-      console.error('Error picking document:', error);
+      console.error('Error picking PDF:', error);
       showAlert('خطأ', 'فشل اختيار الملف');
+    }
+  };
+
+  const handlePickImages = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert('تنبيه', 'نحتاج إلى إذن للوصول إلى الصور');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        quality: 0.9,
+        orderedSelection: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setSelectedImages(result.assets);
+        setSelectedFile(null);
+        setUploadType('images');
+      }
+    } catch (error) {
+      console.error('Error picking images:', error);
+      showAlert('خطأ', 'فشل اختيار الصور');
     }
   };
 
@@ -76,6 +124,36 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       if (onOk) onOk();
     } else {
       Alert.alert(title, message, onOk ? [{ text: 'موافق', onPress: onOk }] : undefined);
+    }
+  };
+
+  const formatDateForDisplay = (dateStr: string): string => {
+    if (!dateStr) return '';
+    try {
+      const date = new Date(dateStr);
+      return date.toLocaleDateString('ar-EG', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  const handleStartDateChange = (event: any, selectedDate?: Date) => {
+    setShowStartDatePicker(false);
+    if (selectedDate) {
+      const dateStr = selectedDate.toISOString().split('T')[0];
+      setStartDate(dateStr);
+    }
+  };
+
+  const handleEndDateChange = (event: any, selectedDate?: Date) => {
+    setShowEndDatePicker(false);
+    if (selectedDate) {
+      const dateStr = selectedDate.toISOString().split('T')[0];
+      setEndDate(dateStr);
     }
   };
 
@@ -92,6 +170,10 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       showAlert('خطأ', 'يرجى اختيار المتجر');
       return false;
     }
+    if (!selectedCategoryId) {
+      showAlert('خطأ', 'يرجى اختيار الفئة');
+      return false;
+    }
     if (!startDate.trim()) {
       showAlert('خطأ', 'يرجى إدخال تاريخ البداية');
       return false;
@@ -100,15 +182,23 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       showAlert('خطأ', 'يرجى إدخال تاريخ النهاية');
       return false;
     }
-    if (!selectedFile) {
+    if (!uploadType) {
+      showAlert('خطأ', 'يرجى اختيار PDF أو صور');
+      return false;
+    }
+    if (uploadType === 'pdf' && !selectedFile) {
       showAlert('خطأ', 'يرجى اختيار ملف PDF');
+      return false;
+    }
+    if (uploadType === 'images' && selectedImages.length === 0) {
+      showAlert('خطأ', 'يرجى اختيار صور على الأقل');
       return false;
     }
     return true;
   };
 
   const handleUpload = async () => {
-    if (!validateForm() || !selectedFile) {
+    if (!validateForm()) {
       return;
     }
 
@@ -121,154 +211,42 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
     try {
       setUploading(true);
 
-      // Generate catalogue ID
-      const catalogueId = `${selectedStoreId}_${Date.now()}`;
-
       console.log('📤 Starting upload process...');
+      console.log('Upload type:', uploadType);
 
-      // STEP 1: Upload PDF to Firebase Storage
+      // Generate ID: storeId-YYYY-MM-DD-HHMM
       setProgress({
-        stage: 'جاري رفع ملف PDF...',
+        stage: 'جاري إنشاء المعرف...',
         current: 0,
-        total: 4,
-        percentage: 0,
+        total: 5,
+        percentage: 5,
       });
 
-      const pdfBlob = await fetch(selectedFile.uri).then(r => r.blob());
-      const pdfRef = ref(storage, `catalogues/${catalogueId}.pdf`);
-      await uploadBytes(pdfRef, pdfBlob);
-      const pdfUrl = await getDownloadURL(pdfRef);
+      const now = new Date();
+      const hours = now.getHours().toString().padStart(2, '0');
+      const minutes = now.getMinutes().toString().padStart(2, '0');
+      const catalogueId = `${selectedStore.id}-${startDate}-${hours}${minutes}`;
 
-      console.log('✅ PDF uploaded:', pdfUrl);
+      console.log('🆔 Generated catalogue ID:', catalogueId);
 
-      // STEP 2: Convert PDF to images
-      setProgress({
-        stage: 'جاري قراءة معلومات PDF...',
-        current: 1,
-        total: 4,
-        percentage: 25,
-      });
+      // Check if catalogue ID already exists
+      const catalogueRef = doc(db, 'catalogues', catalogueId);
+      const existingDoc = await getDoc(catalogueRef);
 
-      const pdfInfo = await pdfConverter.getPDFInfo(pdfUrl);
-      console.log(`📄 PDF has ${pdfInfo.numPages} pages`);
-
-      setProgress({
-        stage: 'جاري تحويل الصفحات إلى صور...',
-        current: 1,
-        total: 4,
-        percentage: 25,
-      });
-
-      const images = await pdfConverter.convertAllPages(
-        pdfUrl,
-        2.0,
-        (current, total) => {
-          const percentage = 25 + (current / total) * 25; // 25-50%
-          setProgress({
-            stage: `تحويل الصفحة ${current} من ${total}...`,
-            current: 1,
-            total: 4,
-            percentage,
-          });
-        }
-      );
-
-      console.log(`✅ Converted ${images.length} pages to images`);
-
-      // STEP 3: Upload images to Firebase Storage
-      setProgress({
-        stage: 'جاري رفع صور الصفحات...',
-        current: 2,
-        total: 4,
-        percentage: 50,
-      });
-
-      const uploadedPages = [];
-
-      for (let i = 0; i < images.length; i++) {
-        const image = images[i];
-        const storageRef = ref(
-          storage,
-          `catalogue-pages/${catalogueId}/page-${image.pageNumber}.jpg`
-        );
-
-        const percentage = 50 + ((i + 1) / images.length) * 25; // 50-75%
-        setProgress({
-          stage: `رفع الصفحة ${i + 1} من ${images.length}...`,
-          current: 2,
-          total: 4,
-          percentage,
-        });
-
-        // Upload base64 image
-        await uploadString(storageRef, image.imageDataUrl, 'data_url');
-        const imageUrl = await getDownloadURL(storageRef);
-
-        uploadedPages.push({
-          pageNumber: image.pageNumber,
-          imageUrl,
-          offers: [], // Empty initially
-        });
-
-        console.log(`Uploaded page ${i + 1}/${images.length}`);
+      if (existingDoc.exists()) {
+        showAlert('خطأ', 'يوجد كتالوج بنفس التاريخ والوقت. يرجى الانتظار دقيقة وإعادة المحاولة.');
+        setUploading(false);
+        return;
       }
 
-      // STEP 4: Generate cover image (use first page as cover)
-      setProgress({
-        stage: 'جاري إنشاء صورة الغلاف...',
-        current: 3,
-        total: 4,
-        percentage: 75,
-      });
+      console.log('✅ Catalogue ID available:', catalogueId);
 
-      const coverRef = ref(storage, `catalogue-covers/${catalogueId}.jpg`);
-      await uploadString(coverRef, images[0].imageDataUrl, 'data_url');
-      const coverImageUrl = await getDownloadURL(coverRef);
+      if (uploadType === 'pdf') {
+        await handlePDFUpload(catalogueId, selectedStore);
+      } else if (uploadType === 'images') {
+        await handleImagesUpload(catalogueId, selectedStore);
+      }
 
-      console.log('✅ Cover image created');
-
-      // STEP 5: Create Firestore document
-      setProgress({
-        stage: 'جاري حفظ البيانات...',
-        current: 4,
-        total: 4,
-        percentage: 90,
-      });
-
-      const catalogueData = {
-        id: catalogueId,
-        storeId: selectedStore.id,
-        storeName: selectedStore.nameAr,
-        titleAr: titleAr.trim(),
-        titleEn: titleEn.trim(),
-        startDate: startDate.trim(),
-        endDate: endDate.trim(),
-        coverImage: coverImageUrl,
-        pdfUrl: pdfUrl,
-        pages: uploadedPages,
-        totalPages: images.length,
-        pdfProcessed: true,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-
-      await addDoc(collection(db, 'catalogues'), catalogueData);
-
-      console.log('✅ Catalogue created in Firestore');
-
-      setProgress({
-        stage: 'تمت العملية بنجاح!',
-        current: 4,
-        total: 4,
-        percentage: 100,
-      });
-
-      // Show success alert
-      showAlert(
-        '✅ نجح',
-        `تم رفع الكتالوج بنجاح!\n${images.length} صفحة تم تحويلها ورفعها`,
-        onSuccess
-      );
     } catch (error: any) {
       console.error('❌ Upload error:', error);
       showAlert('❌ خطأ', 'فشل رفع الكتالوج: ' + (error.message || 'حدث خطأ غير متوقع'));
@@ -283,8 +261,233 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
     }
   };
 
-  // Get selected store name for display
+  const handlePDFUpload = async (catalogueId: string, selectedStore: any) => {
+    console.log('📄 Processing PDF upload...');
+
+    setProgress({
+      stage: 'جاري رفع ملف PDF...',
+      current: 0,
+      total: 4,
+      percentage: 0,
+    });
+
+    const pdfBlob = await fetch(selectedFile!.uri).then(r => r.blob());
+    const pdfRef = ref(storage, `catalogues/${catalogueId}.pdf`);
+    await uploadBytes(pdfRef, pdfBlob);
+    const pdfUrl = await getDownloadURL(pdfRef);
+
+    console.log('✅ PDF uploaded:', pdfUrl);
+
+    setProgress({
+      stage: 'جاري قراءة معلومات PDF...',
+      current: 1,
+      total: 4,
+      percentage: 25,
+    });
+
+    const pdfInfo = await pdfConverter.getPDFInfo(pdfUrl);
+    console.log(`📄 PDF has ${pdfInfo.numPages} pages`);
+
+    setProgress({
+      stage: 'جاري تحويل الصفحات إلى صور...',
+      current: 1,
+      total: 4,
+      percentage: 25,
+    });
+
+    const images = await pdfConverter.convertAllPages(
+      pdfUrl,
+      2.0,
+      (current, total) => {
+        const percentage = 25 + (current / total) * 25;
+        setProgress({
+          stage: `تحويل الصفحة ${current} من ${total}...`,
+          current: 1,
+          total: 4,
+          percentage,
+        });
+      }
+    );
+
+    console.log(`✅ Converted ${images.length} pages to images`);
+
+    setProgress({
+      stage: 'جاري رفع صور الصفحات...',
+      current: 2,
+      total: 4,
+      percentage: 50,
+    });
+
+    const uploadedPages = [];
+
+    for (let i = 0; i < images.length; i++) {
+      const image = images[i];
+      const storageRef = ref(
+        storage,
+        `catalogue-pages/${catalogueId}/page-${image.pageNumber}.jpg`
+      );
+
+      const percentage = 50 + ((i + 1) / images.length) * 25;
+      setProgress({
+        stage: `رفع الصفحة ${i + 1} من ${images.length}...`,
+        current: 2,
+        total: 4,
+        percentage,
+      });
+
+      await uploadString(storageRef, image.imageDataUrl, 'data_url');
+      const imageUrl = await getDownloadURL(storageRef);
+
+      uploadedPages.push({
+        pageNumber: image.pageNumber,
+        imageUrl,
+      });
+
+      console.log(`Uploaded page ${i + 1}/${images.length}`);
+    }
+
+    setProgress({
+      stage: 'جاري إنشاء صورة الغلاف...',
+      current: 3,
+      total: 4,
+      percentage: 75,
+    });
+
+    const coverRef = ref(storage, `catalogue-covers/${catalogueId}.jpg`);
+    await uploadString(coverRef, images[0].imageDataUrl, 'data_url');
+    const coverImageUrl = await getDownloadURL(coverRef);
+
+    console.log('✅ Cover image created');
+
+    await saveCatalogueToFirestore(
+      catalogueId,
+      selectedStore,
+      uploadedPages,
+      pdfUrl,
+      coverImageUrl
+    );
+  };
+
+  const handleImagesUpload = async (catalogueId: string, selectedStore: any) => {
+    console.log('🖼️ Processing images upload...');
+
+    setProgress({
+      stage: 'جاري رفع الصور...',
+      current: 0,
+      total: selectedImages.length,
+      percentage: 0,
+    });
+
+    const uploadedPages = [];
+
+    for (let i = 0; i < selectedImages.length; i++) {
+      const image = selectedImages[i];
+      const pageNumber = i + 1;
+
+      const percentage = ((i + 1) / selectedImages.length) * 90;
+      setProgress({
+        stage: `رفع الصورة ${pageNumber} من ${selectedImages.length}...`,
+        current: i + 1,
+        total: selectedImages.length,
+        percentage,
+      });
+
+      const response = await fetch(image.uri);
+      const blob = await response.blob();
+
+      const storageRef = ref(
+        storage,
+        `catalogue-pages/${catalogueId}/page-${pageNumber}.jpg`
+      );
+      await uploadBytes(storageRef, blob);
+      const imageUrl = await getDownloadURL(storageRef);
+
+      uploadedPages.push({
+        pageNumber,
+        imageUrl,
+      });
+
+      console.log(`Uploaded image ${pageNumber}/${selectedImages.length}`);
+    }
+
+    setProgress({
+      stage: 'جاري إنشاء صورة الغلاف...',
+      current: selectedImages.length,
+      total: selectedImages.length,
+      percentage: 95,
+    });
+
+    const coverImageUrl = uploadedPages[0].imageUrl;
+
+    console.log('✅ Images uploaded');
+
+    await saveCatalogueToFirestore(
+      catalogueId,
+      selectedStore,
+      uploadedPages,
+      null,
+      coverImageUrl
+    );
+  };
+
+  const saveCatalogueToFirestore = async (
+    catalogueId: string,
+    selectedStore: any,
+    uploadedPages: any[],
+    pdfUrl: string | null,
+    coverImageUrl: string
+  ) => {
+    setProgress({
+      stage: 'جاري حفظ البيانات...',
+      current: 4,
+      total: 4,
+      percentage: 95,
+    });
+
+    const catalogueData: any = {
+      id: catalogueId,
+      storeId: selectedStore.id,
+      storeName: selectedStore.nameAr,
+      titleAr: titleAr.trim(),
+      titleEn: titleEn.trim(),
+      startDate: startDate.trim(),
+      endDate: endDate.trim(),
+      coverImage: coverImageUrl,
+      pages: uploadedPages,
+      totalPages: uploadedPages.length,
+      pdfProcessed: true,
+      categoryId: selectedCategoryId, // Store the selected category
+      uploadMode: uploadType,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
+
+    if (pdfUrl) {
+      catalogueData.pdfUrl = pdfUrl;
+    }
+
+    const catalogueRef = doc(db, 'catalogues', catalogueId);
+    await setDoc(catalogueRef, catalogueData);
+
+    console.log('✅ Catalogue saved to Firestore with custom ID');
+
+    setProgress({
+      stage: 'تمت العملية بنجاح!',
+      current: 4,
+      total: 4,
+      percentage: 100,
+    });
+
+    const selectedCategory = getCategoryById(selectedCategoryId);
+    showAlert(
+      '✅ نجح',
+      `تم رفع الكتالوج بنجاح!\n${uploadedPages.length} صفحة تم رفعها\nمعرف الكتالوج: ${catalogueId}\nالفئة: ${selectedCategory?.nameAr || 'غير محدد'}`,
+      onSuccess
+    );
+  };
+
   const selectedStore = stores.find(s => s.id === selectedStoreId);
+  const selectedCategory = getCategoryById(selectedCategoryId);
 
   return (
     <ScrollView style={styles.container}>
@@ -295,13 +498,13 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
         </TouchableOpacity>
       </View>
 
-      {/* Enhanced Notice */}
       <View style={styles.noticeBox}>
         <Ionicons name="information-circle" size={24} color={colors.primary} />
         <View style={styles.noticeTextContainer}>
-          <Text style={styles.noticeTitle}>معالجة تلقائية</Text>
+          <Text style={styles.noticeTitle}>خيارات الرفع</Text>
           <Text style={styles.noticeText}>
-            سيتم تلقائياً تحويل ملف PDF إلى صور وحفظها في Firebase Storage. قد تستغرق العملية عدة دقائق حسب حجم الملف.
+            • رفع PDF: سيتم تحويله تلقائياً إلى صور{'\n'}
+            • رفع صور: ستبقى كما هي بدون تحويل
           </Text>
         </View>
       </View>
@@ -384,49 +587,205 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
           )}
         </View>
 
+        {/* Category Dropdown */}
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>الفئة الرئيسية *</Text>
+          {Platform.OS === 'web' ? (
+            <select
+              value={selectedCategoryId}
+              onChange={(e) => setSelectedCategoryId(e.target.value)}
+              style={{
+                backgroundColor: colors.gray[100],
+                borderRadius: borderRadius.md,
+                padding: spacing.md,
+                fontSize: typography.fontSize.md,
+                color: colors.text,
+                border: `1px solid ${colors.gray[200]}`,
+                width: '100%',
+              }}
+              disabled={uploading}
+            >
+              <option value="">اختر الفئة</option>
+              {mainCategories.map(category => (
+                <option key={category.id} value={category.id}>
+                  {category.nameAr} - {category.nameEn}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <View style={styles.pickerContainer}>
+              <Picker
+                selectedValue={selectedCategoryId}
+                onValueChange={(itemValue) => setSelectedCategoryId(itemValue)}
+                enabled={!uploading}
+                style={styles.picker}
+              >
+                <Picker.Item label="اختر الفئة" value="" />
+                {mainCategories.map(category => (
+                  <Picker.Item
+                    key={category.id}
+                    label={`${category.nameAr} - ${category.nameEn}`}
+                    value={category.id}
+                  />
+                ))}
+              </Picker>
+            </View>
+          )}
+          {selectedCategory && (
+            <View style={styles.categoryPreview}>
+              <Ionicons
+                name={selectedCategory.icon as any}
+                size={20}
+                color={selectedCategory.color || colors.primary}
+              />
+              <Text style={styles.helperText}>
+                الفئة المحددة: {selectedCategory.nameAr}
+              </Text>
+            </View>
+          )}
+        </View>
+
         {/* Start Date */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>تاريخ البداية *</Text>
-          <TextInput
-            style={styles.input}
-            value={startDate}
-            onChangeText={setStartDate}
-            placeholder="2026-01-05"
-            placeholderTextColor={colors.gray[400]}
-            editable={!uploading}
-          />
+          {Platform.OS === 'web' ? (
+            <TextInput
+              style={styles.input}
+              value={startDate}
+              onChangeText={setStartDate}
+              placeholder="2026-01-05"
+              placeholderTextColor={colors.gray[400]}
+              editable={!uploading}
+            />
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.dateButton}
+                onPress={() => setShowStartDatePicker(true)}
+                disabled={uploading}
+              >
+                <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+                <Text style={styles.dateButtonText}>
+                  {startDate ? formatDateForDisplay(startDate) : 'اختر تاريخ البداية'}
+                </Text>
+              </TouchableOpacity>
+              {showStartDatePicker && (
+                <DateTimePicker
+                  value={startDate ? new Date(startDate) : new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={handleStartDateChange}
+                />
+              )}
+            </>
+          )}
         </View>
 
         {/* End Date */}
         <View style={styles.inputGroup}>
           <Text style={styles.label}>تاريخ النهاية *</Text>
-          <TextInput
-            style={styles.input}
-            value={endDate}
-            onChangeText={setEndDate}
-            placeholder="2026-02-02"
-            placeholderTextColor={colors.gray[400]}
-            editable={!uploading}
-          />
+          {Platform.OS === 'web' ? (
+            <TextInput
+              style={styles.input}
+              value={endDate}
+              onChangeText={setEndDate}
+              placeholder="2026-02-02"
+              placeholderTextColor={colors.gray[400]}
+              editable={!uploading}
+            />
+          ) : (
+            <>
+              <TouchableOpacity
+                style={styles.dateButton}
+                onPress={() => setShowEndDatePicker(true)}
+                disabled={uploading}
+              >
+                <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+                <Text style={styles.dateButtonText}>
+                  {endDate ? formatDateForDisplay(endDate) : 'اختر تاريخ النهاية'}
+                </Text>
+              </TouchableOpacity>
+              {showEndDatePicker && (
+                <DateTimePicker
+                  value={endDate ? new Date(endDate) : new Date()}
+                  mode="date"
+                  display="default"
+                  onChange={handleEndDateChange}
+                  minimumDate={startDate ? new Date(startDate) : undefined}
+                />
+              )}
+            </>
+          )}
         </View>
 
-        {/* File Picker */}
+        {/* Upload Type Selection */}
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>ملف PDF *</Text>
-          <TouchableOpacity
-            style={styles.filePickerButton}
-            onPress={handlePickDocument}
-            disabled={uploading}
-          >
-            <Ionicons name="document-attach" size={24} color={colors.primary} />
-            <Text style={styles.filePickerText}>
-              {selectedFile ? selectedFile.name : 'اختر ملف PDF'}
-            </Text>
-          </TouchableOpacity>
+          <Text style={styles.label}>نوع الرفع *</Text>
+          <View style={styles.uploadTypeButtons}>
+            <TouchableOpacity
+              style={[
+                styles.uploadTypeButton,
+                uploadType === 'pdf' && styles.uploadTypeButtonActive,
+              ]}
+              onPress={handlePickPDF}
+              disabled={uploading}
+            >
+              <Ionicons
+                name="document-text"
+                size={24}
+                color={uploadType === 'pdf' ? colors.white : colors.primary}
+              />
+              <Text
+                style={[
+                  styles.uploadTypeButtonText,
+                  uploadType === 'pdf' && styles.uploadTypeButtonTextActive,
+                ]}
+              >
+                رفع PDF
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.uploadTypeButton,
+                uploadType === 'images' && styles.uploadTypeButtonActive,
+              ]}
+              onPress={handlePickImages}
+              disabled={uploading}
+            >
+              <Ionicons
+                name="images"
+                size={24}
+                color={uploadType === 'images' ? colors.white : colors.primary}
+              />
+              <Text
+                style={[
+                  styles.uploadTypeButtonText,
+                  uploadType === 'images' && styles.uploadTypeButtonTextActive,
+                ]}
+              >
+                رفع صور
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           {selectedFile && (
-            <Text style={styles.fileSizeText}>
-              الحجم: {(selectedFile.size! / 1024 / 1024).toFixed(2)} MB
-            </Text>
+            <View style={styles.selectedFileInfo}>
+              <Ionicons name="document-attach" size={20} color={colors.primary} />
+              <Text style={styles.selectedFileName}>{selectedFile.name}</Text>
+              <Text style={styles.selectedFileSize}>
+                {(selectedFile.size! / 1024 / 1024).toFixed(2)} MB
+              </Text>
+            </View>
+          )}
+
+          {selectedImages.length > 0 && (
+            <View style={styles.selectedFileInfo}>
+              <Ionicons name="images" size={20} color={colors.primary} />
+              <Text style={styles.selectedFileName}>
+                {selectedImages.length} صورة محددة
+              </Text>
+            </View>
           )}
         </View>
 
@@ -475,7 +834,6 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
     </ScrollView>
   );
 };
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -557,7 +915,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
-  filePickerButton: {
+  dateButton: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     backgroundColor: colors.gray[100],
@@ -567,17 +925,56 @@ const styles = StyleSheet.create({
     borderColor: colors.gray[200],
     gap: spacing.sm,
   },
-  filePickerText: {
+  dateButtonText: {
     flex: 1,
     fontSize: typography.fontSize.md,
     color: colors.text,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
-  fileSizeText: {
+  uploadTypeButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  uploadTypeButton: {
+    flex: 1,
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.white,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    gap: spacing.xs,
+  },
+  uploadTypeButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  uploadTypeButtonText: {
     fontSize: typography.fontSize.sm,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  uploadTypeButtonTextActive: {
+    color: colors.white,
+  },
+  selectedFileInfo: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    backgroundColor: colors.gray[100],
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    marginTop: spacing.sm,
+    gap: spacing.sm,
+  },
+  selectedFileName: {
+    flex: 1,
+    fontSize: typography.fontSize.sm,
+    color: colors.text,
+  },
+  selectedFileSize: {
+    fontSize: typography.fontSize.xs,
     color: colors.textSecondary,
-    marginTop: spacing.xs,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   progressContainer: {
     alignItems: 'center',

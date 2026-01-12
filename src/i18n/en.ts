@@ -1,3 +1,4 @@
+// ===== src/i18n/en.ts =====
 export default {
   // Navigation
   navigation: {
@@ -6,6 +7,7 @@ export default {
     basket: 'Basket',
     stores: 'Stores',
     settings: 'Settings',
+    favorites: 'Favorites',
   },
   
   // Home Screen
@@ -17,6 +19,7 @@ export default {
     trendingDeals: 'Trending Deals',
     searchPlaceholder: 'Search for offers...',
     viewAll: 'View All',
+    activeCatalogues: 'Active Catalogues',
   },
   
   // Flyers Screen
@@ -28,6 +31,20 @@ export default {
     addToBasket: 'Add to Basket',
     filterByStore: 'Filter by Store',
     filterByCategory: 'Filter by Category',
+  },
+  
+  // Favorites Screen - NEW
+  favorites: {
+    title: 'Favorites',
+    catalogues: 'Catalogues',
+    offers: 'Offers',
+    stores: 'Stores',
+    noFavoriteStores: 'No favorite stores',
+    noFavoriteOffers: 'No favorite offers',
+    addFavoriteStoresHint: 'Tap ❤️ on any store to add to favorites',
+    addFavoriteOffersHint: 'Tap ❤️ on any offer to add to favorites',
+    exploreCatalogues: 'Browse Catalogues',
+    exploreOffers: 'Browse Offers',
   },
   
   // Basket Screen
@@ -64,6 +81,7 @@ export default {
   // Settings Screen
   settings: {
     title: 'Settings',
+    account: 'Account',
     language: 'Language',
     arabic: 'العربية',
     english: 'English',

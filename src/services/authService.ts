@@ -1,4 +1,4 @@
-// src/services/authService.ts
+// src/services/authService.ts - PRODUCTION READY WITH WHITELIST
 import {
   signInWithCredential,
   GoogleAuthProvider,
@@ -11,6 +11,41 @@ import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuthInstance, getDbInstance } from '../config/firebase';
 import { UserProfile } from '../types';
 
+// ============================================
+// ADMIN CONFIGURATION - PRODUCTION READY
+// ============================================
+
+/**
+ * ADMIN WHITELIST
+ * ONLY these specific emails will have admin access
+ * All other users will be regular users with NO admin privileges
+ */
+const ADMIN_EMAILS = [
+  'aliattia2@gmail.com',
+  'aliattia02@gmail.com',
+  'asmaahassan9496@gmail.com',
+  'aliattia2de@gmail.com'
+];
+
+/**
+ * Check if an email should have admin access
+ * Returns true ONLY if email is in the ADMIN_EMAILS whitelist
+ */
+const isAdminEmail = (email: string | null): boolean => {
+  if (!email) return false;
+
+  const emailLower = email.toLowerCase().trim();
+
+  // Check exact match in whitelist
+  return ADMIN_EMAILS.some(adminEmail =>
+    adminEmail.toLowerCase().trim() === emailLower
+  );
+};
+
+// ============================================
+// AUTHENTICATION FUNCTIONS
+// ============================================
+
 /**
  * Sign in with Google using ID token and/or Access token
  */
@@ -21,9 +56,8 @@ export const signInWithGoogleToken = async (
   try {
     const auth = getAuthInstance();
 
-    console.log('=== AUTH SERVICE DEBUG ===');
-    console.log('ID Token:', idToken ?  'present' : 'null');
-    console.log('Access Token:', accessToken ? 'present' : 'null');
+    console.log('=== AUTH SERVICE ===');
+    console.log('Signing in...');
 
     if (!idToken && !accessToken) {
       throw new Error('No authentication token provided');
@@ -36,16 +70,23 @@ export const signInWithGoogleToken = async (
     const userCredential: UserCredential = await signInWithCredential(auth, credential);
     const user = userCredential.user;
 
-    console.log('✅ Firebase sign-in successful:', user. email);
+    console.log('✅ Firebase sign-in successful:', user.email);
 
-    // Wait a bit for Firestore to be ready
+    // Wait for Firestore to be ready
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     // Get or create user profile
     const userProfile = await getOrCreateUserProfile(user);
 
+    // Log admin status
+    if (userProfile.isAdmin) {
+      console.log('⭐ Admin user logged in:', user.email);
+    } else {
+      console.log('👤 Regular user logged in:', user.email);
+    }
+
     return userProfile;
-  } catch (error:  any) {
+  } catch (error: any) {
     console.error('❌ Error signing in with Google:', error);
     throw error;
   }
@@ -67,6 +108,7 @@ export const signOut = async (): Promise<void> => {
 
 /**
  * Get or create user profile in Firestore
+ * Admin status is ONLY granted to emails in ADMIN_EMAILS whitelist
  */
 export const getOrCreateUserProfile = async (
   user: FirebaseUser
@@ -76,43 +118,67 @@ export const getOrCreateUserProfile = async (
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`📡 Attempt ${attempt}/${maxRetries}:  Getting user profile`);
+      console.log(`📡 Attempt ${attempt}/${maxRetries}: Getting user profile`);
 
       const db = getDbInstance();
       const userRef = doc(db, 'users', user.uid);
       const userSnap = await getDoc(userRef);
 
+      // Determine admin status based on email whitelist
+      const shouldBeAdmin = isAdminEmail(user.email);
+
       if (userSnap.exists()) {
         console.log('✅ User profile found');
 
-        // Update last login
-        await setDoc(userRef, { lastLoginAt: serverTimestamp() }, { merge: true });
-
         const userData = userSnap.data();
+
+        // Update last login and sync admin status
+        const updateData: any = {
+          lastLoginAt: serverTimestamp()
+        };
+
+        // Sync admin status with whitelist
+        if (shouldBeAdmin !== userData.isAdmin) {
+          updateData.isAdmin = shouldBeAdmin;
+
+          if (shouldBeAdmin) {
+            console.log('⭐ User promoted to admin (whitelist match)');
+          } else {
+            console.log('⚠️ Admin privileges removed (not in whitelist)');
+          }
+        }
+
+        await setDoc(userRef, updateData, { merge: true });
+
         return {
-          uid:  user.uid,
+          uid: user.uid,
           email: user.email,
           displayName: user.displayName,
           photoURL: user.photoURL,
-          isAdmin: userData. isAdmin || false,
-          createdAt:  userData.createdAt,
+          isAdmin: shouldBeAdmin, // Always use whitelist status
+          createdAt: userData.createdAt,
           lastLoginAt: serverTimestamp(),
         };
       } else {
         console.log('📝 Creating new user profile');
 
-        const newProfile:  UserProfile = {
-          uid:  user.uid,
+        const newProfile: UserProfile = {
+          uid: user.uid,
           email: user.email,
           displayName: user.displayName,
           photoURL: user.photoURL,
-          isAdmin: false,
+          isAdmin: shouldBeAdmin, // Set admin status based on whitelist
           createdAt: serverTimestamp(),
           lastLoginAt: serverTimestamp(),
         };
 
         await setDoc(userRef, newProfile);
-        console.log('✅ User profile created');
+
+        if (shouldBeAdmin) {
+          console.log('⭐ New admin user created');
+        } else {
+          console.log('✅ New regular user created');
+        }
 
         return newProfile;
       }
@@ -121,7 +187,7 @@ export const getOrCreateUserProfile = async (
       console.error(`❌ Attempt ${attempt} failed:`, error.message);
 
       if (attempt < maxRetries) {
-        const delay = 1000 * Math.pow(2, attempt - 1); // Exponential backoff
+        const delay = 1000 * Math.pow(2, attempt - 1);
         console.log(`⏳ Waiting ${delay}ms before retry...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -134,21 +200,25 @@ export const getOrCreateUserProfile = async (
 /**
  * Get user profile from Firestore
  */
-export const getUserProfile = async (uid:  string): Promise<UserProfile | null> => {
+export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
   try {
     const db = getDbInstance();
     const userRef = doc(db, 'users', uid);
     const userSnap = await getDoc(userRef);
 
-    if (userSnap. exists()) {
+    if (userSnap.exists()) {
       const userData = userSnap.data();
+
+      // Always verify admin status against whitelist
+      const shouldBeAdmin = isAdminEmail(userData.email);
+
       return {
         uid,
         email: userData.email,
         displayName: userData.displayName,
         photoURL: userData.photoURL,
-        isAdmin: userData.isAdmin || false,
-        createdAt: userData. createdAt,
+        isAdmin: shouldBeAdmin, // Use whitelist, not stored value
+        createdAt: userData.createdAt,
         lastLoginAt: userData.lastLoginAt,
       };
     }
@@ -156,7 +226,7 @@ export const getUserProfile = async (uid:  string): Promise<UserProfile | null> 
     return null;
   } catch (error) {
     console.error('❌ Error getting user profile:', error);
-    return null; // Don't throw, just return null
+    return null;
   }
 };
 
@@ -179,4 +249,11 @@ export const onAuthChange = (callback: (user: UserProfile | null) => void) => {
       callback(null);
     }
   });
+};
+
+/**
+ * Check if current user is admin (utility function)
+ */
+export const checkIsAdmin = (email: string | null): boolean => {
+  return isAdminEmail(email);
 };
