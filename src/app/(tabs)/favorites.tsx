@@ -1,4 +1,4 @@
-// src/app/(tabs)/favorites.tsx - ENHANCED VERSION WITH MANAGEMENT
+// src/app/(tabs)/favorites.tsx - FIXED PRODUCTION ERRORS
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -32,7 +32,7 @@ import {
 import { formatDateRange } from '../../utils/catalogueUtils';
 import { useSafeTabBarHeight } from '../../hooks';
 import { getCategoryById, getMainSubcategories } from '../../data/categories';
-import { stores as allStores, getStoreById } from '../../data/stores';
+import { stores as allStores } from '../../data/stores';
 import type { Catalogue } from '../../types';
 import type { OfferWithCatalogue } from '../../services/offerService';
 import { AdBanner } from '../../components/common';
@@ -244,11 +244,19 @@ export default function FavoritesScreen() {
   };
 
   const handleToggleFavoriteSubcategory = (subcategoryId: string) => {
-    dispatch(toggleFavoriteSubcategory(subcategoryId));
+    try {
+      dispatch(toggleFavoriteSubcategory(subcategoryId));
+    } catch (error) {
+      console.error('Error toggling favorite subcategory:', error);
+    }
   };
 
   const handleToggleFavoriteStore = (storeId: string) => {
-    dispatch(toggleFavoriteStore(storeId));
+    try {
+      dispatch(toggleFavoriteStore(storeId));
+    } catch (error) {
+      console.error('Error toggling favorite store:', error);
+    }
   };
 
   const handleCataloguePress = (catalogueId: string) => {
@@ -263,7 +271,18 @@ export default function FavoritesScreen() {
     }
   };
 
-  // NEW: Manage Stores Modal Content
+  // ✅ FIXED: Safe store logo handling
+  const getStoreLogoSource = (logo: any) => {
+    if (!logo) {
+      return require('../../assets/logos/default.png');
+    }
+    if (typeof logo === 'string') {
+      return { uri: logo };
+    }
+    return logo;
+  };
+
+  // Manage Stores Modal Content
   const renderManageStoresModal = () => (
     <Modal
       visible={manageMode === 'stores'}
@@ -289,7 +308,11 @@ export default function FavoritesScreen() {
                   style={[styles.manageItem, isFavorite && styles.manageItemActive]}
                   onPress={() => handleToggleFavoriteStore(store.id)}
                 >
-                  <Image source={{ uri: store.logo }} style={styles.manageStoreLogo} />
+                  <Image
+                    source={getStoreLogoSource(store.logo)}
+                    style={styles.manageStoreLogo}
+                    resizeMode="contain"
+                  />
                   <Text style={[styles.manageItemText, isFavorite && styles.manageItemTextActive]}>
                     {store.nameAr}
                   </Text>
@@ -307,7 +330,7 @@ export default function FavoritesScreen() {
     </Modal>
   );
 
-  // NEW: Manage Subcategories Modal Content
+  // Manage Subcategories Modal Content
   const renderManageSubcategoriesModal = () => (
     <Modal
       visible={manageMode === 'subcategories'}

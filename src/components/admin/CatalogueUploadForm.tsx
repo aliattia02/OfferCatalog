@@ -30,6 +30,8 @@ import {
   getLocalStoreNamesByCity,
   getLocalStoreNameById,
   getCitiesByGovernorate,
+  getGovernorateName,
+  getCityName,
   governorateNames,
   cityNames,
   type GovernorateId,
@@ -502,88 +504,144 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
   };
 
   const saveCatalogueToFirestore = async (
-    catalogueId: string,
-    selectedStore: any,
-    uploadedPages: any[],
-    pdfUrl: string | null,
-    coverImageUrl: string
-  ) => {
-    setProgress({
-      stage: 'جاري حفظ البيانات...',
-      current: 4,
-      total: 4,
-      percentage: 95,
-    });
+  catalogueId: string,
+  selectedStore: any,
+  uploadedPages: any[],
+  pdfUrl: string | null,
+  coverImageUrl: string
+) => {
+  setProgress({
+    stage: 'جاري حفظ البيانات...',
+    current: 4,
+    total: 4,
+    percentage: 95,
+  });
 
-    const catalogueData: any = {
-      id: catalogueId,
-      storeId: selectedStore.id,
-      storeName: selectedStore.nameAr,
-      titleAr: titleAr.trim(),
-      titleEn: titleEn.trim(),
-      startDate: startDate.trim(),
-      endDate: endDate.trim(),
-      coverImage: coverImageUrl,
-      pages: uploadedPages,
-      totalPages: uploadedPages.length,
-      pdfProcessed: true,
-      categoryId: selectedCategoryId,
-      uploadMode: uploadType,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    };
+  const catalogueData: any = {
+    id: catalogueId,
+    storeId: selectedStore.id,
+    storeName: selectedStore.nameAr,
+    titleAr: titleAr.trim(),
+    titleEn: titleEn.trim(),
+    startDate: startDate.trim(),
+    endDate: endDate.trim(),
+    coverImage: coverImageUrl,
+    pages: uploadedPages,
+    totalPages: uploadedPages.length,
+    pdfProcessed: true,
+    categoryId: selectedCategoryId,
+    uploadMode: uploadType,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
 
-    // Add local store identification if it's a local store
-    if (isLocalStore) {
-      catalogueData.isLocalStore = true;
+  // ✅ FIXED: Add local store identification if it's a local store
+  if (isLocalStore) {
+    console.log('🏪 Processing local store data...');
+    console.log('   - isLocalStore:', isLocalStore);
+    console.log('   - localStoreGovernorate:', localStoreGovernorate);
+    console.log('   - localStoreCity:', localStoreCity);
+    console.log('   - selectedLocalStoreNameId:', selectedLocalStoreNameId);
 
-      if (localStoreGovernorate) {
-        catalogueData.localStoreGovernorate = localStoreGovernorate;
-      }
+    catalogueData.isLocalStore = true;
 
-      if (localStoreCity) {
-        catalogueData.localStoreCity = localStoreCity;
-      }
+    // REQUIRED: Governorate must be set for local stores
+    if (localStoreGovernorate) {
+      catalogueData.localStoreGovernorate = localStoreGovernorate;
+      console.log('   ✅ Added localStoreGovernorate:', localStoreGovernorate);
+    } else {
+      console.error('   ❌ Missing localStoreGovernorate!');
+      throw new Error('Local store must have a governorate');
+    }
 
-      if (selectedLocalStoreNameId) {
-        const localStoreName = getLocalStoreNameById(
-          selectedLocalStoreNameId,
-          localStoreGovernorate as GovernorateId
-        );
+    // OPTIONAL: City (only if selected)
+    if (localStoreCity) {
+      catalogueData.localStoreCity = localStoreCity;
+      console.log('   ✅ Added localStoreCity:', localStoreCity);
+    }
 
-        if (localStoreName) {
-          catalogueData.localStoreNameId = selectedLocalStoreNameId;
-          catalogueData.localStoreNameAr = localStoreName.nameAr;
-          catalogueData.localStoreNameEn = localStoreName.nameEn;
-        }
+    // ✅ CRITICAL FIX: ALWAYS add local store name fields
+    // This was the bug - the else block wasn't always executing
+    if (selectedLocalStoreNameId && selectedLocalStoreNameId !== 'unidentified') {
+      // User selected a specific local store from the dropdown
+      const localStoreName = getLocalStoreNameById(
+        selectedLocalStoreNameId,
+        localStoreGovernorate as GovernorateId
+      );
+
+      if (localStoreName) {
+        catalogueData.localStoreNameId = selectedLocalStoreNameId;
+        catalogueData.localStoreNameAr = localStoreName.nameAr;
+        catalogueData.localStoreNameEn = localStoreName.nameEn;
+        console.log('   ✅ Added identified local store:', localStoreName.nameAr);
       } else {
-        // Mark as unidentified local store
+        // Store ID provided but not found in database - fallback to unidentified
+        console.warn('   ⚠️ Local store ID not found, using unidentified');
         catalogueData.localStoreNameId = 'unidentified';
         catalogueData.localStoreNameAr = 'غير محدد';
         catalogueData.localStoreNameEn = 'Unidentified';
       }
+    } else {
+      // ✅ THIS IS THE FIX: Always set unidentified fields when no store selected
+      // Or when user explicitly selected "unidentified"
+      console.log('   ℹ️ No specific store selected, using unidentified');
+      catalogueData.localStoreNameId = 'unidentified';
+      catalogueData.localStoreNameAr = 'غير محدد';
+      catalogueData.localStoreNameEn = 'Unidentified';
+      console.log('   ✅ Added unidentified local store fields');
     }
 
-    if (pdfUrl) {
-      catalogueData.pdfUrl = pdfUrl;
+    // ✅ VALIDATION: Ensure all required local store fields are present
+    const requiredFields = ['localStoreGovernorate', 'localStoreNameId', 'localStoreNameAr', 'localStoreNameEn'];
+    const missingFields = requiredFields.filter(field => !catalogueData[field]);
+
+    if (missingFields.length > 0) {
+      console.error('   ❌ Missing required local store fields:', missingFields);
+      throw new Error(`Missing local store fields: ${missingFields.join(', ')}`);
     }
 
-    const catalogueRef = doc(db, 'catalogues', catalogueId);
-    await setDoc(catalogueRef, catalogueData);
-
-    console.log('✅ Catalogue saved to Firestore with custom ID');
-
-    setProgress({
-      stage: 'تمت العملية بنجاح!',
-      current: 4,
-      total: 4,
-      percentage: 100,
+    console.log('   ✅ All local store fields validated');
+    console.log('   📋 Final local store data:', {
+      localStoreGovernorate: catalogueData.localStoreGovernorate,
+      localStoreCity: catalogueData.localStoreCity || 'N/A',
+      localStoreNameId: catalogueData.localStoreNameId,
+      localStoreNameAr: catalogueData.localStoreNameAr,
+      localStoreNameEn: catalogueData.localStoreNameEn,
     });
+  }
 
-    const selectedCategory = getCategoryById(selectedCategoryId);
-    let successMessage = `تم رفع الكتالوج بنجاح!\n${uploadedPages.length} صفحة تم رفعها\nمعرف الكتالوج: ${catalogueId}\nالفئة: ${selectedCategory?.nameAr || 'غير محدد'}`;
+  if (pdfUrl) {
+    catalogueData.pdfUrl = pdfUrl;
+  }
 
-    if (isLocalStore && selectedLocalStoreNameId && selectedLocalStoreNameId !== 'unidentified') {
+  // Save to Firestore
+  const catalogueRef = doc(db, 'catalogues', catalogueId);
+  await setDoc(catalogueRef, catalogueData);
+
+  console.log('✅ Catalogue saved to Firestore with custom ID');
+  console.log('📊 Complete catalogue data:', JSON.stringify(catalogueData, null, 2));
+
+  setProgress({
+    stage: 'تمت العملية بنجاح!',
+    current: 4,
+    total: 4,
+    percentage: 100,
+  });
+
+  // Build success message
+  const selectedCategory = getCategoryById(selectedCategoryId);
+  let successMessage = `تم رفع الكتالوج بنجاح!\n${uploadedPages.length} صفحة تم رفعها\nمعرف الكتالوج: ${catalogueId}\nالفئة: ${selectedCategory?.nameAr || 'غير محدد'}`;
+
+  if (isLocalStore) {
+    const govName = getGovernorateName(localStoreGovernorate as GovernorateId);
+    successMessage += `\nالمحافظة: ${govName}`;
+
+    if (localStoreCity) {
+      const cityName = getCityName(localStoreCity);
+      successMessage += `\nالمدينة: ${cityName}`;
+    }
+
+    if (selectedLocalStoreNameId && selectedLocalStoreNameId !== 'unidentified') {
       const localStoreName = getLocalStoreNameById(
         selectedLocalStoreNameId,
         localStoreGovernorate as GovernorateId
@@ -591,12 +649,13 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       if (localStoreName) {
         successMessage += `\nاسم المتجر المحلي: ${localStoreName.nameAr}`;
       }
-    } else if (isLocalStore && (!selectedLocalStoreNameId || selectedLocalStoreNameId === 'unidentified')) {
+    } else {
       successMessage += `\nاسم المتجر المحلي: غير محدد`;
     }
+  }
 
-    showAlert('✅ نجح', successMessage, onSuccess);
-  };
+  showAlert('✅ نجح', successMessage, onSuccess);
+};
 
   const selectedCategory = getCategoryById(selectedCategoryId);
   const selectedLocalStoreName = selectedLocalStoreNameId && localStoreGovernorate

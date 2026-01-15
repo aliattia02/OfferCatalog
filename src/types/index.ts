@@ -1,18 +1,6 @@
-// src/types/index.ts - COMPLETE UPDATED VERSION
+// src/types/index.ts - COMPLETE UPDATED VERSION WITH LOCATION
 
 import { ImageSourcePropType } from 'react-native';
-
-export interface Store {
-  id: string;
-  nameAr: string;
-  nameEn: string;
-  logo: string | ImageSourcePropType; // ✅ Support both URI and require()
-  categories?: string[];
-  branches: Branch[];
-  isLocal?: boolean;
-  governorate?: string;
-}
-
 
 /**
  * Store Type - Updated with categories and local store support
@@ -21,11 +9,11 @@ export interface Store {
   id: string;
   nameAr: string;
   nameEn: string;
-  logo: string;
-  categories?: string[]; // Array of category IDs this store belongs to
-  isLocal?: boolean; // True if this is a local governorate store group
-  governorate?: string; // For local stores: which governorate
-  branches: Branch[]; // Will be populated dynamically
+  logo: string | ImageSourcePropType;
+  categories?: string[];
+  branches: Branch[];
+  isLocal?: boolean;
+  governorate?: string;
 }
 
 /**
@@ -33,9 +21,9 @@ export interface Store {
  */
 export interface Branch {
   id: string;
-  storeId: string; // References the main store ID
-  storeName?: string; // For local stores: the specific store name (e.g., "زهران")
-  storeNameEn?: string; // English name for local stores
+  storeId: string;
+  storeName?: string;
+  storeNameEn?: string;
   addressAr: string;
   addressEn: string;
   governorate: string;
@@ -56,13 +44,13 @@ export interface CataloguePage {
 }
 
 /**
- * Catalogue Type - UPDATED with categoryId
+ * Catalogue Type - UPDATED with categoryId and local store fields
  */
 export interface Catalogue {
   id: string;
   storeId: string;
   storeName?: string;
-  categoryId?: string; // Main category ID (one of 4 main categories)
+  categoryId?: string;
   titleAr: string;
   titleEn: string;
   startDate: string;
@@ -72,8 +60,14 @@ export interface Catalogue {
   pages: CataloguePage[];
   totalPages?: number;
   pdfProcessed?: boolean;
-  createdAt?: Timestamp;
-  updatedAt?: Timestamp;
+  createdAt?: any;
+  updatedAt?: any;
+  // Local store fields
+  isLocalStore?: boolean;
+  localStoreGovernorate?: string;
+  localStoreNameId?: string;
+  localStoreNameAr?: string;
+  localStoreNameEn?: string;
 }
 
 /**
@@ -83,7 +77,7 @@ export interface Offer {
   id: string;
   storeId: string;
   catalogueId: string;
-  categoryId: string; // This is the subcategory ID
+  categoryId: string;
   nameAr: string;
   nameEn: string;
   descriptionAr?: string;
@@ -94,7 +88,6 @@ export interface Offer {
   unit?: string;
   pageNumber?: number;
   isActive: boolean;
-  // Optional fields that may come from OfferWithCatalogue
   catalogueStartDate?: string;
   catalogueEndDate?: string;
   startDate?: string;
@@ -108,12 +101,11 @@ export interface BasketItem {
   id: string;
   type: 'offer' | 'page' | 'pdf-page';
   quantity: number;
-  storeName: string; // Required for all types
-  offerEndDate?: string; // For expiry checking
-  offerStartDate?: string; // For validity checking
-  addedAt: string; // When item was added to basket
+  storeName: string;
+  offerEndDate?: string;
+  offerStartDate?: string;
+  addedAt: string;
 
-  // For offer items
   offer?: Offer & {
     storeName?: string;
     catalogueTitle?: string;
@@ -121,17 +113,15 @@ export interface BasketItem {
     catalogueEndDate?: string;
   };
 
-  // For page items
   cataloguePage?: {
     catalogueId: string;
     catalogueTitle: string;
     pageNumber: number;
     imageUrl: string;
     storeName?: string;
-    offers?: string[]; // Array of offer IDs
+    offers?: string[];
   };
 
-  // For PDF page items
   pdfPage?: {
     catalogueId: string;
     catalogueTitle: string;
@@ -144,27 +134,34 @@ export interface BasketItem {
 }
 
 /**
- * User Profile Type
+ * User Profile Type - ✅ UPDATED WITH LOCATION
  */
 export interface UserProfile {
   uid: string;
-  email: string;
-  displayName?: string;
-  photoURL?: string;
-  location?: string;
+  email: string | null;
+  displayName?: string | null;
+  photoURL?: string | null;
+  isAdmin: boolean;
+
+  // ✅ NEW: Location preferences
+  location?: {
+    governorate: string | null;
+    city: string | null;
+  };
+
   preferences?: {
     language: 'ar' | 'en';
     notifications: boolean;
   };
-  createdAt: Timestamp;
-  updatedAt: Timestamp;
+  createdAt: any;
+  lastLoginAt: any;
 }
 
 /**
  * Favorites State Type - UPDATED for subcategories
  */
 export interface FavoritesState {
-  subcategoryIds: string[]; // Changed from offerIds
+  subcategoryIds: string[];
   storeIds: string[];
   catalogueIds?: string[];
 }
@@ -207,6 +204,16 @@ export interface BasketState {
 }
 
 /**
+ * Settings State Type - ✅ UPDATED WITH LOCATION
+ */
+export interface SettingsState {
+  userGovernorate: string | null;
+  userCity: string | null;
+  language: 'ar' | 'en';
+  notificationsEnabled: boolean;
+}
+
+/**
  * Root State Type (for Redux)
  */
 export interface RootState {
@@ -215,10 +222,11 @@ export interface RootState {
   offers: OffersState;
   basket: BasketState;
   favorites: FavoritesState;
+  settings: SettingsState;
 }
 
 /**
- * Helper Types for Category Filtering
+ * Helper Types
  */
 export type MainCategoryId = 'food_groceries' | 'electronics' | 'home' | 'fashion';
 
@@ -227,9 +235,6 @@ export interface CategoryFilter {
   subcategory?: string;
 }
 
-/**
- * Offer with Catalogue Info (from Firestore flat collection)
- */
 export interface OfferWithCatalogueInfo extends Offer {
   storeName: string;
   catalogueTitle: string;
@@ -237,25 +242,16 @@ export interface OfferWithCatalogueInfo extends Offer {
   catalogueEndDate: string;
 }
 
-/**
- * Catalogue with Category Info
- */
 export interface CatalogueWithCategory extends Catalogue {
   categoryName?: string;
   categoryNameEn?: string;
 }
 
-/**
- * Category Hierarchy Helper Type
- */
 export interface CategoryHierarchy {
   main: Category;
   sub?: Category;
 }
 
-/**
- * Search/Filter Parameters
- */
 export interface OfferSearchParams {
   categoryId?: string;
   storeId?: string;
@@ -266,13 +262,20 @@ export interface OfferSearchParams {
   isActive?: boolean;
 }
 
-/**
- * Catalogue Search Parameters
- */
 export interface CatalogueSearchParams {
   storeId?: string;
-  categoryId?: string; // Main category ID
+  categoryId?: string;
   status?: 'active' | 'upcoming' | 'expired';
   startDate?: string;
   endDate?: string;
 }
+
+export interface Category {
+  id: string;
+  nameAr: string;
+  nameEn: string;
+  icon?: string;
+  parentId?: string;
+}
+
+export type Timestamp = any;

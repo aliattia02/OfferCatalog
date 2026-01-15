@@ -1,4 +1,4 @@
-// src/app/(tabs)/index.tsx - FIXED: Show top 3 stores by catalogue count
+// src/app/(tabs)/index.tsx - FIXED: Search bar redirects on any touch (mobile & web)
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
@@ -83,7 +83,7 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       console.log('🏠 [Home] Screen focused - refreshing data');
-      loadOffers();
+      loadOffers(false);
       checkAndShowAd();
     }, [])
   );
@@ -94,14 +94,16 @@ export default function HomeScreen() {
     }
   }, []);
 
-  const loadOffers = async () => {
+  const loadOffers = async (forceRefresh: boolean = false) => {
     try {
-      console.log('🔄 [Home] Loading active offers from Firestore...');
+      console.log(`📄 [Home] Loading active offers ${forceRefresh ? '(FORCE REFRESH)' : '(from cache if available)'}...`);
       setLoading(true);
-      const offers = await getActiveOffers();
+
+      const offers = await getActiveOffers(forceRefresh);
       const featured = offers.slice(0, 6);
       setFeaturedOffers(featured);
-      console.log(`✅ [Home] Loaded ${featured.length} featured offers`);
+
+      console.log(`✅ [Home] Loaded ${featured.length} featured offers ${forceRefresh ? '(fresh from Firestore)' : ''}`);
     } catch (error) {
       console.error('❌ [Home] Error loading offers:', error);
       setFeaturedOffers([]);
@@ -111,10 +113,13 @@ export default function HomeScreen() {
   };
 
   const handleRefresh = async () => {
+    console.log('🔄 [Home] Manual refresh triggered - forcing fresh data from Firestore');
     setRefreshing(true);
     try {
-      await loadOffers();
-      await dispatch(loadCatalogues()).unwrap();
+      await loadOffers(true);
+      await dispatch(loadCatalogues(true)).unwrap();
+
+      console.log('✅ [Home] Refresh complete - all data updated from Firestore');
     } catch (error) {
       console.error('❌ [Home] Refresh error:', error);
     } finally {
@@ -220,11 +225,9 @@ export default function HomeScreen() {
     return groupArray;
   }, [catalogues, mainCategories, userGovernorate, t]);
 
-  // ✅ NEW: Get top 3 stores by catalogue count (filtered by location)
   const topStoresByCatalogueCount = useMemo(() => {
     console.log('📊 [Home] Calculating top stores by catalogue count...');
 
-    // Get active catalogues filtered by location
     const cataloguesWithStatus: CatalogueWithStatus[] = catalogues.map(cat => {
       const status = getCatalogueStatus(cat.startDate, cat.endDate);
       return { ...cat, status };
@@ -232,7 +235,6 @@ export default function HomeScreen() {
 
     let activeCatalogues = cataloguesWithStatus.filter(cat => cat.status === 'active');
 
-    // Filter by user location
     if (userGovernorate) {
       activeCatalogues = activeCatalogues.filter(cat => {
         if (!cat.isLocalStore) return true;
@@ -240,7 +242,6 @@ export default function HomeScreen() {
       });
     }
 
-    // Count catalogues per store
     const storeCatalogueCount: Record<string, number> = {};
     activeCatalogues.forEach(cat => {
       const storeId = cat.storeId;
@@ -249,13 +250,12 @@ export default function HomeScreen() {
       }
     });
 
-    // Sort stores by catalogue count and get top 3
     const sortedStores = stores
       .map(store => ({
         store,
         catalogueCount: storeCatalogueCount[store.id] || 0,
       }))
-      .filter(item => item.catalogueCount > 0) // Only stores with catalogues
+      .filter(item => item.catalogueCount > 0)
       .sort((a, b) => b.catalogueCount - a.catalogueCount)
       .slice(0, 3)
       .map(item => item.store);
@@ -303,7 +303,8 @@ export default function HomeScreen() {
     dispatch(toggleFavoriteStore(storeId));
   };
 
-  const handleSearchFocus = () => {
+  // ✅ FIXED: Navigate to search page on any touch of the search bar container
+  const handleSearchPress = () => {
     router.push('/search');
   };
 
@@ -442,10 +443,11 @@ export default function HomeScreen() {
         />
       }
     >
+      {/* ✅ FIXED: Entire search container is now touchable */}
       <TouchableOpacity
         style={styles.searchContainer}
-        onPress={handleSearchFocus}
-        activeOpacity={0.7}
+        onPress={handleSearchPress}
+        activeOpacity={0.8}
       >
         <SearchBar
           value={searchQuery}
@@ -515,7 +517,6 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* ✅ FIXED: Show top 3 stores by catalogue count */}
       {topStoresByCatalogueCount.length > 0 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -524,7 +525,7 @@ export default function HomeScreen() {
               <Text style={styles.viewAll}>{t('home.viewAll')}</Text>
             </TouchableOpacity>
           </View>
-             <View style={styles.storesList}>
+          <View style={styles.storesList}>
             {topStoresByCatalogueCount.map(store => (
               <StoreCard
                 key={store.id}

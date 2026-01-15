@@ -1,4 +1,4 @@
-// components/common/LocationSelector.tsx
+// components/common/LocationSelector.tsx - ✅ WITH EXPLICIT SAVE BUTTON
 import React, { useState } from 'react';
 import {
   View,
@@ -8,11 +8,12 @@ import {
   Modal,
   ScrollView,
   I18nManager,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
-import { setUserLocation, clearUserLocation } from '../../store/slices/settingsSlice';
+import { setUserLocation, clearUserLocation, syncLocation } from '../../store/slices/settingsSlice';
 import {
   governorateNames,
   cityNames,
@@ -35,41 +36,90 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
   const dispatch = useAppDispatch();
   const userGovernorate = useAppSelector(state => state.settings.userGovernorate) as GovernorateId | null;
   const userCity = useAppSelector(state => state.settings.userCity) as CityId | null;
+  const isAuthenticated = useAppSelector(state => state.auth.isAuthenticated);
 
   const [showGovernorateModal, setShowGovernorateModal] = useState(false);
   const [showCityModal, setShowCityModal] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   const governorates = Object.keys(governorateNames) as GovernorateId[];
   const availableCities = userGovernorate ? getCitiesByGovernorate(userGovernorate) : [];
 
   const handleGovernorateSelect = (governorate: GovernorateId) => {
+    console.log('📍 [LocationSelector] Governorate selected:', governorate);
+
+    // ✅ Update Redux state immediately (local only)
     dispatch(setUserLocation({ governorate, city: null }));
+    setHasUnsavedChanges(true);
+
     setShowGovernorateModal(false);
     onLocationChange?.(governorate);
   };
 
   const handleCitySelect = (city: CityId) => {
     if (userGovernorate) {
+      console.log('📍 [LocationSelector] City selected:', city);
+
+      // ✅ Update Redux state immediately (local only)
       dispatch(setUserLocation({ governorate: userGovernorate, city }));
+      setHasUnsavedChanges(true);
+
       setShowCityModal(false);
       onLocationChange?.(userGovernorate, city);
     }
   };
 
   const handleClearLocation = () => {
+    console.log('📍 [LocationSelector] Clearing location');
+
+    // ✅ Clear Redux state immediately (local only)
     dispatch(clearUserLocation());
+    setHasUnsavedChanges(true);
+
     onLocationChange?.(null as any);
+  };
+
+  // ✅ NEW: Explicit save function
+  const handleSaveLocation = async () => {
+    if (!hasUnsavedChanges) {
+      console.log('ℹ️ No changes to save');
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      if (isAuthenticated) {
+        console.log('💾 [LocationSelector] Saving location to Firestore...');
+        await dispatch(syncLocation({
+          governorate: userGovernorate,
+          city: userCity
+        })).unwrap();
+
+        console.log('✅ Location saved to Firebase successfully');
+        setHasUnsavedChanges(false);
+      } else {
+        console.log('ℹ️ User not logged in, location saved locally only');
+        setHasUnsavedChanges(false);
+      }
+    } catch (error) {
+      console.error('❌ Failed to save location:', error);
+      // You could show an error message here
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const getDisplayText = () => {
     if (!userGovernorate) return 'اختر موقعك';
-    
+
     const govName = getGovernorateName(userGovernorate);
     if (userCity) {
       const cityName = getCityName(userCity);
       return `${cityName}، ${govName}`;
     }
-    
+
     return govName;
   };
 
@@ -108,6 +158,52 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
           </Text>
           <Ionicons name="chevron-down" size={16} color={colors.gray[400]} />
         </TouchableOpacity>
+      )}
+
+      {/* ✅ NEW: Save Button */}
+      {userGovernorate && (
+        <TouchableOpacity
+          style={[
+            styles.saveButton,
+            !hasUnsavedChanges && styles.saveButtonDisabled,
+            isSaving && styles.saveButtonSaving,
+          ]}
+          onPress={handleSaveLocation}
+          disabled={!hasUnsavedChanges || isSaving}
+        >
+          {isSaving ? (
+            <>
+              <ActivityIndicator size="small" color={colors.white} />
+              <Text style={styles.saveButtonText}>جاري الحفظ...</Text>
+            </>
+          ) : (
+            <>
+              <Ionicons
+                name={hasUnsavedChanges ? "save" : "checkmark-circle"}
+                size={20}
+                color={colors.white}
+              />
+              <Text style={styles.saveButtonText}>
+                {hasUnsavedChanges ? 'حفظ الموقع' : 'تم الحفظ'}
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
+      )}
+
+      {/* Info Text */}
+      {isAuthenticated && hasUnsavedChanges && (
+        <Text style={styles.infoText}>
+          <Ionicons name="information-circle" size={14} color={colors.primary} />
+          {' '}لم يتم حفظ التغييرات بعد
+        </Text>
+      )}
+
+      {!isAuthenticated && userGovernorate && (
+        <Text style={styles.infoText}>
+          <Ionicons name="information-circle" size={14} color={colors.textSecondary} />
+          {' '}سجل الدخول لحفظ موقعك بشكل دائم
+        </Text>
       )}
 
       {/* Governorate Selection Modal */}
@@ -192,6 +288,7 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
                 onPress={() => {
                   if (userGovernorate) {
                     dispatch(setUserLocation({ governorate: userGovernorate, city: null }));
+                    setHasUnsavedChanges(true);
                   }
                   setShowCityModal(false);
                 }}
@@ -294,6 +391,40 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  saveButton: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: borderRadius.lg,
+    gap: spacing.sm,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  saveButtonDisabled: {
+    backgroundColor: colors.gray[300],
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  saveButtonSaving: {
+    opacity: 0.7,
+  },
+  saveButtonText: {
+    fontSize: typography.fontSize.md,
+    fontWeight: '600',
+    color: colors.white,
+  },
+  infoText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    paddingHorizontal: spacing.xs,
   },
   modalOverlay: {
     flex: 1,

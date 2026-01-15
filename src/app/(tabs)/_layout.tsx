@@ -42,10 +42,10 @@ export default function TabsLayout() {
   const [updateModalDismissed, setUpdateModalDismissed] = useState(false);
   const insets = useSafeAreaInsets();
 
-  const MIN_BOTTOM_PADDING = 8;
+  const MIN_BOTTOM_PADDING = 2; // ✅ Reduced from 4 to 2
 
-  // ✅ FIXED: Only tab bar needs safe area padding
-  const tabBarBottomPadding = insets.bottom > 0 ? insets.bottom : MIN_BOTTOM_PADDING;
+  // ✅ Further reduced bottom padding - dividing by 3 instead of 2
+  const tabBarBottomPadding = insets.bottom > 0 ? insets.bottom / 3 : MIN_BOTTOM_PADDING;
 
   const showUpdateModal =
     updateInfo.needsUpdate &&
@@ -160,7 +160,7 @@ export default function TabsLayout() {
           </Tabs>
         </View>
 
-        {/* ✅ FIXED: Bottom Ad Space - NO extra padding needed */}
+        {/* Bottom Ad Space */}
         <View style={styles.bottomAdContainer}>
           <AdBanner position="tabs_bottom" maxAds={1} />
         </View>
@@ -200,6 +200,5 @@ const styles = StyleSheet.create({
     borderTopColor: colors.gray[200],
     paddingHorizontal: 8,
     paddingVertical: 4,
-    // ✅ NO paddingBottom here - tab bar handles safe area insets
   },
 });
