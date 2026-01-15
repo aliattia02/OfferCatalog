@@ -27,7 +27,10 @@ import {
 import { Catalogue } from '../../types';
 import { CatalogueUploadForm } from '../../components/admin/CatalogueUploadForm';
 import { CatalogueListItem } from '../../components/admin/CatalogueListItem';
+import { AdminConfigManager } from '../../components/admin/AdminConfigManager';
 import { useAppSelector } from '../../store/hooks';
+
+type TabType = 'catalogues' | 'config';
 
 export default function AdminDashboard() {
   const [catalogues, setCatalogues] = useState<Catalogue[]>([]);
@@ -36,13 +39,16 @@ export default function AdminDashboard() {
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [runningCleanup, setRunningCleanup] = useState(false);
+  const [activeTab, setActiveTab] = useState<TabType>('catalogues');
 
   // Get admin status
   const { isAdmin } = useAppSelector((state) => state.auth);
 
   useEffect(() => {
-    loadCatalogues();
-  }, []);
+    if (activeTab === 'catalogues') {
+      loadCatalogues();
+    }
+  }, [activeTab]);
 
   const handleRunCleanup = async () => {
     const options = [
@@ -125,7 +131,6 @@ export default function AdminDashboard() {
           break;
 
         case '5':
-          // B.TECH Migration - Updated message
           const confirmMigration = Platform.OS === 'web'
             ? window.confirm(
                 '🚀 ترحيل عروض B.TECH\n\n' +
@@ -166,7 +171,6 @@ export default function AdminDashboard() {
           break;
 
         case '6':
-          // Validation
           await validateCatalogueStructure();
           showAlert('🔍 التحقق', 'تحقق من Console للتفاصيل');
           break;
@@ -193,7 +197,6 @@ export default function AdminDashboard() {
       setLoading(true);
       const data = await getAllCatalogues();
 
-      // Sort by creation date (newest first)
       const sorted = data.sort((a, b) => {
         const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
         const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -222,7 +225,6 @@ export default function AdminDashboard() {
   };
 
   const handleDelete = async (catalogue: Catalogue) => {
-    // Check if user is admin (for production security)
     if (!__DEV__ && !isAdmin) {
       if (Platform.OS === 'web') {
         alert('خطأ: غير مصرح لك بحذف الكتالوجات');
@@ -232,14 +234,13 @@ export default function AdminDashboard() {
       return;
     }
 
-    // Prepare deletion details
     const hasPages = catalogue.pages && catalogue.pages.length > 0;
     const hasPDF = !!catalogue.pdfUrl;
     const pageCount = catalogue.pages?.length || 0;
 
     const deletionInfo = [
       `📦 الكتالوج: ${catalogue.titleAr}`,
-      `📝 نوع الرفع: ${hasPDF ? 'PDF (تم تحويله)' : 'صور فقط'}`,
+      `📁 نوع الرفع: ${hasPDF ? 'PDF (تم تحويله)' : 'صور فقط'}`,
       `📄 عدد الصفحات: ${pageCount}`,
       '',
       '⚠️ سيتم حذف:',
@@ -252,19 +253,14 @@ export default function AdminDashboard() {
       '⚫ هذا الإجراء لا يمكن التراجع عنه.'
     ].filter(Boolean).join('\n');
 
-    // Web-compatible confirmation
     if (Platform.OS === 'web') {
       const confirmed = window.confirm(deletionInfo);
-
       if (!confirmed) {
         console.log('🔴 [Admin] User cancelled delete');
         return;
       }
-
-      // Perform delete
       await performDelete(catalogue);
     } else {
-      // Native Alert
       Alert.alert(
         'تأكيد الحذف',
         deletionInfo,
@@ -289,12 +285,10 @@ export default function AdminDashboard() {
       setDeletingId(catalogue.id);
       console.log(`🗑️ [Admin] Starting deletion: ${catalogue.id}`);
 
-      // Show progress indicator
       if (Platform.OS === 'web') {
         console.log('⏳ جاري الحذف...');
       }
 
-      // Call the improved delete function with pdfUrl
       await deleteCatalogue(catalogue.id, catalogue.pdfUrl);
 
       console.log('✅ [Admin] Catalogue deleted successfully');
@@ -308,10 +302,7 @@ export default function AdminDashboard() {
         );
       }
 
-      // Reload catalogues
       await loadCatalogues();
-
-      // Also refresh the cache
       await refreshCatalogues();
 
     } catch (error: any) {
@@ -335,16 +326,12 @@ export default function AdminDashboard() {
   const handleUploadSuccess = async () => {
     console.log('✅ [Admin] Upload successful, refreshing catalogues...');
     setShowUploadForm(false);
-
-    // Reload catalogues from Firestore
     await loadCatalogues();
-
-    // Also refresh the registry cache
     const freshCatalogues = await refreshCatalogues();
     console.log(`✅ [Admin] Catalogues refreshed: ${freshCatalogues.length} items`);
   };
 
-  if (loading) {
+  if (loading && activeTab === 'catalogues') {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -355,118 +342,160 @@ export default function AdminDashboard() {
 
   return (
     <View style={styles.container}>
-      {showUploadForm ? (
-        <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
-          <CatalogueUploadForm
-            onSuccess={handleUploadSuccess}
-            onCancel={() => setShowUploadForm(false)}
+      {/* Tab Navigation */}
+      <View style={styles.tabContainer}>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'catalogues' && styles.activeTab]}
+          onPress={() => setActiveTab('catalogues')}
+        >
+          <Ionicons
+            name="book"
+            size={20}
+            color={activeTab === 'catalogues' ? colors.primary : colors.textSecondary}
           />
-        </ScrollView>
-      ) : (
-        <>
-          {/* Header */}
-          <View style={styles.header}>
-            <View style={styles.headerInfo}>
-              <Text style={styles.headerTitle}>الكتالوجات</Text>
-              <Text style={styles.headerSubtitle}>
-                {catalogues.length} {catalogues.length === 1 ? 'كتالوج' : 'كتالوجات'}
-              </Text>
-              {!__DEV__ && !isAdmin && (
-                <View style={styles.warningBadge}>
-                  <Ionicons name="warning" size={14} color={colors.warning} />
-                  <Text style={styles.warningText}>وضع القراءة فقط</Text>
-                </View>
-              )}
-            </View>
-            <TouchableOpacity
-              style={styles.uploadButton}
-              onPress={() => setShowUploadForm(true)}
-            >
-              <Ionicons name="add" size={24} color={colors.white} />
-              <Text style={styles.uploadButtonText}>إضافة كتالوج</Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={[
+            styles.tabText,
+            activeTab === 'catalogues' && styles.activeTabText
+          ]}>
+            الكتالوجات
+          </Text>
+        </TouchableOpacity>
 
-          {/* Admin Info Banner */}
-          {__DEV__ && (
-            <View style={styles.devBanner}>
-              <Ionicons name="code-slash" size={20} color={colors.warning} />
-              <Text style={styles.devBannerText}>
-                وضع المطور: يمكنك حذف الكتالوجات بدون قيود
-              </Text>
-              <TouchableOpacity
-                style={styles.cleanupButton}
-                onPress={handleRunCleanup}
-                disabled={runningCleanup}
-              >
-                {runningCleanup ? (
-                  <ActivityIndicator size="small" color={colors.white} />
-                ) : (
-                  <>
-                    <Ionicons name="build" size={16} color={colors.white} />
-                    <Text style={styles.cleanupButtonText}>تنظيف</Text>
-                  </>
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'config' && styles.activeTab]}
+          onPress={() => setActiveTab('config')}
+        >
+          <Ionicons
+            name="settings"
+            size={20}
+            color={activeTab === 'config' ? colors.primary : colors.textSecondary}
+          />
+          <Text style={[
+            styles.tabText,
+            activeTab === 'config' && styles.activeTabText
+          ]}>
+            إعدادات التطبيق
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Content Area */}
+      {activeTab === 'catalogues' ? (
+        showUploadForm ? (
+          <ScrollView style={styles.formContainer} showsVerticalScrollIndicator={false}>
+            <CatalogueUploadForm
+              onSuccess={handleUploadSuccess}
+              onCancel={() => setShowUploadForm(false)}
+            />
+          </ScrollView>
+        ) : (
+          <>
+            {/* Header */}
+            <View style={styles.header}>
+              <View style={styles.headerInfo}>
+                <Text style={styles.headerTitle}>الكتالوجات</Text>
+                <Text style={styles.headerSubtitle}>
+                  {catalogues.length} {catalogues.length === 1 ? 'كتالوج' : 'كتالوجات'}
+                </Text>
+                {!__DEV__ && !isAdmin && (
+                  <View style={styles.warningBadge}>
+                    <Ionicons name="warning" size={14} color={colors.warning} />
+                    <Text style={styles.warningText}>وضع القراءة فقط</Text>
+                  </View>
                 )}
+              </View>
+              <TouchableOpacity
+                style={styles.uploadButton}
+                onPress={() => setShowUploadForm(true)}
+              >
+                <Ionicons name="add" size={24} color={colors.white} />
+                <Text style={styles.uploadButtonText}>إضافة كتالوج</Text>
               </TouchableOpacity>
             </View>
-          )}
 
-          {/* Info Banner */}
-          <View style={styles.infoBanner}>
-            <Ionicons name="information-circle" size={20} color={colors.primary} />
-            <View style={styles.infoBannerContent}>
-              <Text style={styles.infoBannerText}>
-                • رفع PDF: يتم تحويله تلقائياً إلى صور{'\n'}
-                • رفع صور: تبقى كما هي بدون تحويل{'\n'}
-                • المعرف: storeId-YYYY-MM-DD-HHMM
-              </Text>
-            </View>
-          </View>
+            {/* Admin Info Banner */}
+            {__DEV__ && (
+              <View style={styles.devBanner}>
+                <Ionicons name="code-slash" size={20} color={colors.warning} />
+                <Text style={styles.devBannerText}>
+                  وضع المطور: يمكنك حذف الكتالوجات بدون قيود
+                </Text>
+                <TouchableOpacity
+                  style={styles.cleanupButton}
+                  onPress={handleRunCleanup}
+                  disabled={runningCleanup}
+                >
+                  {runningCleanup ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <>
+                      <Ionicons name="build" size={16} color={colors.white} />
+                      <Text style={styles.cleanupButtonText}>تنظيف</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
 
-          {/* Catalogues List */}
-          <ScrollView
-            style={styles.listContainer}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
-            }
-          >
-            {catalogues.length === 0 ? (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="document-text-outline" size={80} color={colors.gray[300]} />
-                <Text style={styles.emptyText}>لا توجد كتالوجات حتى الآن</Text>
-                <Text style={styles.emptySubtext}>
-                  اضغط على "إضافة كتالوج" لرفع كتالوج جديد
+            {/* Info Banner */}
+            <View style={styles.infoBanner}>
+              <Ionicons name="information-circle" size={20} color={colors.primary} />
+              <View style={styles.infoBannerContent}>
+                <Text style={styles.infoBannerText}>
+                  • رفع PDF: يتم تحويله تلقائياً إلى صور{'\n'}
+                  • رفع صور: تبقى كما هي بدون تحويل{'\n'}
+                  • المعرف: storeId-YYYY-MM-DD-HHMM
                 </Text>
               </View>
-            ) : (
-              catalogues.map((catalogue) => (
-                <View key={catalogue.id} style={styles.catalogueItemWrapper}>
-                  <CatalogueListItem
-                    catalogue={catalogue}
-                    onDelete={() => handleDelete(catalogue)}
-                    canDelete={(__DEV__ || isAdmin) && deletingId !== catalogue.id}
-                    onProcessComplete={loadCatalogues}
-                  />
+            </View>
 
-                  {/* Deletion Overlay */}
-                  {deletingId === catalogue.id && (
-                    <View style={styles.deletingOverlay}>
-                      <View style={styles.deletingBox}>
-                        <ActivityIndicator size="large" color={colors.white} />
-                        <Text style={styles.deletingText}>جاري الحذف...</Text>
-                        <Text style={styles.deletingSubtext}>
-                          حذف الملفات والبيانات
-                        </Text>
-                      </View>
-                    </View>
-                  )}
+            {/* Catalogues List */}
+            <ScrollView
+              style={styles.listContainer}
+              showsVerticalScrollIndicator={false}
+              refreshControl={
+                <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
+              }
+            >
+              {catalogues.length === 0 ? (
+                <View style={styles.emptyContainer}>
+                  <Ionicons name="document-text-outline" size={80} color={colors.gray[300]} />
+                  <Text style={styles.emptyText}>لا توجد كتالوجات حتى الآن</Text>
+                  <Text style={styles.emptySubtext}>
+                    اضغط على "إضافة كتالوج" لرفع كتالوج جديد
+                  </Text>
                 </View>
-              ))
-            )}
-            <View style={styles.bottomPadding} />
-          </ScrollView>
-        </>
+              ) : (
+                catalogues.map((catalogue) => (
+                  <View key={catalogue.id} style={styles.catalogueItemWrapper}>
+                    <CatalogueListItem
+                      catalogue={catalogue}
+                      onDelete={() => handleDelete(catalogue)}
+                      canDelete={(__DEV__ || isAdmin) && deletingId !== catalogue.id}
+                      onProcessComplete={loadCatalogues}
+                    />
+
+                    {deletingId === catalogue.id && (
+                      <View style={styles.deletingOverlay}>
+                        <View style={styles.deletingBox}>
+                          <ActivityIndicator size="large" color={colors.white} />
+                          <Text style={styles.deletingText}>جاري الحذف...</Text>
+                          <Text style={styles.deletingSubtext}>
+                            حذف الملفات والبيانات
+                          </Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                ))
+              )}
+              <View style={styles.bottomPadding} />
+            </ScrollView>
+          </>
+        )
+      ) : (
+        /* Config Tab */
+        <AdminConfigManager />
       )}
     </View>
   );
@@ -487,6 +516,34 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     fontSize: typography.fontSize.md,
     color: colors.textSecondary,
+  },
+  tabContainer: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+    paddingHorizontal: spacing.md,
+  },
+  tab: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  activeTab: {
+    borderBottomColor: colors.primary,
+  },
+  tabText: {
+    fontSize: typography.fontSize.md,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  activeTabText: {
+    color: colors.primary,
+    fontWeight: '600',
   },
   header: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',

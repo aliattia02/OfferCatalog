@@ -31,15 +31,15 @@ export const mainCategories: Category[] = [
   },
   {
     id: MAIN_CATEGORY_IDS.HOME,
-    nameAr: 'منزل',
-    nameEn: 'Home',
+    nameAr: 'أدوات منزلية', // ✅ CHANGED FROM 'منزل'
+    nameEn: 'Home Supplies', // ✅ ALSO UPDATED ENGLISH NAME
     icon: 'home',
     color: '#2a9d8f',
   },
   {
     id: MAIN_CATEGORY_IDS.FASHION,
-    nameAr: 'أزياء',
-    nameEn: 'Fashion',
+    nameAr: 'ملابس و مستحضرات تجميل',
+    nameEn: 'Fashion & Beauty',
     icon: 'shirt',
     color: '#f4a261',
   },
@@ -609,15 +609,15 @@ export const getCategoryHierarchy = (categoryId: string): {
   sub: Category | undefined;
 } => {
   const category = getCategoryById(categoryId);
-  
+
   if (!category) {
     return { main: undefined, sub: undefined };
   }
-  
+
   if (isMainCategory(categoryId)) {
     return { main: category, sub: undefined };
   }
-  
+
   const mainCategory = getMainCategoryForSubcategory(categoryId);
   return { main: mainCategory, sub: category };
 };

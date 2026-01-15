@@ -1,95 +1,205 @@
-// src/app/(tabs)/_layout.tsx - Updated with increased tab bar height
-import React from 'react';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Platform } from 'react-native';
 import { Tabs } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
-import { I18nManager } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '../../constants/theme';
+import { useAppSelector } from '../../store/hooks';
+import { useAppConfig } from '../../hooks/useAppConfig';
+import { AnnouncementBar } from '../../components/common/AnnouncementBar';
+import { ForceUpdateModal } from '../../components/common/ForceUpdateModal';
+import { AdBanner } from '../../components/common';
 
-export default function TabsLayout() {
-  const { t } = useTranslation();
+// Badge component for basket count
+const BasketBadge = () => {
+  const basketItems = useAppSelector(state => state.basket.items);
+  const count = basketItems.length;
+
+  if (count === 0) return null;
 
   return (
-    <Tabs
-      screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.gray[400],
-        tabBarStyle: {
-          backgroundColor: colors.white,
-          borderTopWidth: 1,
-          borderTopColor: colors.gray[200],
-          paddingBottom: 8,  // Increased from 5
-          paddingTop: 8,     // Increased from 5
-          height: 100,       // Increased from 60 (60 * 1.66 ≈ 100)
-        },
-        headerShown: true,
-        headerStyle: {
-          backgroundColor: colors.white,
-        },
-        headerTitleStyle: {
-          fontWeight: 'bold',
-          fontSize: 18,
-        },
-      }}
-    >
-      <Tabs.Screen
-        name="index"
-        options={{
-          title: t('Home'),
-          headerTitle: t('Home'),
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="home" size={size} color={color} />
-          ),
-        }}
+    <View style={styles.badge}>
+      <Text style={styles.badgeText}>
+        {count > 99 ? '99+' : count}
+      </Text>
+    </View>
+  );
+};
+
+// Custom icon with badge for basket tab
+const BasketIcon = ({ color, size }: { color: string; size: number }) => (
+  <View>
+    <Ionicons name="cart" size={size} color={color} />
+    <BasketBadge />
+  </View>
+);
+
+export default function TabsLayout() {
+  const { t, i18n } = useTranslation();
+  const { config, updateInfo } = useAppConfig();
+  const [updateModalDismissed, setUpdateModalDismissed] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  const MIN_BOTTOM_PADDING = 8;
+
+  // ✅ FIXED: Only tab bar needs safe area padding
+  const tabBarBottomPadding = insets.bottom > 0 ? insets.bottom : MIN_BOTTOM_PADDING;
+
+  const showUpdateModal =
+    updateInfo.needsUpdate &&
+    (updateInfo.forceUpdate || !updateModalDismissed);
+
+  const appName = i18n.language === 'ar' ? 'دليل العروض' : 'Daily Deals';
+
+  return (
+    <>
+      <ForceUpdateModal
+        visible={showUpdateModal}
+        message={updateInfo.message}
+        updateUrl={config.versionControl.updateUrl}
+        forceUpdate={updateInfo.forceUpdate}
       />
-      <Tabs.Screen
-        name="flyers"
-        options={{
-          title: t('Flyers & Offers'),
-          headerTitle: t('Flyers & Offers'),
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="book" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="favorites"
-        options={{
-          title: t('Favorites'),
-          headerTitle: t('Favorites'),
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="heart" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="basket"
-        options={{
-          title: t('Basket'),
-          headerTitle: t('Basket'),
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="cart" size={size} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          title: t('Settings'),
-          headerTitle: t('Settings'),
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings" size={size} color={color} />
-          ),
-        }}
-      />
-      {/* Keep stores file but hide from tabs */}
-      <Tabs.Screen
-        name="stores"
-        options={{
-          href: null, // This hides it from the tab bar
-        }}
-      />
-    </Tabs>
+
+      <View style={{ flex: 1, backgroundColor: colors.white }}>
+        <AnnouncementBar />
+
+        <View style={styles.persistentAdContainer}>
+          <AdBanner position="tabs_persistent" />
+        </View>
+
+        {/* Navigation & Content */}
+        <View style={{ flex: 1 }}>
+          <Tabs
+            screenOptions={{
+              tabBarActiveTintColor: colors.primary,
+              tabBarInactiveTintColor: colors.gray[400],
+              tabBarStyle: {
+                backgroundColor: colors.white,
+                borderTopWidth: 1,
+                borderTopColor: colors.gray[200],
+                paddingBottom: tabBarBottomPadding,
+              },
+              tabBarLabelStyle: {
+                fontSize: 11,
+                fontWeight: '500',
+                marginTop: -2,
+                marginBottom: 0,
+              },
+              tabBarIconStyle: {
+                marginTop: 0,
+                marginBottom: 2,
+              },
+              headerShown: true,
+              headerStyle: {
+                backgroundColor: colors.white,
+              },
+              headerTitleStyle: {
+                fontWeight: 'bold',
+                fontSize: 18,
+              },
+            }}
+          >
+            <Tabs.Screen
+              name="index"
+              options={{
+                title: t('navigation.home'),
+                headerTitle: appName,
+                tabBarIcon: ({ color, size }) => (
+                  <Ionicons name="home" size={22} color={color} />
+                ),
+              }}
+            />
+            <Tabs.Screen
+              name="flyers"
+              options={{
+                title: t('navigation.flyers'),
+                headerTitle: t('flyers.title'),
+                tabBarIcon: ({ color, size }) => (
+                  <Ionicons name="book" size={22} color={color} />
+                ),
+              }}
+            />
+            <Tabs.Screen
+              name="favorites"
+              options={{
+                title: t('navigation.favorites'),
+                headerTitle: t('favorites.title'),
+                tabBarIcon: ({ color, size }) => (
+                  <Ionicons name="heart" size={22} color={color} />
+                ),
+              }}
+            />
+            <Tabs.Screen
+              name="basket"
+              options={{
+                title: t('navigation.basket'),
+                headerTitle: t('basket.title'),
+                tabBarIcon: ({ color, size }) => (
+                  <BasketIcon color={color} size={22} />
+                ),
+              }}
+            />
+            <Tabs.Screen
+              name="settings"
+              options={{
+                title: t('navigation.settings'),
+                headerTitle: t('settings.title'),
+                tabBarIcon: ({ color, size }) => (
+                  <Ionicons name="settings" size={22} color={color} />
+                ),
+              }}
+            />
+            <Tabs.Screen
+              name="stores"
+              options={{
+                href: null, // Hidden from tabs
+              }}
+            />
+          </Tabs>
+        </View>
+
+        {/* ✅ FIXED: Bottom Ad Space - NO extra padding needed */}
+        <View style={styles.bottomAdContainer}>
+          <AdBanner position="tabs_bottom" maxAds={1} />
+        </View>
+      </View>
+    </>
   );
 }
+
+const styles = StyleSheet.create({
+  badge: {
+    position: 'absolute',
+    right: -10,
+    top: -5,
+    backgroundColor: colors.primary,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 5,
+    borderWidth: 2,
+    borderColor: colors.white,
+  },
+  badgeText: {
+    color: colors.white,
+    fontSize: 11,
+    fontWeight: 'bold',
+  },
+  persistentAdContainer: {
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+  },
+  bottomAdContainer: {
+    backgroundColor: colors.white,
+    borderTopWidth: 1,
+    borderTopColor: colors.gray[200],
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    // ✅ NO paddingBottom here - tab bar handles safe area insets
+  },
+});

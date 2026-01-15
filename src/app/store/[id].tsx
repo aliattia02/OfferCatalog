@@ -1,3 +1,4 @@
+// app/store/[id].tsx - UPDATED VERSION WITH LOGO FIX
 import React from 'react';
 import {
   View,
@@ -17,13 +18,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
 import { Button } from '../../components/common';
 import { LeafletMap } from '../../components/stores';
-import { OfferCard } from '../../components/flyers';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { useLocalized } from '../../hooks';
-import { addToBasket } from '../../store/slices/basketSlice';
 import { toggleFavoriteStore } from '../../store/slices/favoritesSlice';
-import { getOffersByStore, getCatalogueByStore } from '../../data/offers';
-import type { Offer } from '../../types';
+import { getStoreById, getBranchesByStore } from '../../data/stores';
 
 export default function StoreDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -31,13 +29,11 @@ export default function StoreDetailScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { getName, getAddress } = useLocalized();
-  
-  const stores = useAppSelector(state => state.stores.stores);
+
   const favoriteStoreIds = useAppSelector(state => state.favorites.storeIds);
-  
-  const store = stores.find(s => s.id === id);
-  const storeOffers = store ? getOffersByStore(store.id) : [];
-  const catalogue = store ? getCatalogueByStore(store.id) : undefined;
+
+  const store = getStoreById(id);
+  const branches = store ? getBranchesByStore(store.id) : [];
   const isFavorite = store ? favoriteStoreIds.includes(store.id) : false;
 
   if (!store) {
@@ -53,25 +49,15 @@ export default function StoreDetailScreen() {
     dispatch(toggleFavoriteStore(store.id));
   };
 
-  const handleAddToBasket = (offer: Offer) => {
-    dispatch(addToBasket({
-      offer,
-      storeName: store.nameAr,
-    }));
-  };
-
-  const handleOfferPress = (offer: Offer) => {
-    router.push(`/offer/${offer.id}`);
-  };
-
-  const handleCataloguePress = () => {
-    if (catalogue) {
-      router.push(`/flyer/${catalogue.id}`);
-    }
+  const handleViewCatalogues = () => {
+    router.push({
+      pathname: '/(tabs)/flyers',
+      params: { storeId: store.id }
+    });
   };
 
   const handleGetDirections = (latitude: number, longitude: number) => {
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${latitude},${longitude}`;
+    const url = `http://maps.google.com/maps?q=${latitude},${longitude}`;
     Linking.openURL(url).catch(() => {
       Alert.alert('خطأ', 'لا يمكن فتح الخرائط');
     });
@@ -82,6 +68,29 @@ export default function StoreDetailScreen() {
       Alert.alert('خطأ', 'لا يمكن إجراء المكالمة');
     });
   };
+
+  // ✅ FIX: Handle both require() and URI logos (same logic as StoreCard.tsx)
+  const getLogoSource = () => {
+    if (typeof store.logo === 'string') {
+      return { uri: store.logo };
+    }
+    return store.logo;
+  };
+
+  // Get governorate display name
+  const getGovernorateDisplay = () => {
+    if (store.isLocal && store.governorate) {
+      const governorateNames: Record<string, string> = {
+        sharkia: 'الشرقية',
+        dakahlia: 'الدقهلية',
+        cairo: 'القاهرة',
+      };
+      return governorateNames[store.governorate] || store.governorate;
+    }
+    return null;
+  };
+
+  const governorateDisplay = getGovernorateDisplay();
 
   return (
     <>
@@ -104,84 +113,95 @@ export default function StoreDetailScreen() {
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Store Header */}
         <View style={styles.header}>
-          <Image source={{ uri: store.logo }} style={styles.storeLogo} resizeMode="contain" />
+          {/* UPDATED: Uses the getLogoSource helper */}
+          <Image
+            source={getLogoSource()}
+            style={styles.storeLogo}
+            resizeMode="contain"
+          />
           <View style={styles.headerInfo}>
             <Text style={styles.storeName}>{getName(store)}</Text>
-            <Text style={styles.branchCount}>{store.branches.length} فروع في الزقازيق</Text>
+            <Text style={styles.branchCount}>
+              {branches.length} {branches.length === 1 ? 'فرع' : 'فروع'}
+              {governorateDisplay && ` في ${governorateDisplay}`}
+            </Text>
+            {store.isLocal && (
+              <View style={styles.localBadge}>
+                <Text style={styles.localBadgeText}>متاجر محلية</Text>
+              </View>
+            )}
           </View>
         </View>
 
-        {/* View Catalogue Button */}
-        {catalogue && (
-          <TouchableOpacity style={styles.catalogueButton} onPress={handleCataloguePress}>
-            <Ionicons name="book-outline" size={24} color={colors.primary} />
-            <View style={styles.catalogueButtonContent}>
-              <Text style={styles.catalogueButtonTitle}>{t('stores.viewOffers')}</Text>
-              <Text style={styles.catalogueButtonSubtitle}>
-                {t('flyers.validUntil')}: {catalogue.endDate}
-              </Text>
-            </View>
-            <Ionicons
-              name={I18nManager.isRTL ? 'chevron-back' : 'chevron-forward'}
-              size={24}
-              color={colors.gray[400]}
-            />
-          </TouchableOpacity>
+        {/* View Catalogues Button */}
+        <TouchableOpacity style={styles.catalogueButton} onPress={handleViewCatalogues}>
+          <Ionicons name="book-outline" size={24} color={colors.primary} />
+          <View style={styles.catalogueButtonContent}>
+            <Text style={styles.catalogueButtonTitle}>عرض الكتالوجات</Text>
+            <Text style={styles.catalogueButtonSubtitle}>
+              شاهد جميع العروض المتاحة
+            </Text>
+          </View>
+          <Ionicons
+            name={I18nManager.isRTL ? 'chevron-back' : 'chevron-forward'}
+            size={24}
+            color={colors.gray[400]}
+          />
+        </TouchableOpacity>
+
+        {/* Map - Only show if branches have coordinates */}
+        {branches.some(b => b.latitude && b.longitude) && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>مواقع الفروع</Text>
+            <LeafletMap branches={branches} height={200} />
+          </View>
         )}
 
-        {/* Map */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>{t('stores.branches')}</Text>
-          <LeafletMap branches={store.branches} height={200} />
-        </View>
-
         {/* Branches List */}
-        <View style={styles.section}>
-          {store.branches.map(branch => (
-            <View key={branch.id} style={styles.branchCard}>
-              <View style={styles.branchInfo}>
-                <Text style={styles.branchAddress}>{getAddress(branch)}</Text>
-                <View style={styles.branchDetails}>
-                  <Ionicons name="time-outline" size={14} color={colors.success} />
-                  <Text style={styles.branchHours}>{branch.openingHours}</Text>
+        {branches.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>
+              الفروع ({branches.length})
+            </Text>
+            {branches.map(branch => (
+              <View key={branch.id} style={styles.branchCard}>
+                <View style={styles.branchInfo}>
+                  {store.isLocal && branch.storeName && (
+                    <Text style={styles.branchStoreName}>{branch.storeName}</Text>
+                  )}
+                  <Text style={styles.branchAddress}>{getAddress(branch)}</Text>
+                  <View style={styles.branchDetails}>
+                    <Ionicons name="time-outline" size={14} color={colors.success} />
+                    <Text style={styles.branchHours}>{branch.openingHours}</Text>
+                  </View>
+                </View>
+                <View style={styles.branchActions}>
+                  {branch.phone && (
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => handleCall(branch.phone!)}
+                    >
+                      <Ionicons name="call" size={20} color={colors.primary} />
+                    </TouchableOpacity>
+                  )}
+                  {branch.latitude && branch.longitude && (
+                    <TouchableOpacity
+                      style={styles.actionButton}
+                      onPress={() => handleGetDirections(branch.latitude!, branch.longitude!)}
+                    >
+                      <Ionicons name="navigate" size={20} color={colors.primary} />
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
-              <View style={styles.branchActions}>
-                {branch.phone && (
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => handleCall(branch.phone!)}
-                  >
-                    <Ionicons name="call" size={20} color={colors.primary} />
-                  </TouchableOpacity>
-                )}
-                {branch.latitude && branch.longitude && (
-                  <TouchableOpacity
-                    style={styles.actionButton}
-                    onPress={() => handleGetDirections(branch.latitude!, branch.longitude!)}
-                  >
-                    <Ionicons name="navigate" size={20} color={colors.primary} />
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-          ))}
-        </View>
-
-        {/* Store Offers */}
-        {storeOffers.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>عروض المتجر</Text>
-            <View style={styles.offersGrid}>
-              {storeOffers.slice(0, 4).map(offer => (
-                <OfferCard
-                  key={offer.id}
-                  offer={offer}
-                  onPress={() => handleOfferPress(offer)}
-                  onAddToBasket={() => handleAddToBasket(offer)}
-                />
-              ))}
-            </View>
+            ))}
+          </View>
+        ) : (
+          <View style={styles.noBranchesContainer}>
+            <Ionicons name="location-outline" size={48} color={colors.gray[400]} />
+            <Text style={styles.noBranchesText}>
+              لا توجد فروع مسجلة لهذا المتجر حالياً
+            </Text>
           </View>
         )}
 
@@ -241,6 +261,19 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
+  localBadge: {
+    alignSelf: I18nManager.isRTL ? 'flex-end' : 'flex-start',
+    backgroundColor: colors.success + '20',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.sm,
+    marginTop: spacing.xs,
+  },
+  localBadgeText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.success,
+    fontWeight: '600',
+  },
   catalogueButton: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
@@ -289,6 +322,13 @@ const styles = StyleSheet.create({
   branchInfo: {
     flex: 1,
   },
+  branchStoreName: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginBottom: spacing.xs,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
   branchAddress: {
     fontSize: typography.fontSize.md,
     color: colors.text,
@@ -318,10 +358,18 @@ const styles = StyleSheet.create({
     marginLeft: I18nManager.isRTL ? 0 : spacing.sm,
     marginRight: I18nManager.isRTL ? spacing.sm : 0,
   },
-  offersGrid: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
+  noBranchesContainer: {
+    padding: spacing.xl,
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    margin: spacing.md,
+    borderRadius: borderRadius.lg,
+  },
+  noBranchesText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSize.md,
+    color: colors.textSecondary,
+    textAlign: 'center',
   },
   bottomPadding: {
     height: spacing.xl,

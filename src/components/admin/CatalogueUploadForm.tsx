@@ -1,4 +1,4 @@
-// src/components/admin/CatalogueUploadForm.tsx - WITH CATEGORY SELECTION
+// src/components/admin/CatalogueUploadForm.tsx - WITH CATEGORY AND LOCAL STORE NAME SELECTION
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -25,6 +25,17 @@ import { colors, spacing, typography, borderRadius, shadows } from '../../consta
 import { useAppSelector } from '../../store/hooks';
 import { getMainCategories, getCategoryById } from '../../data/categories';
 import { getSuggestedCategoryForStore } from '../../utils/catalogueUtils';
+import {
+  getLocalStoreNamesByGovernorate,
+  getLocalStoreNamesByCity,
+  getLocalStoreNameById,
+  getCitiesByGovernorate,
+  governorateNames,
+  cityNames,
+  type GovernorateId,
+  type CityId,
+} from '../../data/stores';
+
 
 interface CatalogueUploadFormProps {
   onSuccess: () => void;
@@ -51,6 +62,12 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
   const [titleEn, setTitleEn] = useState('');
   const [selectedStoreId, setSelectedStoreId] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
+
+  // Local store identification fields
+  const [localStoreGovernorate, setLocalStoreGovernorate] = useState<GovernorateId | ''>('');
+  const [localStoreCity, setLocalStoreCity] = useState<CityId | ''>('');
+  const [selectedLocalStoreNameId, setSelectedLocalStoreNameId] = useState<string>('');
+
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
@@ -73,6 +90,50 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       setSelectedCategoryId(suggestedCategory);
     }
   }, [selectedStoreId]);
+
+  // Check if selected store is local
+  const selectedStore = stores.find(s => s.id === selectedStoreId);
+  const isLocalStore = selectedStore?.isLocal || false;
+
+  // Reset local store fields when switching between national and local stores
+  useEffect(() => {
+    if (!isLocalStore) {
+      setLocalStoreGovernorate('');
+      setLocalStoreCity('');
+      setSelectedLocalStoreNameId('');
+    } else if (selectedStore?.governorate) {
+      // Auto-set governorate for local store
+      setLocalStoreGovernorate(selectedStore.governorate as GovernorateId);
+    }
+  }, [isLocalStore, selectedStore]);
+
+  // Get available cities for selected governorate
+  const availableCities = localStoreGovernorate
+    ? getCitiesByGovernorate(localStoreGovernorate)
+    : [];
+
+  // Get available local store names based on location
+  const availableLocalStoreNames = React.useMemo(() => {
+    if (!localStoreGovernorate) return [];
+
+    if (localStoreCity) {
+      return getLocalStoreNamesByCity(localStoreGovernorate, localStoreCity);
+    }
+
+    return getLocalStoreNamesByGovernorate(localStoreGovernorate);
+  }, [localStoreGovernorate, localStoreCity]);
+
+  // Reset local store name when location changes
+  useEffect(() => {
+    if (selectedLocalStoreNameId) {
+      const isStillAvailable = availableLocalStoreNames.some(
+        store => store.id === selectedLocalStoreNameId
+      );
+      if (!isStillAvailable) {
+        setSelectedLocalStoreNameId('');
+      }
+    }
+  }, [availableLocalStoreNames]);
 
   const handlePickPDF = async () => {
     try {
@@ -174,6 +235,16 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       showAlert('خطأ', 'يرجى اختيار الفئة');
       return false;
     }
+
+    // Validate local store fields if it's a local store
+    if (isLocalStore) {
+      if (!localStoreGovernorate) {
+        showAlert('خطأ', 'يرجى اختيار المحافظة للمتجر المحلي');
+        return false;
+      }
+      // Local store name is optional but city selection helps narrow it down
+    }
+
     if (!startDate.trim()) {
       showAlert('خطأ', 'يرجى إدخال تاريخ البداية');
       return false;
@@ -211,7 +282,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
     try {
       setUploading(true);
 
-      console.log('📤 Starting upload process...');
+      console.log('🔤 Starting upload process...');
       console.log('Upload type:', uploadType);
 
       // Generate ID: storeId-YYYY-MM-DD-HHMM
@@ -456,11 +527,42 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       pages: uploadedPages,
       totalPages: uploadedPages.length,
       pdfProcessed: true,
-      categoryId: selectedCategoryId, // Store the selected category
+      categoryId: selectedCategoryId,
       uploadMode: uploadType,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
+
+    // Add local store identification if it's a local store
+    if (isLocalStore) {
+      catalogueData.isLocalStore = true;
+
+      if (localStoreGovernorate) {
+        catalogueData.localStoreGovernorate = localStoreGovernorate;
+      }
+
+      if (localStoreCity) {
+        catalogueData.localStoreCity = localStoreCity;
+      }
+
+      if (selectedLocalStoreNameId) {
+        const localStoreName = getLocalStoreNameById(
+          selectedLocalStoreNameId,
+          localStoreGovernorate as GovernorateId
+        );
+
+        if (localStoreName) {
+          catalogueData.localStoreNameId = selectedLocalStoreNameId;
+          catalogueData.localStoreNameAr = localStoreName.nameAr;
+          catalogueData.localStoreNameEn = localStoreName.nameEn;
+        }
+      } else {
+        // Mark as unidentified local store
+        catalogueData.localStoreNameId = 'unidentified';
+        catalogueData.localStoreNameAr = 'غير محدد';
+        catalogueData.localStoreNameEn = 'Unidentified';
+      }
+    }
 
     if (pdfUrl) {
       catalogueData.pdfUrl = pdfUrl;
@@ -479,15 +581,27 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
     });
 
     const selectedCategory = getCategoryById(selectedCategoryId);
-    showAlert(
-      '✅ نجح',
-      `تم رفع الكتالوج بنجاح!\n${uploadedPages.length} صفحة تم رفعها\nمعرف الكتالوج: ${catalogueId}\nالفئة: ${selectedCategory?.nameAr || 'غير محدد'}`,
-      onSuccess
-    );
+    let successMessage = `تم رفع الكتالوج بنجاح!\n${uploadedPages.length} صفحة تم رفعها\nمعرف الكتالوج: ${catalogueId}\nالفئة: ${selectedCategory?.nameAr || 'غير محدد'}`;
+
+    if (isLocalStore && selectedLocalStoreNameId && selectedLocalStoreNameId !== 'unidentified') {
+      const localStoreName = getLocalStoreNameById(
+        selectedLocalStoreNameId,
+        localStoreGovernorate as GovernorateId
+      );
+      if (localStoreName) {
+        successMessage += `\nاسم المتجر المحلي: ${localStoreName.nameAr}`;
+      }
+    } else if (isLocalStore && (!selectedLocalStoreNameId || selectedLocalStoreNameId === 'unidentified')) {
+      successMessage += `\nاسم المتجر المحلي: غير محدد`;
+    }
+
+    showAlert('✅ نجح', successMessage, onSuccess);
   };
 
-  const selectedStore = stores.find(s => s.id === selectedStoreId);
   const selectedCategory = getCategoryById(selectedCategoryId);
+  const selectedLocalStoreName = selectedLocalStoreNameId && localStoreGovernorate
+    ? getLocalStoreNameById(selectedLocalStoreNameId, localStoreGovernorate as GovernorateId)
+    : null;
 
   return (
     <ScrollView style={styles.container}>
@@ -557,7 +671,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
               <option value="">اختر المتجر</option>
               {stores.map(store => (
                 <option key={store.id} value={store.id}>
-                  {store.nameAr} ({store.nameEn})
+                  {store.nameAr} ({store.nameEn}) {store.isLocal ? '- محلي' : ''}
                 </option>
               ))}
             </select>
@@ -573,7 +687,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
                 {stores.map(store => (
                   <Picker.Item
                     key={store.id}
-                    label={`${store.nameAr} (${store.nameEn})`}
+                    label={`${store.nameAr} (${store.nameEn})${store.isLocal ? ' - محلي' : ''}`}
                     value={store.id}
                   />
                 ))}
@@ -582,10 +696,157 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
           )}
           {selectedStore && (
             <Text style={styles.helperText}>
-              المتجر المحدد: {selectedStore.nameAr}
+              المتجر المحدد: {selectedStore.nameAr} {isLocalStore && '(متجر محلي)'}
             </Text>
           )}
         </View>
+
+        {/* LOCAL STORE IDENTIFICATION SECTION */}
+        {isLocalStore && (
+          <View style={styles.localStoreSection}>
+            <View style={styles.localStoreSectionHeader}>
+              <Ionicons name="location" size={20} color={colors.primary} />
+              <Text style={styles.localStoreSectionTitle}>تحديد المتجر المحلي</Text>
+            </View>
+
+            {/* Governorate (auto-filled for local stores) */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>المحافظة *</Text>
+              <TextInput
+                style={[styles.input, styles.inputDisabled]}
+                value={localStoreGovernorate ? governorateNames[localStoreGovernorate as GovernorateId]?.ar || '' : ''}
+                editable={false}
+              />
+              <Text style={styles.helperText}>
+                تم تحديد المحافظة تلقائياً من المتجر المحلي
+              </Text>
+            </View>
+
+            {/* City Dropdown (optional) */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>المدينة (اختياري)</Text>
+              {Platform.OS === 'web' ? (
+                <select
+                  value={localStoreCity}
+                  onChange={(e) => setLocalStoreCity(e.target.value as CityId)}
+                  style={{
+                    backgroundColor: colors.gray[100],
+                    borderRadius: borderRadius.md,
+                    padding: spacing.md,
+                    fontSize: typography.fontSize.md,
+                    color: colors.text,
+                    border: `1px solid ${colors.gray[200]}`,
+                    width: '100%',
+                  }}
+                  disabled={uploading || !localStoreGovernorate}
+                >
+                  <option value="">اختر المدينة (اختياري)</option>
+                  {availableCities.map(cityId => {
+                    const cityInfo = cityNames[cityId];
+                    return (
+                      <option key={cityId} value={cityId}>
+                        {cityInfo.ar}
+                      </option>
+                    );
+                  })}
+                </select>
+              ) : (
+                <View style={styles.pickerContainer}>
+                  <Picker
+                    selectedValue={localStoreCity}
+                    onValueChange={(itemValue) => setLocalStoreCity(itemValue as CityId)}
+                    enabled={!uploading && !!localStoreGovernorate}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="اختر المدينة (اختياري)" value="" />
+                    {availableCities.map(cityId => {
+                      const cityInfo = cityNames[cityId];
+                      return (
+                        <Picker.Item
+                          key={cityId}
+                          label={cityInfo.ar}
+                          value={cityId}
+                        />
+                      );
+                    })}
+                  </Picker>
+                </View>
+              )}
+              <Text style={styles.helperText}>
+                اختر المدينة لتضييق خيارات المتاجر المحلية
+              </Text>
+            </View>
+
+          {/* Local Store Name Dropdown */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>اسم المتجر المحلي (اختياري)</Text>
+              {Platform.OS === 'web' ? (
+                <select
+                  value={selectedLocalStoreNameId}
+                  onChange={(e) => setSelectedLocalStoreNameId(e.target.value)}
+                  style={{
+                    backgroundColor: colors.gray[100],
+                    borderRadius: borderRadius.md,
+                    padding: spacing.md,
+                    fontSize: typography.fontSize.md,
+                    color: colors.text,
+                    border: `1px solid ${colors.gray[200]}`,
+                    width: '100%',
+                  }}
+                  disabled={uploading || !localStoreGovernorate}
+                >
+                  <option value="">اختر اسم المتجر (اختياري)</option>
+                  <option value="unidentified">غير محدد</option>
+                  {availableLocalStoreNames.map(store => (
+                    <option key={store.id} value={store.id}>
+                      {store.nameAr} - {store.nameEn}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <View style={styles.pickerContainer}>
+                  <Picker
+                    selectedValue={selectedLocalStoreNameId}
+                    onValueChange={(itemValue) => setSelectedLocalStoreNameId(itemValue)}
+                    enabled={!uploading && !!localStoreGovernorate}
+                    style={styles.picker}
+                  >
+                    <Picker.Item label="اختر اسم المتجر (اختياري)" value="" />
+                    <Picker.Item label="غير محدد" value="unidentified" />
+                    {availableLocalStoreNames.map(store => (
+                      <Picker.Item
+                        key={store.id}
+                        label={`${store.nameAr} - ${store.nameEn}`}
+                        value={store.id}
+                      />
+                    ))}
+                  </Picker>
+                </View>
+              )}
+              {selectedLocalStoreName && (
+                <View style={styles.categoryPreview}>
+                  <Ionicons name="storefront" size={20} color={colors.primary} />
+                  <Text style={styles.helperText}>
+                    المتجر المحدد: {selectedLocalStoreName.nameAr}
+                  </Text>
+                </View>
+              )}
+              {selectedLocalStoreNameId === 'unidentified' && (
+                <View style={styles.warningBox}>
+                  <Ionicons name="alert-circle" size={16} color={colors.warning} />
+                  <Text style={styles.warningText}>
+                    سيتم تعليم هذا الكتالوج كـ "غير محدد"
+                  </Text>
+                </View>
+              )}
+              <Text style={styles.helperText}>
+                {availableLocalStoreNames.length > 0
+                  ? `${availableLocalStoreNames.length} متجر متاح في الموقع المحدد`
+                  : 'لا توجد متاجر محلية محددة في هذا الموقع'}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Category Dropdown */}
         <View style={styles.inputGroup}>
@@ -834,6 +1095,7 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
     </ScrollView>
   );
 };
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -899,6 +1161,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.gray[200],
   },
+  inputDisabled: {
+    opacity: 0.6,
+  },
   pickerContainer: {
     backgroundColor: colors.gray[100],
     borderRadius: borderRadius.md,
@@ -914,6 +1179,45 @@ const styles = StyleSheet.create({
     color: colors.primary,
     marginTop: spacing.xs,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  categoryPreview: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+  },
+  localStoreSection: {
+    backgroundColor: colors.gray[50],
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+  },
+  localStoreSectionHeader: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  localStoreSectionTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  warningBox: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    backgroundColor: colors.warning + '20',
+    padding: spacing.sm,
+    borderRadius: borderRadius.sm,
+    marginTop: spacing.xs,
+    gap: spacing.xs,
+  },
+  warningText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.warning,
+    flex: 1,
   },
   dateButton: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',

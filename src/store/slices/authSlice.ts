@@ -1,5 +1,6 @@
-// src/store/slices/authSlice.ts
+// src/store/slices/authSlice.ts - UPDATED WITH AUTH STATE CHECKING
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
+import { onAuthStateChanged } from 'firebase/auth';
 import type { AuthState, UserProfile } from '../../types';
 import {
   signInWithGoogleToken,
@@ -9,13 +10,14 @@ import {
 import { getAllUserData, syncAllUserData } from '../../services/userDataService';
 import { hydrateFavorites } from './favoritesSlice';
 import { hydrateBasket } from './basketSlice';
+import { getAuthInstance } from '../../config/firebase';
 import type { RootState } from '../index';
 
 const initialState: AuthState = {
   user: null,
   isAuthenticated: false,
   isAdmin: false,
-  loading: false,
+  loading: true, // ✅ Start with loading=true to check auth state
   error: null,
 };
 
@@ -24,6 +26,79 @@ interface GoogleAuthTokens {
   idToken: string | null;
   accessToken: string | null;
 }
+
+/**
+ * ✅ NEW: Check auth state on app start
+ * This restores the user session if they're already logged in
+ */
+export const checkAuthState = createAsyncThunk(
+  'auth/checkAuthState',
+  async (_, { dispatch, rejectWithValue }) => {
+    try {
+      console.log('🔍 Checking authentication state...');
+      const auth = getAuthInstance();
+
+      return new Promise<UserProfile | null>((resolve) => {
+        const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+          unsubscribe(); // Unsubscribe after first check
+
+          if (firebaseUser) {
+            console.log('✅ User already logged in:', firebaseUser.email);
+
+            try {
+              // Get user profile from Firestore
+              const userProfile = await getUserProfile(firebaseUser.uid);
+
+              if (!userProfile) {
+                console.warn('⚠️ User profile not found');
+                resolve(null);
+                return;
+              }
+
+              // Load user data (favorites, basket)
+              try {
+                console.log('📥 Loading user data from Firestore...');
+                const { favorites, basket } = await getAllUserData(userProfile.uid);
+
+                if (favorites) {
+                  console.log('📦 Restoring favorites:', favorites.storeIds.length, 'stores');
+                  dispatch(hydrateFavorites(favorites));
+                }
+
+                if (basket && basket.length > 0) {
+                  console.log('🛒 Restoring basket:', basket.length, 'items');
+                  const total = basket.reduce((sum, item) => {
+                    if (item.type === 'offer' && item.offer) {
+                      return sum + (item.offer.offerPrice * item.quantity);
+                    }
+                    return sum;
+                  }, 0);
+                  dispatch(hydrateBasket({ items: basket, total }));
+                }
+
+                console.log('✅ User data restored successfully');
+              } catch (dataError) {
+                console.warn('⚠️ Could not load user data:', dataError);
+                // Don't fail auth check if data loading fails
+              }
+
+              resolve(userProfile);
+            } catch (error) {
+              console.error('❌ Error getting user profile:', error);
+              resolve(null);
+            }
+          } else {
+            console.log('ℹ️ No user logged in');
+            resolve(null);
+          }
+        });
+      });
+    } catch (error: any) {
+      console.error('❌ Error checking auth state:', error);
+      return rejectWithValue(error.message || 'Failed to check auth state');
+    }
+  }
+);
 
 /**
  * Async thunk for Google Sign-In
@@ -48,7 +123,7 @@ export const signInWithGoogle = createAsyncThunk(
 
       // Load user data from Firestore
       try {
-        console.log('📥 [authSlice] Loading user data from Firestore...');
+        console.log('🔥 [authSlice] Loading user data from Firestore...');
         const { favorites, basket } = await getAllUserData(userProfile.uid);
 
         console.log('📊 [authSlice] Loaded data:', {
@@ -63,7 +138,6 @@ export const signInWithGoogle = createAsyncThunk(
 
         if (basket && basket.length > 0) {
           console.log('🔄 [authSlice] Hydrating basket:', basket.length, 'items');
-          // Calculate total
           const total = basket.reduce((sum, item) => {
             if (item.type === 'offer' && item.offer) {
               return sum + (item.offer.offerPrice * item.quantity);
@@ -126,45 +200,6 @@ export const signOut = createAsyncThunk(
   }
 );
 
-/**
- * Async thunk to check auth state on app start
- */
-export const checkAuthState = createAsyncThunk(
-  'auth/checkAuthState',
-  async (uid: string, { dispatch, rejectWithValue }) => {
-    try {
-      const userProfile = await getUserProfile(uid);
-
-      if (!userProfile) {
-        return rejectWithValue('User profile not found');
-      }
-
-      try {
-        const { favorites, basket } = await getAllUserData(userProfile.uid);
-
-        if (favorites) {
-          dispatch(hydrateFavorites(favorites));
-        }
-        if (basket && basket.length > 0) {
-          const total = basket.reduce((sum, item) => {
-            if (item.type === 'offer' && item.offer) {
-              return sum + (item.offer.offerPrice * item.quantity);
-            }
-            return sum;
-          }, 0);
-          dispatch(hydrateBasket({ items: basket, total }));
-        }
-      } catch (dataError) {
-        console.warn('Could not load user data:', dataError);
-      }
-
-      return userProfile;
-    } catch (error: any) {
-      return rejectWithValue(error.message || 'Failed to check auth state');
-    }
-  }
-);
-
 const authSlice = createSlice({
   name: 'auth',
   initialState,
@@ -173,6 +208,7 @@ const authSlice = createSlice({
       state.user = action.payload;
       state.isAuthenticated = true;
       state.isAdmin = action.payload.isAdmin;
+      state.loading = false;
       state.error = null;
     },
     clearUser: (state) => {
@@ -193,6 +229,32 @@ const authSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      // ✅ Check auth state (on app start)
+      .addCase(checkAuthState.pending, (state) => {
+        state.loading = true;
+        console.log('⏳ Checking auth state...');
+      })
+      .addCase(checkAuthState.fulfilled, (state, action) => {
+        state.loading = false;
+        if (action.payload) {
+          state.user = action.payload;
+          state.isAuthenticated = true;
+          state.isAdmin = action.payload.isAdmin;
+          console.log('✅ Auth state restored:', action.payload.email);
+        } else {
+          state.user = null;
+          state.isAuthenticated = false;
+          state.isAdmin = false;
+          console.log('ℹ️ No authenticated user found');
+        }
+      })
+      .addCase(checkAuthState.rejected, (state, action) => {
+        state.loading = false;
+        state.user = null;
+        state.isAuthenticated = false;
+        state.isAdmin = false;
+        console.error('❌ Failed to check auth state:', action.payload);
+      })
       // Sign in with Google
       .addCase(signInWithGoogle.pending, (state) => {
         state.loading = true;
@@ -232,19 +294,6 @@ const authSlice = createSlice({
         state.user = null;
         state.isAuthenticated = false;
         state.isAdmin = false;
-      })
-      // Check auth state
-      .addCase(checkAuthState.fulfilled, (state, action) => {
-        state.user = action.payload;
-        state.isAuthenticated = true;
-        state.isAdmin = action.payload.isAdmin;
-        state.loading = false;
-      })
-      .addCase(checkAuthState.rejected, (state) => {
-        state.user = null;
-        state.isAuthenticated = false;
-        state.isAdmin = false;
-        state.loading = false;
       });
   },
 });

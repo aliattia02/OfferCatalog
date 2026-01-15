@@ -1,7 +1,9 @@
+// src/store/slices/offersSlice.ts - WITH FORCE REFRESH SUPPORT
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
 import type { OffersState, Offer, Catalogue } from '../../types';
 import { loadCataloguesFromFirestore } from '../../data/catalogueRegistry';
 import { serializeFirestoreDocument } from '../../utils/firestoreHelpers';
+import { cacheService, CACHE_KEYS } from '../../services/cacheService';
 
 const initialState: OffersState = {
   offers: [],
@@ -11,12 +13,20 @@ const initialState: OffersState = {
 };
 
 /**
- * Async thunk to load catalogues from Firestore
+ * Async thunk to load catalogues from Firestore with cache support
+ * @param forceRefresh - If true, bypasses cache and fetches fresh data
  */
 export const loadCatalogues = createAsyncThunk(
   'offers/loadCatalogues',
-  async () => {
-    console.log('📄 [offersSlice] Loading catalogues...');
+  async (forceRefresh: boolean = false) => {
+    console.log('📄 [offersSlice] Loading catalogues...', { forceRefresh });
+    
+    // If force refresh, invalidate cache first
+    if (forceRefresh) {
+      console.log('🔄 Force refresh - invalidating catalogue cache');
+      await cacheService.invalidate(CACHE_KEYS.CATALOGUES);
+    }
+    
     const catalogues = await loadCataloguesFromFirestore();
     
     // Serialize the catalogues to convert Firestore Timestamps to ISO strings

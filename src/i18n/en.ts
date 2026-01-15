@@ -1,4 +1,4 @@
-// ===== src/i18n/en.ts =====
+// src/i18n/en.ts - COMPLETE WITH ALL MISSING TRANSLATIONS
 export default {
   // Navigation
   navigation: {
@@ -9,20 +9,26 @@ export default {
     settings: 'Settings',
     favorites: 'Favorites',
   },
-  
-  // Home Screen
+
+  // Home Screen - ENHANCED
   home: {
     title: 'Offer Catalog',
     featuredOffers: 'Featured Offers',
     nearbyStores: 'Nearby Stores',
     categories: 'Categories',
+    mainCategories: 'Main Categories',
     trendingDeals: 'Trending Deals',
     searchPlaceholder: 'Search for offers...',
     viewAll: 'View All',
     activeCatalogues: 'Active Catalogues',
+    catalogue: 'Catalogue',
+    catalogues: 'Catalogues',
+    loadingOffers: 'Loading offers...',
+    loadingCatalogues: 'Loading catalogues...',
+    noActiveOffers: 'No active offers currently',
   },
-  
-  // Flyers Screen
+
+  // Flyers Screen - ENHANCED
   flyers: {
     title: 'Catalogues & Offers',
     activeCatalogues: 'Active Catalogues',
@@ -31,28 +37,46 @@ export default {
     addToBasket: 'Add to Basket',
     filterByStore: 'Filter by Store',
     filterByCategory: 'Filter by Category',
+    allStores: 'All Stores',
+    allCategories: 'All Categories',
   },
-  
-  // Favorites Screen - NEW
+
+  // Favorites Screen - ENHANCED
   favorites: {
     title: 'Favorites',
     catalogues: 'Catalogues',
     offers: 'Offers',
     stores: 'Stores',
+    categories: 'Categories',
+    subcategories: 'Favorite Categories',
+    store: 'Store',
+    category: 'Category',
+    offer: 'Offer',
     noFavoriteStores: 'No favorite stores',
-    noFavoriteOffers: 'No favorite offers',
+    noFavoriteCategories: 'No favorite categories',
+    noFavoriteOffers: 'No offers currently',
     addFavoriteStoresHint: 'Tap ❤️ on any store to add to favorites',
-    addFavoriteOffersHint: 'Tap ❤️ on any offer to add to favorites',
+    addFavoriteCategoriesHint: 'Tap ❤️ on any offer to save its category',
     exploreCatalogues: 'Browse Catalogues',
     exploreOffers: 'Browse Offers',
+    noOffersInCategories: 'Your favorite categories have no active offers at the moment',
+    favoritesSaved: 'Favorites saved and new offers will appear automatically',
+    categoriesWithNoOffers: 'favorite categories have no offers currently',
+    loadingOffers: 'Loading offers...',
+    activeCategories: 'Active Category',
+    activeCategoryCount: 'Following Category',
+    favoriteStore: 'Favorite Store',
+    followingNewOffers: 'Following new offers and catalogues',
   },
-  
-  // Basket Screen
+
+  // Basket Screen - ENHANCED
   basket: {
     title: 'Shopping Basket',
-    empty: 'Your basket is empty',
-    emptyDescription: 'Add offers from catalogues to start shopping',
+    empty: 'Basket is empty',
+    emptyDescription: 'Start adding your favorite offers and pages',
+    browseOffers: 'Browse Offers',
     total: 'Total',
+    estimatedTotal: 'Estimated Total',
     items: 'items',
     item: 'item',
     clearBasket: 'Clear Basket',
@@ -61,9 +85,25 @@ export default {
     quantity: 'Quantity',
     remove: 'Remove',
     storeComparison: 'Store Comparison',
+    filterByStore: 'Filter by Store',
+    sortBy: 'Sort by',
+    default: 'Default',
+    byStore: 'Store',
+    byExpiry: 'Expiry Date',
+    all: 'All',
+    activeItems: 'Active Items',
+    expiredItems: 'Expired Items',
+    expiredItem: 'Expired Item',
+    deleteExpired: 'Delete Expired Items',
+    deleteExpiredConfirm: 'Do you want to delete',
+    deleteExpiredSuccess: 'Expired items deleted successfully',
+    priceDisclaimer: '* Prices may vary in store',
+    removeConfirm: 'Do you want to remove this item from basket?',
+    clearBasketConfirm: 'Do you want to remove all items from basket?',
+    tapToDelete: 'Tap to delete expired items',
   },
-  
-  // Stores Screen
+
+  // Stores Screen - ENHANCED
   stores: {
     title: 'Stores',
     listView: 'List View',
@@ -75,16 +115,33 @@ export default {
     call: 'Call',
     viewOffers: 'View Offers',
     branches: 'Branches',
+    branch: 'Branch',
     nearYou: 'Near You',
+    allStores: 'All Stores',
   },
-  
-  // Settings Screen
+
+  // Settings Screen - ENHANCED
   settings: {
     title: 'Settings',
     account: 'Account',
+    signIn: 'Sign In',
+    signOut: 'Sign Out',
+    signInHint: 'Save favorites and basket across all your devices',
+    signOutConfirm: 'Are you sure you want to sign out?',
+    signOutSuccess: 'Signed out successfully',
+    user: 'User',
+    admin: 'Admin',
+    adminPanel: 'Admin Dashboard',
+    adminPanelDesc: 'Manage catalogues and offers',
+    cacheMonitor: 'Cache Monitor',
+    cacheMonitorDesc: 'View cache statistics and usage',
     language: 'Language',
     arabic: 'العربية',
     english: 'English',
+    location: 'Location',
+    locationHint: 'Your location helps us show nearby stores and branches',
+    shopping: 'Shopping',
+    storesAvailable: 'Store Available',
     notifications: 'Notifications',
     notificationsEnabled: 'Enable Notifications',
     notificationSettings: 'Notification Settings',
@@ -92,17 +149,30 @@ export default {
     expiringOffers: 'Expiring Offers',
     favoriteStores: 'Favorite Stores',
     favorites: 'Favorites',
+    favoritesCount: 'Stores • Categories',
     about: 'About',
     help: 'Help',
+    helpDesc: 'For help contact us via email',
     version: 'Version',
     privacyPolicy: 'Privacy Policy',
+    privacyPolicyDesc: 'Privacy policy in development',
     termsOfService: 'Terms of Service',
+    termsOfServiceDesc: 'Terms of service in development',
+    comingSoon: 'Coming Soon',
+    inDevelopment: 'In Development',
+    languageChangeHint: 'Changing language requires app restart to enable text direction properly.',
+    ok: 'OK',
   },
-  
-  // Categories
+
+  // Categories - ENHANCED
   categories: {
     all: 'All',
-    foodBeverages: 'Food & Beverages',
+    general: 'General',
+    foodGroceries: 'Food & Groceries',
+    electronics: 'Electronics',
+    home: 'Home & Furniture',
+    fashion: 'Fashion',
+    // Subcategories
     dairy: 'Dairy',
     meatPoultry: 'Meat & Poultry',
     oilsGhee: 'Oils & Ghee',
@@ -110,11 +180,10 @@ export default {
     beverages: 'Beverages',
     household: 'Household',
     personalCare: 'Personal Care',
-    electronics: 'Electronics',
     babyProducts: 'Baby Products',
   },
-  
-  // Common
+
+  // Common - ENHANCED
   common: {
     egp: 'EGP',
     save: 'Save',
@@ -129,28 +198,84 @@ export default {
     seeMore: 'See More',
     close: 'Close',
     off: 'OFF',
+    discount: 'Discount',
     originalPrice: 'Original Price',
     offerPrice: 'Offer Price',
+    addToBasket: 'Add to Basket',
+    removeFromBasket: 'Remove from Basket',
+    viewDetails: 'View Details',
+    share: 'Share',
+    refresh: 'Refresh',
+    filters: 'Filters',
+    sort: 'Sort',
+    search: 'Search',
+    back: 'Back',
+    next: 'Next',
+    previous: 'Previous',
+    page: 'Page',
+    pages: 'Pages',
+    viewAll: 'View All',
+    showLess: 'Show Less',
+    showMore: 'Show More',
+    select: 'Select',
+    selected: 'Selected',
+    clear: 'Clear',
+    apply: 'Apply',
+    reset: 'Reset',
+    update: 'Update',
+    warning: 'Warning',
+    info: 'Info',
+    success: 'Success',
+    failed: 'Failed',
   },
-  
+
+  // Status messages
+  status: {
+    active: 'Active',
+    inactive: 'Inactive',
+    expired: 'Expired',
+    upcoming: 'Upcoming',
+    validUntil: 'Valid until',
+    startDate: 'Start Date',
+    endDate: 'End Date',
+  },
+
   // Stores Names
   storeNames: {
     kazyon: 'Kazyon',
     carrefour: 'Carrefour',
   },
-  
+
   // Governorates
   governorates: {
     sharqia: 'Sharqia',
     cairo: 'Cairo',
     giza: 'Giza',
     alexandria: 'Alexandria',
+    portSaid: 'Port Said',
   },
-  
+
   // Cities
   cities: {
     zagazig: 'Zagazig',
     cairo: 'Cairo',
     giza: 'Giza',
+    alexandria: 'Alexandria',
+    portSaid: 'Port Said',
+  },
+
+  // Auth
+  auth: {
+    signIn: 'Sign In',
+    signOut: 'Sign Out',
+    signInWithGoogle: 'Sign in with Google',
+    welcomeBack: 'Welcome Back',
+    welcomeMessage: 'Sign in to access your account',
+  },
+
+  // Basket tab badge
+  basketBadge: {
+    items: 'items',
+    item: 'item',
   },
 };

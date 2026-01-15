@@ -1,4 +1,4 @@
-// src/components/basket/SavedPageCard.tsx - FAVORITE BUTTON TOP CENTER
+// src/components/basket/SavedPageCard.tsx - FAVORITE BUTTON ON RIGHT SIDE
 import React from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,7 +46,7 @@ export const SavedPageCard: React.FC<SavedPageCardProps> = ({
         </View>
       )}
 
-      {/* Favorite Button - Top Center Border */}
+      {/* Favorite Button - Top Right (MOVED) */}
       {onToggleFavorite && (
         <TouchableOpacity
           style={styles.favoriteButton}
@@ -58,7 +58,7 @@ export const SavedPageCard: React.FC<SavedPageCardProps> = ({
         >
           <Ionicons
             name={isFavorite ? 'heart' : 'heart-outline'}
-            size={24}
+            size={20}
             color={isFavorite ? colors.primary : colors.gray[400]}
           />
         </TouchableOpacity>
@@ -191,19 +191,20 @@ const styles = StyleSheet.create({
   },
   favoriteButton: {
     position: 'absolute',
-    top: -12,
-    left: '50%',
-    transform: [{ translateX: -20 }],
-    width: 40,
-    height: 40,
+    top: spacing.sm,
+    right: I18nManager.isRTL ? undefined : '25%', // Second quarter from right
+    left: I18nManager.isRTL ? '25%' : undefined, // Second quarter from left in RTL
+    transform: [{ translateX: I18nManager.isRTL ? 16 : -16 }], // Center it in the quarter
+    width: 32,
+    height: 32,
     borderRadius: borderRadius.full,
     backgroundColor: colors.white,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 2,
-    ...shadows.md,
-    borderWidth: 2,
-    borderColor: colors.gray[100],
+    ...shadows.sm,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
   },
   image: {
     width: 80,

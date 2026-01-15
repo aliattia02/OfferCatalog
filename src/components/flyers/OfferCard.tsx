@@ -79,14 +79,15 @@ export const OfferCard: React.FC<OfferCardProps> = ({
 };
 
 const styles = StyleSheet.create({
-  container: {
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.lg,
-    overflow: 'hidden',
-    ...shadows.sm,
-    marginBottom: spacing.md,
-    width: '48%',
-  },
+container: {
+  backgroundColor: colors.white,
+  borderRadius: borderRadius.lg,
+  overflow: 'hidden',
+  ...shadows.sm,
+  marginBottom: spacing.md,
+  width: '100%', // CHANGED: from '48%' to '100%' (parent controls width now)
+  flex: 1, // ADD: allows proper flex sizing
+},
   imageContainer: {
     position: 'relative',
     height: 120,

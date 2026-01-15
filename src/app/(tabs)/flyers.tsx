@@ -1,4 +1,4 @@
-// src/app/(tabs)/flyers.tsx - UPDATED for subcategory favorites
+// app/(tabs)/flyers.tsx - PART 1: IMPORTS & STATE MANAGEMENT - UPDATED WITH TRANSLATIONS
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -18,9 +18,11 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { getTodayString, normalizeDateString } from '../../utils/dateUtils';
+import { getOfferStats } from '../../services/offerService';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { OfferCard } from '../../components/flyers';
+import { AdBanner } from '../../components/common';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { addToBasket } from '../../store/slices/basketSlice';
 import { toggleFavoriteSubcategory, toggleFavoriteStore } from '../../store/slices/favoritesSlice';
@@ -34,14 +36,17 @@ import {
 } from '../../data/categories';
 import { formatDateRange } from '../../utils/catalogueUtils';
 import { useSafeTabBarHeight } from '../../hooks';
+import { stores, getStoreById } from '../../data/stores';
 import type { Catalogue } from '../../types';
 import type { OfferWithCatalogue } from '../../services/offerService';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - (spacing.md * 4)) / 3;
+const OFFER_CARD_WIDTH = (width - (spacing.md * 5)) / 3;
 
 type FilterType = 'all' | 'active' | 'upcoming' | 'expired';
 type CatalogueStatus = 'active' | 'upcoming' | 'expired';
+type StoreFilterType = 'all' | string;
 
 interface CatalogueWithStatus extends Catalogue {
   status: CatalogueStatus;
@@ -62,10 +67,18 @@ export default function FlyersScreen() {
 
   const params = useLocalSearchParams();
   const initialMainCategory = params.mainCategoryId as string | undefined;
+  const initialViewModeParam = params.initialViewMode as string | undefined;
+  const initialSubcategoryParam = params.initialSubcategory as string | undefined;
+  const initialStoreId = params.storeId as string | undefined;
 
+  // State management
   const [selectedMainCategory, setSelectedMainCategory] = useState<string | null>(initialMainCategory || null);
-  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'catalogues' | 'offers'>('catalogues');
+  const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(initialSubcategoryParam || null);
+  const [selectedStore, setSelectedStore] = useState<StoreFilterType>(initialStoreId || 'all');
+  const [showStoreFilter, setShowStoreFilter] = useState(false);
+  const [viewMode, setViewMode] = useState<'catalogues' | 'offers'>(
+    initialViewModeParam === 'offers' ? 'offers' : 'catalogues'
+  );
   const [statusFilter, setStatusFilter] = useState<FilterType>('all');
   const [offersStatusFilter, setOffersStatusFilter] = useState<FilterType>('active');
   const [refreshing, setRefreshing] = useState(false);
@@ -73,10 +86,10 @@ export default function FlyersScreen() {
   const [offersLoading, setOffersLoading] = useState(false);
   const [allOffersForStats, setAllOffersForStats] = useState<OfferWithCatalogue[]>([]);
 
-  const stores = useAppSelector(state => state.stores.stores);
+  // Redux selectors
   const catalogues = useAppSelector(state => state.offers.catalogues);
   const cataloguesLoading = useAppSelector(state => state.offers.loading);
-  const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds); // UPDATED
+  const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds);
   const favoriteStoreIds = useAppSelector(state => state.favorites.storeIds);
 
   const mainCategories = getMainCategories();
@@ -87,65 +100,82 @@ export default function FlyersScreen() {
     return getMainSubcategories();
   }, [selectedMainCategory]);
 
+  // Get unique stores that have catalogues
+  const storesWithCatalogues = useMemo(() => {
+    const storeIds = new Set(catalogues.map(c => c.storeId));
+    return stores
+      .filter(s => storeIds.has(s.id))
+      .sort((a, b) => a.nameAr.localeCompare(b.nameAr));
+  }, [catalogues]);
+
+  // Set initial store filter from URL params
+  useEffect(() => {
+    if (initialStoreId) {
+      console.log('🏪 [Flyers] Setting initial store filter:', initialStoreId);
+      setSelectedStore(initialStoreId);
+    }
+  }, [initialStoreId]);
+
+  // Load catalogues on mount
   useEffect(() => {
     if (catalogues.length === 0 && !cataloguesLoading) {
       dispatch(loadCatalogues());
     }
   }, []);
 
-  // Load all offers once for stats calculation
+  // Handle params from search navigation
+  useEffect(() => {
+    if (initialViewModeParam === 'offers') {
+      setViewMode('offers');
+    }
+
+    if (initialSubcategoryParam) {
+      setSelectedSubcategory(initialSubcategoryParam);
+      const subcategory = getCategoryById(initialSubcategoryParam);
+      if (subcategory?.parentId) {
+        setSelectedMainCategory(subcategory.parentId);
+      }
+    }
+  }, [initialViewModeParam, initialSubcategoryParam]);
+
+  // Load all offers for stats
   useEffect(() => {
     const loadAllOffersForStats = async () => {
       try {
-        console.log('📊 Loading all offers for stats...');
-        const offers = await getAllOffers();
-        setAllOffersForStats(offers);
-        console.log(`✅ Loaded ${offers.length} offers for stats`);
+        const stats = await getOfferStats();
       } catch (error) {
         console.error('❌ Error loading offers for stats:', error);
       }
     };
-
     loadAllOffersForStats();
   }, []);
 
+  // Load offers when in offers view
   useEffect(() => {
     if (viewMode === 'offers') {
-      console.log('🔵 [Flyers] Loading offers for offers view');
       loadOffers();
     }
-  }, [viewMode, selectedSubcategory, offersStatusFilter, selectedMainCategory]);
+  }, [viewMode, selectedSubcategory, offersStatusFilter, selectedMainCategory, selectedStore]);
 
   const loadOffers = async () => {
     try {
-      console.log('📦 [Flyers] Starting loadOffers...');
-      console.log('📦 [Flyers] Status filter:', offersStatusFilter);
-      console.log('📦 [Flyers] Main category:', selectedMainCategory);
-      console.log('📦 [Flyers] Subcategory:', selectedSubcategory);
-
       setOffersLoading(true);
-
       const today = getTodayString();
-      console.log('📦 [Flyers] Using Egypt date:', today);
 
       let offers: OfferWithCatalogue[];
 
       if (selectedSubcategory) {
-        console.log('📦 [Flyers] Loading by subcategory:', selectedSubcategory);
         const needAllOffers = offersStatusFilter === 'all' ||
                              offersStatusFilter === 'expired' ||
                              offersStatusFilter === 'upcoming';
         offers = await getOffersByCategory(selectedSubcategory, !needAllOffers);
       } else {
-        console.log('📦 [Flyers] Loading based on status filter');
         if (offersStatusFilter === 'active') {
           offers = await getActiveOffers();
         } else {
           offers = await getAllOffers();
         }
       }
-
-      console.log('📦 [Flyers] Raw offers loaded:', offers.length);
 
       const filteredOffers = offers.filter(offer => {
         const offerStartDate = normalizeDateString(offer.catalogueStartDate);
@@ -159,28 +189,23 @@ export default function FlyersScreen() {
         } else if (offersStatusFilter === 'expired') {
           statusMatch = offerEndDate < today;
         }
+        if (!statusMatch) return false;
 
-        if (!statusMatch) {
-          console.log(`  ⏭️ [Flyers] Filtered out ${offer.nameAr}: ${offersStatusFilter} failed (${offerStartDate} to ${offerEndDate} vs ${today})`);
-          return false;
+        if (selectedStore !== 'all') {
+          if (offer.storeId !== selectedStore) return false;
         }
 
         if (selectedMainCategory && !selectedSubcategory) {
           const offerCategory = getCategoryById(offer.categoryId);
-          if (offerCategory?.parentId !== selectedMainCategory) {
-            console.log(`  ⏭️ [Flyers] Filtered out ${offer.nameAr}: category mismatch`);
-            return false;
-          }
+          if (offerCategory?.parentId !== selectedMainCategory) return false;
         }
 
-        console.log(`  ✅ [Flyers] Keeping ${offer.nameAr} (${offerStartDate} to ${offerEndDate})`);
         return true;
       });
 
-      console.log('✅ [Flyers] Filtered offers:', filteredOffers.length);
       setOffersData(filteredOffers);
     } catch (error) {
-      console.error('❌ [Flyers] Error loading offers:', error);
+      console.error('❌ Error loading offers:', error);
       setOffersData([]);
     } finally {
       setOffersLoading(false);
@@ -192,10 +217,8 @@ export default function FlyersScreen() {
     try {
       const result = await dispatch(loadCatalogues()).unwrap();
       setCataloguesCache(result);
-
       const offers = await getAllOffers();
       setAllOffersForStats(offers);
-
       if (viewMode === 'offers') {
         await loadOffers();
       }
@@ -220,14 +243,20 @@ export default function FlyersScreen() {
 
   const cataloguesWithStatus: CatalogueWithStatus[] = useMemo(() => {
     let filtered = catalogues;
+
     if (selectedMainCategory) {
       filtered = catalogues.filter(cat => cat.categoryId === selectedMainCategory);
     }
+
+    if (selectedStore !== 'all') {
+      filtered = filtered.filter(cat => cat.storeId === selectedStore);
+    }
+
     return filtered.map(cat => ({
       ...cat,
       status: getCatalogueStatus(cat.startDate, cat.endDate),
     }));
-  }, [catalogues, selectedMainCategory]);
+  }, [catalogues, selectedMainCategory, selectedStore]);
 
   const storeGroups: StoreGroup[] = useMemo(() => {
     const groups: { [storeId: string]: StoreGroup } = {};
@@ -258,7 +287,7 @@ export default function FlyersScreen() {
       });
     });
     return groupArray;
-  }, [cataloguesWithStatus, stores]);
+  }, [cataloguesWithStatus]);
 
   const filteredStoreGroups = useMemo(() => {
     let filtered = storeGroups;
@@ -290,7 +319,6 @@ export default function FlyersScreen() {
 
   const offersStats = useMemo(() => {
     const today = getTodayString();
-
     const dataSource = (viewMode === 'offers' && offersData.length > 0)
       ? offersData
       : allOffersForStats;
@@ -299,24 +327,33 @@ export default function FlyersScreen() {
       return { all: 0, active: 0, upcoming: 0, expired: 0 };
     }
 
+    let filteredForStats = dataSource;
+    if (selectedStore !== 'all') {
+      filteredForStats = dataSource.filter(o => o.storeId === selectedStore);
+    }
+
     return {
-      all: dataSource.length,
-      active: dataSource.filter(o => {
+      all: filteredForStats.length,
+      active: filteredForStats.filter(o => {
         const start = normalizeDateString(o.catalogueStartDate);
         const end = normalizeDateString(o.catalogueEndDate);
         return start <= today && end >= today;
       }).length,
-      upcoming: dataSource.filter(o => {
+      upcoming: filteredForStats.filter(o => {
         const start = normalizeDateString(o.catalogueStartDate);
         return start > today;
       }).length,
-      expired: dataSource.filter(o => {
+      expired: filteredForStats.filter(o => {
         const end = normalizeDateString(o.catalogueEndDate);
         return end < today;
       }).length,
     };
-  }, [offersData, allOffersForStats, viewMode]);
+  }, [offersData, allOffersForStats, viewMode, selectedStore]);
 
+// app/(tabs)/flyers.tsx - PART 2: HANDLERS, RENDERS & STYLES - UPDATED WITH TRANSLATIONS
+// CONTINUATION FROM PART 1...
+
+  // Event handlers
   const handleOfferPress = (offer: OfferWithCatalogue) => {
     router.push(`/offer/${offer.id}`);
   };
@@ -332,7 +369,6 @@ export default function FlyersScreen() {
     }));
   };
 
-  // UPDATED: Handle toggle favorite subcategory
   const handleToggleFavoriteSubcategory = (subcategoryId: string) => {
     dispatch(toggleFavoriteSubcategory(subcategoryId));
   };
@@ -345,6 +381,17 @@ export default function FlyersScreen() {
     router.push(`/flyer/${catalogueId}`);
   };
 
+  const handleStoreFilterPress = (storeId: StoreFilterType) => {
+    setSelectedStore(storeId);
+    setShowStoreFilter(false);
+  };
+
+  const getSelectedStoreName = () => {
+    if (selectedStore === 'all') return t('flyers.allStores');
+    const store = getStoreById(selectedStore);
+    return store ? store.nameAr : t('flyers.allStores');
+  };
+
   const getStatusBadgeStyle = (status: CatalogueStatus) => {
     switch (status) {
       case 'active': return { backgroundColor: colors.success };
@@ -354,39 +401,167 @@ export default function FlyersScreen() {
   };
 
   const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'active': return 'نشط';
-      case 'upcoming': return 'قادم';
-      case 'expired': return 'منتهي';
-      default: return status;
-    }
+    return t(`status.${status}`);
   };
 
+  // Render components
   const renderMainCategoryFilter = () => (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterContainer}>
-      <TouchableOpacity style={[styles.categoryChip, !selectedMainCategory && styles.categoryChipActive]} onPress={() => { setSelectedMainCategory(null); setSelectedSubcategory(null); }}>
-        <Text style={[styles.categoryChipText, !selectedMainCategory && styles.categoryChipTextActive]}>الكل</Text>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.filterScroll}
+      contentContainerStyle={styles.filterContainer}
+    >
+      <TouchableOpacity
+        style={[styles.categoryChip, !selectedMainCategory && styles.categoryChipActive]}
+        onPress={() => {
+          setSelectedMainCategory(null);
+          setSelectedSubcategory(null);
+        }}
+      >
+        <Text style={[styles.categoryChipText, !selectedMainCategory && styles.categoryChipTextActive]}>
+          {t('categories.all')}
+        </Text>
       </TouchableOpacity>
       {mainCategories.map(category => (
-        <TouchableOpacity key={category.id} style={[styles.categoryChip, selectedMainCategory === category.id && styles.categoryChipActive]} onPress={() => { setSelectedMainCategory(category.id); setSelectedSubcategory(null); }}>
-          <Ionicons name={category.icon as any} size={16} color={selectedMainCategory === category.id ? colors.white : colors.primary} />
-          <Text style={[styles.categoryChipText, selectedMainCategory === category.id && styles.categoryChipTextActive]}>{category.nameAr}</Text>
+        <TouchableOpacity
+          key={category.id}
+          style={[styles.categoryChip, selectedMainCategory === category.id && styles.categoryChipActive]}
+          onPress={() => {
+            setSelectedMainCategory(category.id);
+            setSelectedSubcategory(null);
+          }}
+        >
+          <Ionicons
+            name={category.icon as any}
+            size={16}
+            color={selectedMainCategory === category.id ? colors.white : colors.primary}
+          />
+          <Text style={[styles.categoryChipText, selectedMainCategory === category.id && styles.categoryChipTextActive]}>
+            {category.nameAr}
+          </Text>
         </TouchableOpacity>
       ))}
     </ScrollView>
   );
 
   const renderSubcategoryFilter = () => (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryScroll} contentContainerStyle={styles.categoryContainer}>
-      <TouchableOpacity style={[styles.categoryChip, !selectedSubcategory && styles.categoryChipActive]} onPress={() => setSelectedSubcategory(null)}>
-        <Text style={[styles.categoryChipText, !selectedSubcategory && styles.categoryChipTextActive]}>{selectedMainCategory ? 'الكل' : t('categories.all')}</Text>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={styles.categoryScroll}
+      contentContainerStyle={styles.categoryContainer}
+    >
+      <TouchableOpacity
+        style={[styles.categoryChip, !selectedSubcategory && styles.categoryChipActive]}
+        onPress={() => setSelectedSubcategory(null)}
+      >
+        <Text style={[styles.categoryChipText, !selectedSubcategory && styles.categoryChipTextActive]}>
+          {selectedMainCategory ? t('categories.all') : t('categories.all')}
+        </Text>
       </TouchableOpacity>
       {mainSubcategories.map(subcategory => (
-        <TouchableOpacity key={subcategory.id} style={[styles.categoryChip, selectedSubcategory === subcategory.id && styles.categoryChipActive]} onPress={() => setSelectedSubcategory(subcategory.id)}>
-          <Text style={[styles.categoryChipText, selectedSubcategory === subcategory.id && styles.categoryChipTextActive]}>{subcategory.nameAr}</Text>
+        <TouchableOpacity
+          key={subcategory.id}
+          style={[styles.categoryChip, selectedSubcategory === subcategory.id && styles.categoryChipActive]}
+          onPress={() => setSelectedSubcategory(subcategory.id)}
+        >
+          <Text style={[styles.categoryChipText, selectedSubcategory === subcategory.id && styles.categoryChipTextActive]}>
+            {subcategory.nameAr}
+          </Text>
         </TouchableOpacity>
       ))}
     </ScrollView>
+  );
+
+  const renderStoreFilter = () => (
+    <View style={styles.storeFilterContainer}>
+      <TouchableOpacity
+        style={styles.storeFilterButton}
+        onPress={() => setShowStoreFilter(!showStoreFilter)}
+      >
+        <Ionicons name="storefront-outline" size={20} color={colors.primary} />
+        <Text style={styles.storeFilterButtonText}>{getSelectedStoreName()}</Text>
+        <Ionicons
+          name={showStoreFilter ? 'chevron-up' : 'chevron-down'}
+          size={20}
+          color={colors.gray[400]}
+        />
+      </TouchableOpacity>
+
+      {showStoreFilter && (
+        <View style={styles.storeFilterDropdown}>
+          <ScrollView style={styles.storeFilterScroll} showsVerticalScrollIndicator={false}>
+            <TouchableOpacity
+              style={[
+                styles.storeFilterItem,
+                selectedStore === 'all' && styles.storeFilterItemActive,
+              ]}
+              onPress={() => handleStoreFilterPress('all')}
+            >
+              <Text
+                style={[
+                  styles.storeFilterItemText,
+                  selectedStore === 'all' && styles.storeFilterItemTextActive,
+                ]}
+              >
+                {t('flyers.allStores')}
+              </Text>
+              <Text
+                style={[
+                  styles.storeFilterItemCount,
+                  selectedStore === 'all' && styles.storeFilterItemCountActive,
+                ]}
+              >
+                {catalogues.length}
+              </Text>
+            </TouchableOpacity>
+            {storesWithCatalogues.map(store => {
+              const isSelected = selectedStore === store.id;
+              const storeCount = catalogues.filter(c => c.storeId === store.id).length;
+
+              return (
+                <TouchableOpacity
+                  key={store.id}
+                  style={[
+                    styles.storeFilterItem,
+                    isSelected && styles.storeFilterItemActive,
+                  ]}
+                  onPress={() => handleStoreFilterPress(store.id)}
+                >
+                  <Text
+                    style={[
+                      styles.storeFilterItemText,
+                      isSelected && styles.storeFilterItemTextActive,
+                    ]}
+                  >
+                    {store.nameAr}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.storeFilterItemCount,
+                      isSelected && styles.storeFilterItemCountActive,
+                    ]}
+                  >
+                    {storeCount}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+
+      {selectedStore !== 'all' && (
+        <TouchableOpacity
+          style={styles.clearStoreFilter}
+          onPress={() => setSelectedStore('all')}
+        >
+          <Text style={styles.clearStoreFilterText}>{t('flyers.clearFilters')}</Text>
+          <Ionicons name="close-circle" size={16} color={colors.primary} />
+        </TouchableOpacity>
+      )}
+    </View>
   );
 
   const renderStatusFilter = () => {
@@ -415,7 +590,7 @@ export default function FlyersScreen() {
               onPress={() => setCurrentFilter(filter)}
             >
               <Text style={[styles.filterChipText, currentFilter === filter && styles.filterChipTextActive]}>
-                {filter === 'all' ? 'الكل' : getStatusLabel(filter)}
+                {t(`flyers.${filter}Filter`)}
                 {` (${count})`}
               </Text>
             </TouchableOpacity>
@@ -427,13 +602,31 @@ export default function FlyersScreen() {
 
   const renderViewToggle = () => (
     <View style={styles.viewToggle}>
-      <TouchableOpacity style={[styles.toggleButton, viewMode === 'catalogues' && styles.toggleButtonActive]} onPress={() => setViewMode('catalogues')}>
-        <Ionicons name="book-outline" size={20} color={viewMode === 'catalogues' ? colors.white : colors.text} />
-        <Text style={[styles.toggleText, viewMode === 'catalogues' && styles.toggleTextActive]}>كتالوجات</Text>
+      <TouchableOpacity
+        style={[styles.toggleButton, viewMode === 'catalogues' && styles.toggleButtonActive]}
+        onPress={() => setViewMode('catalogues')}
+      >
+        <Ionicons
+          name="book-outline"
+          size={20}
+          color={viewMode === 'catalogues' ? colors.white : colors.text}
+        />
+        <Text style={[styles.toggleText, viewMode === 'catalogues' && styles.toggleTextActive]}>
+          {t('flyers.cataloguesView')}
+        </Text>
       </TouchableOpacity>
-      <TouchableOpacity style={[styles.toggleButton, viewMode === 'offers' && styles.toggleButtonActive]} onPress={() => setViewMode('offers')}>
-        <Ionicons name="grid-outline" size={20} color={viewMode === 'offers' ? colors.white : colors.text} />
-        <Text style={[styles.toggleText, viewMode === 'offers' && styles.toggleTextActive]}>عروض</Text>
+      <TouchableOpacity
+        style={[styles.toggleButton, viewMode === 'offers' && styles.toggleButtonActive]}
+        onPress={() => setViewMode('offers')}
+      >
+        <Ionicons
+          name="grid-outline"
+          size={20}
+          color={viewMode === 'offers' ? colors.white : colors.text}
+        />
+        <Text style={[styles.toggleText, viewMode === 'offers' && styles.toggleTextActive]}>
+          {t('flyers.offersView')}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -470,9 +663,16 @@ export default function FlyersScreen() {
               />
             </TouchableOpacity>
           </View>
-          <Text style={styles.thumbnailDate} numberOfLines={1}>
-            {formatDateRange(catalogue.startDate, catalogue.endDate)}
-          </Text>
+
+          <View style={styles.thumbnailInfoContainer}>
+            <Text style={styles.thumbnailStoreName} numberOfLines={1}>
+              {catalogue.titleAr}
+            </Text>
+            <Text style={styles.thumbnailSeparator}>•</Text>
+            <Text style={styles.thumbnailDate} numberOfLines={1}>
+              {formatDateRange(catalogue.startDate, catalogue.endDate)}
+            </Text>
+          </View>
         </TouchableOpacity>
       </View>
     );
@@ -483,7 +683,9 @@ export default function FlyersScreen() {
       <View style={styles.storeHeader}>
         <Ionicons name="storefront" size={20} color={colors.primary} />
         <Text style={styles.storeName}>{group.storeName}</Text>
-        <Text style={styles.catalogueCount}>{group.catalogues.length} {group.catalogues.length === 1 ? 'كتالوج' : 'كتالوجات'}</Text>
+        <Text style={styles.catalogueCount}>
+          {group.catalogues.length} {group.catalogues.length === 1 ? t('home.catalogue') : t('home.catalogues')}
+        </Text>
       </View>
       <View style={styles.cataloguesGrid}>
         {group.catalogues.map(renderCatalogueCard)}
@@ -491,110 +693,457 @@ export default function FlyersScreen() {
     </View>
   );
 
+  // Main render
   return (
     <View style={styles.container}>
-      {renderViewToggle()}
-      {renderMainCategoryFilter()}
-      {viewMode === 'offers' && renderSubcategoryFilter()}
-      {renderStatusFilter()}
+      <ScrollView
+        style={styles.fullScrollView}
+        contentContainerStyle={{ paddingBottom }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      >
+        <AdBanner position="flyers" />
 
-      {viewMode === 'catalogues' ? (
-        <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom }} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}>
-          {cataloguesLoading && (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>جاري تحميل الكتالوجات...</Text>
-            </View>
-          )}
-          {!cataloguesLoading && filteredStoreGroups.length > 0 ? (
-            filteredStoreGroups.map(renderStoreGroup)
-          ) : !cataloguesLoading ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="document-text-outline" size={64} color={colors.gray[300]} />
-              <Text style={styles.emptyStateText}>لا توجد كتالوجات {statusFilter !== 'all' ? getStatusLabel(statusFilter) : ''}</Text>
-            </View>
-          ) : null}
-        </ScrollView>
-      ) : (
-        <>
-          {offersLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>جاري تحميل العروض...</Text>
-            </View>
-          ) : offersData.length > 0 ? (
-            <FlatList
-              data={offersData}
-              renderItem={({ item }) => (
-                <OfferCard
-                  offer={item}
-                  onPress={() => handleOfferPress(item)}
-                  onAddToBasket={() => handleAddToBasket(item)}
-                  isFavorite={favoriteSubcategoryIds.includes(item.categoryId)}
-                  onToggleFavorite={() => handleToggleFavoriteSubcategory(item.categoryId)}
-                />
-              )}
-              keyExtractor={item => item.id}
-              numColumns={2}
-              columnWrapperStyle={styles.offerRow}
-              contentContainerStyle={[styles.offersContainer, { paddingBottom }]}
-              showsVerticalScrollIndicator={false}
-              refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-            />
-          ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="pricetag-outline" size={64} color={colors.gray[300]} />
-              <Text style={styles.emptyStateText}>
-                لا توجد عروض {selectedSubcategory ? 'في هذا القسم' : offersStatusFilter !== 'all' ? getStatusLabel(offersStatusFilter) : ''}
-              </Text>
-              <Text style={styles.emptyStateSubtext}>جرب تغيير الفلاتر للعثور على عروض</Text>
-            </View>
-          )}
-        </>
-      )}
+        {renderViewToggle()}
+        {renderMainCategoryFilter()}
+        {renderStoreFilter()}
+        {viewMode === 'offers' && renderSubcategoryFilter()}
+        {renderStatusFilter()}
+
+        {viewMode === 'catalogues' ? (
+          <>
+            {cataloguesLoading && (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.loadingText}>{t('home.loadingCatalogues')}</Text>
+              </View>
+            )}
+            {!cataloguesLoading && filteredStoreGroups.length > 0 ? (
+              filteredStoreGroups.map(renderStoreGroup)
+            ) : !cataloguesLoading ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="document-text-outline" size={64} color={colors.gray[300]} />
+                <Text style={styles.emptyStateText}>
+                  {t('flyers.noOffers')} {statusFilter !== 'all' ? getStatusLabel(statusFilter) : ''}
+                </Text>
+                {selectedStore !== 'all' && (
+                  <TouchableOpacity
+                    style={styles.emptyActionButton}
+                    onPress={() => setSelectedStore('all')}
+                  >
+                    <Text style={styles.emptyActionText}>{t('flyers.allStores')}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <>
+            {offersLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.loadingText}>{t('flyers.loadingOffers')}</Text>
+              </View>
+            ) : offersData.length > 0 ? (
+              <View style={styles.offersWrapper}>
+                {offersData.map((item) => (
+                  <View key={item.id} style={styles.offerCardWrapper}>
+                    <OfferCard
+                      offer={item}
+                      onPress={() => handleOfferPress(item)}
+                      onAddToBasket={() => handleAddToBasket(item)}
+                      isFavorite={favoriteSubcategoryIds.includes(item.categoryId)}
+                      onToggleFavorite={() => handleToggleFavoriteSubcategory(item.categoryId)}
+                    />
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons name="pricetag-outline" size={64} color={colors.gray[300]} />
+                <Text style={styles.emptyStateText}>
+                  {t('flyers.noOffers')} {selectedSubcategory ? t('flyers.noOffersInCategory') : offersStatusFilter !== 'all' ? getStatusLabel(offersStatusFilter) : ''}
+                </Text>
+                <Text style={styles.emptyStateSubtext}>{t('flyers.tryChangeFilters')}</Text>
+                {selectedStore !== 'all' && (
+                  <TouchableOpacity
+                    style={styles.emptyActionButton}
+                    onPress={() => setSelectedStore('all')}
+                  >
+                    <Text style={styles.emptyActionText}>{t('flyers.allStores')}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </>
+        )}
+      </ScrollView>
     </View>
   );
 }
 
+// STYLES - Same as before but maintained for completeness
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.backgroundSecondary },
-  viewToggle: { flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row', margin: spacing.md, backgroundColor: colors.gray[100], borderRadius: borderRadius.lg, padding: spacing.xs },
-  toggleButton: { flex: 1, flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.sm, borderRadius: borderRadius.md },
-  toggleButtonActive: { backgroundColor: colors.primary },
-  toggleText: { fontSize: typography.fontSize.md, color: colors.text, marginLeft: I18nManager.isRTL ? 0 : spacing.xs, marginRight: I18nManager.isRTL ? spacing.xs : 0 },
-  toggleTextActive: { color: colors.white, fontWeight: '600' },
-  filterScroll: { maxHeight: 50, marginBottom: spacing.sm, paddingHorizontal: spacing.md },
-  filterContainer: { paddingRight: spacing.sm },
-  filterChip: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: borderRadius.full, backgroundColor: colors.white, marginRight: I18nManager.isRTL ? 0 : spacing.sm, marginLeft: I18nManager.isRTL ? spacing.sm : 0, borderWidth: 1, borderColor: colors.gray[200] },
-  filterChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  filterChipActiveGreen: { backgroundColor: colors.success, borderColor: colors.success },
-  filterChipText: { fontSize: typography.fontSize.sm, color: colors.text },
-  filterChipTextActive: { color: colors.white, fontWeight: '600' },
-  categoryScroll: { maxHeight: 50 },
-  categoryContainer: { paddingHorizontal: spacing.md, paddingBottom: spacing.sm },
-  categoryChip: { flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row', alignItems: 'center', gap: spacing.xs, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: borderRadius.full, backgroundColor: colors.white, marginRight: I18nManager.isRTL ? 0 : spacing.sm, marginLeft: I18nManager.isRTL ? spacing.sm : 0, borderWidth: 1, borderColor: colors.gray[200] },
-  categoryChipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  categoryChipText: { fontSize: typography.fontSize.sm, color: colors.text },
-  categoryChipTextActive: { color: colors.white, fontWeight: '600' },
-  content: { flex: 1, padding: spacing.md },
-  loadingContainer: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xxl },
-  loadingText: { marginTop: spacing.md, fontSize: typography.fontSize.md, color: colors.textSecondary },
-  storeGroup: { marginBottom: spacing.lg },
-  storeHeader: { flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row', alignItems: 'center', backgroundColor: colors.white, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: borderRadius.md, marginBottom: spacing.sm, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 1, gap: spacing.xs },
-  storeName: { flex: 1, fontSize: typography.fontSize.md, fontWeight: 'bold', color: colors.text, textAlign: I18nManager.isRTL ? 'right' : 'left' },
-  catalogueCount: { fontSize: typography.fontSize.xs, color: colors.textSecondary, backgroundColor: colors.gray[100], paddingHorizontal: spacing.xs, paddingVertical: 2, borderRadius: borderRadius.sm },
-  cataloguesGrid: { flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row', flexWrap: 'wrap', gap: spacing.sm },
-  catalogueThumbnailWrapper: { width: CARD_WIDTH },
-  catalogueThumbnail: { width: '100%', alignItems: 'center', marginBottom: spacing.xs },
-  thumbnailImageContainer: { width: CARD_WIDTH, height: CARD_WIDTH * 1.4, backgroundColor: colors.gray[100], borderRadius: borderRadius.md, overflow: 'hidden', position: 'relative', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 3, elevation: 3 },
-  thumbnailImage: { width: '100%', height: '100%' },
-  statusBadgeThumbnail: { position: 'absolute', top: 6, right: 6, width: 10, height: 10, borderRadius: 5, borderWidth: 1.5, borderColor: colors.white },
-  statusDot: { width: '100%', height: '100%' },
-  favoriteButton: { position: 'absolute', top: 6, left: 6, width: 28, height: 28, borderRadius: borderRadius.full, backgroundColor: 'rgba(0, 0, 0, 0.5)', justifyContent: 'center', alignItems: 'center' },
-  thumbnailDate: { fontSize: 10, color: colors.textSecondary, marginTop: 5, textAlign: 'center', width: '100%', fontWeight: '500' },
-  emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xxl, paddingHorizontal: spacing.lg },
-  emptyStateText: { fontSize: typography.fontSize.md, color: colors.textSecondary, marginTop: spacing.md, textAlign: 'center' },
-  emptyStateSubtext: { fontSize: typography.fontSize.sm, color: colors.gray[400], marginTop: spacing.xs, textAlign: 'center' },
-  offersContainer: { padding: spacing.md },
-  offerRow: { justifyContent: 'space-between' },
+  container: {
+    flex: 1,
+    backgroundColor: colors.backgroundSecondary,
+  },
+  viewToggle: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    margin: spacing.md,
+    backgroundColor: colors.gray[100],
+    borderRadius: borderRadius.lg,
+    padding: spacing.xs,
+  },
+  toggleButton: {
+    flex: 1,
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+    gap: spacing.xs,
+  },
+  toggleButtonActive: {
+    backgroundColor: colors.primary,
+  },
+  toggleText: {
+    fontSize: typography.fontSize.md,
+    color: colors.text,
+  },
+  toggleTextActive: {
+    color: colors.white,
+    fontWeight: '600',
+  },
+  filterScroll: {
+    maxHeight: 60,
+    marginBottom: spacing.sm,
+  },
+  filterContainer: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    gap: spacing.sm,
+  },
+  filterChip: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    minHeight: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  filterChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  filterChipActiveGreen: {
+    backgroundColor: colors.success,
+    borderColor: colors.success,
+  },
+  filterChipText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  filterChipTextActive: {
+    color: colors.white,
+    fontWeight: '600',
+  },
+  categoryScroll: {
+    maxHeight: 60,
+    marginBottom: spacing.sm,
+  },
+  categoryContainer: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    gap: spacing.sm,
+  },
+  categoryChip: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    minHeight: 36,
+  },
+  categoryChipActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  categoryChipText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text,
+    fontWeight: '500',
+  },
+  categoryChipTextActive: {
+    color: colors.white,
+    fontWeight: '600',
+  },
+  storeFilterContainer: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    position: 'relative',
+    zIndex: 10,
+  },
+  storeFilterButton: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    gap: spacing.sm,
+    minHeight: 44,
+  },
+  storeFilterButtonText: {
+    flex: 1,
+    fontSize: typography.fontSize.md,
+    color: colors.text,
+    fontWeight: '500',
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  storeFilterDropdown: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    marginTop: spacing.xs,
+    maxHeight: 300,
+    borderWidth: 1,
+    borderColor: colors.gray[200],
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  storeFilterScroll: {
+    maxHeight: 280,
+  },
+  storeFilterItem: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[100],
+    minHeight: 48,
+  },
+  storeFilterItemActive: {
+    backgroundColor: colors.primaryLight + '10',
+  },
+  storeFilterItemText: {
+    flex: 1,
+    fontSize: typography.fontSize.md,
+    color: colors.text,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  storeFilterItemTextActive: {
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  storeFilterItemCount: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    backgroundColor: colors.gray[100],
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    minWidth: 28,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  storeFilterItemCountActive: {
+    backgroundColor: colors.primary + '20',
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  clearStoreFilter: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: spacing.xs,
+    gap: spacing.xs,
+    paddingVertical: spacing.xs,
+  },
+  clearStoreFilterText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+  },
+  loadingText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSize.md,
+    color: colors.textSecondary,
+  },
+  storeGroup: {
+    marginBottom: spacing.lg,
+  },
+  storeHeader: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+    gap: spacing.xs,
+  },
+  storeName: {
+    flex: 1,
+    fontSize: typography.fontSize.md,
+    fontWeight: 'bold',
+    color: colors.text,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  catalogueCount: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    backgroundColor: colors.gray[100],
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+  },
+  cataloguesGrid: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+  },
+  catalogueThumbnailWrapper: {
+    width: CARD_WIDTH,
+  },
+  catalogueThumbnail: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+  },
+  thumbnailImageContainer: {
+    width: CARD_WIDTH,
+    height: CARD_WIDTH * 1.4,
+    backgroundColor: colors.gray[100],
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  thumbnailImage: {
+    width: '100%',
+    height: '100%',
+  },
+  statusBadgeThumbnail: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    borderWidth: 1.5,
+    borderColor: colors.white,
+  },
+  statusDot: {
+    width: '100%',
+    height: '100%',
+  },
+  favoriteButton: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    width: 28,
+    height: 28,
+    borderRadius: borderRadius.full,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  thumbnailStoreName: {
+    fontSize: 10,
+    color: colors.text,
+    fontWeight: '700',
+    maxWidth: '45%',
+  },
+  fullScrollView: {
+    flex: 1,
+  },
+  thumbnailInfoContainer: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    marginTop: 5,
+    gap: 4,
+    flexWrap: 'wrap',
+  },
+  thumbnailSeparator: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    fontWeight: '500',
+  },
+  thumbnailDate: {
+    fontSize: 10,
+    color: colors.textSecondary,
+    fontWeight: '500',
+    flexShrink: 1,
+  },
+  offersWrapper: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexWrap: 'wrap',
+    paddingHorizontal: spacing.md,
+    gap: spacing.xs,
+  },
+  offerCardWrapper: {
+    width: '32%',
+    marginBottom: spacing.md,
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg,
+  },
+  emptyStateText: {
+    fontSize: typography.fontSize.md,
+    color: colors.textSecondary,
+    marginTop: spacing.md,
+    textAlign: 'center',
+  },
+  emptyStateSubtext: {
+    fontSize: typography.fontSize.sm,
+    color: colors.gray[400],
+    marginTop: spacing.xs,
+    textAlign: 'center',
+  },
+  emptyActionButton: {
+    marginTop: spacing.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.lg,
+  },
+  emptyActionText: {
+    fontSize: typography.fontSize.md,
+    color: colors.white,
+    fontWeight: '600',
+  },
 });

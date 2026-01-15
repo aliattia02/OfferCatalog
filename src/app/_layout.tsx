@@ -1,7 +1,8 @@
+// app/_layout.tsx - UPDATED WITH AUTH STATE CHECK ON STARTUP
 import React, { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { Provider } from 'react-redux';
-import { I18nManager, View, ActivityIndicator, StyleSheet, Text } from 'react-native';
+import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 
@@ -10,9 +11,10 @@ import { initI18n } from '../i18n';
 import { colors } from '../constants/theme';
 import { initializeFirebase } from '../config/firebase';
 import { onAuthChange } from '../services/authService';
-import { setUser, clearUser } from '../store/slices/authSlice';
+import { setUser, clearUser, checkAuthState } from '../store/slices/authSlice';
+import { startBackgroundSync, stopBackgroundSync } from '../services/backgroundSync';
+import { cacheService } from '../services/cacheService';
 
-// Import i18next for translation hook
 import '../i18n';
 
 export default function RootLayout() {
@@ -28,27 +30,47 @@ export default function RootLayout() {
         await initI18n();
         console.log('✅ i18n initialized');
 
-        // Initialize Firebase (now async)
+        // Initialize Firebase (now async with persistence)
         await initializeFirebase();
-        console.log('✅ Firebase initialized');
+        console.log('✅ Firebase initialized with persistence');
 
-        // Listen to auth state changes
+        // ✅ CRITICAL: Check if user is already logged in
+        console.log('🔍 Checking for existing auth session...');
+        await store.dispatch(checkAuthState()).unwrap();
+        console.log('✅ Auth state check complete');
+
+        // Clean up expired cache entries on startup
+        const cleaned = await cacheService.cleanup();
+        if (cleaned > 0) {
+          console.log(`🧹 Cleaned ${cleaned} expired cache entries on startup`);
+        }
+
+        // Listen to auth state changes (for future changes)
         const unsubscribe = onAuthChange((user) => {
-          console.log('👤 Auth state changed:', user ? user.email : 'Not logged in');
+          console.log('🔄 Auth state changed:', user ? user.email : 'Not logged in');
 
           if (user) {
             store.dispatch(setUser(user));
           } else {
             store.dispatch(clearUser());
+            // Clear user-specific caches on sign-out
+            cacheService.clearUserCaches();
           }
         });
+
+        // Start background sync service
+        console.log('🚀 Starting background sync service...');
+        startBackgroundSync();
+        console.log('✅ Background sync service started');
 
         setIsReady(true);
         console.log('✅ App initialization complete');
 
         // Cleanup
         return () => {
+          console.log('🛑 Cleaning up...');
           unsubscribe();
+          stopBackgroundSync();
         };
       } catch (error: any) {
         console.error('❌ Error initializing app:', error);
@@ -73,7 +95,7 @@ export default function RootLayout() {
     return (
       <View style={styles.loading}>
         <Text style={styles.errorText}>⚠️ {initError}</Text>
-        <Text style={styles.errorSubtext}>سيتم المحاولة مجدداً...</Text>
+        <Text style={styles.errorSubtext}>سيتم المحاولة مجددًا...</Text>
       </View>
     );
   }
@@ -86,7 +108,6 @@ export default function RootLayout() {
           screenOptions={{
             headerShown: false,
             animation: 'slide_from_right',
-            // This is key - remove contentStyle background
             contentStyle: {
               backgroundColor: colors.background,
             },
@@ -96,7 +117,6 @@ export default function RootLayout() {
             name="(tabs)"
             options={{
               headerShown: false,
-              // Ensure tabs handle their own safe area
             }}
           />
           <Stack.Screen name="auth" options={{ headerShown: false }} />

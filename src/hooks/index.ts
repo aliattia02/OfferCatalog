@@ -11,6 +11,9 @@ import { setOffers, loadCatalogues } from '../store/slices/offersSlice';
 import { stores as mockStores } from '../data/stores';
 import { offers as mockOffers } from '../data/offers';
 import { setCataloguesCache } from '../data/catalogueRegistry';
+// Export new hooks
+export { useAppConfig } from './useAppConfig';
+export { useInterstitialAd } from './useInterstitialAd';
 
 // Export the useSafeTabBarHeight hook
 export * from './useSafeTabBarHeight';

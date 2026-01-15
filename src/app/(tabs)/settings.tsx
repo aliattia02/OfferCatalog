@@ -1,4 +1,4 @@
-// src/app/(tabs)/settings.tsx - WITH STORES BUTTON
+// src/app/(tabs)/settings.tsx - COMPLETE WITH ALL TRANSLATIONS
 import React from 'react';
 import {
   View,
@@ -18,6 +18,7 @@ import { useRouter } from 'expo-router';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
+import LocationSelector from '../../components/common/LocationSelector';
 import { setLanguage, setNotificationsEnabled } from '../../store/slices/settingsSlice';
 import { signOut, clearUser } from '../../store/slices/authSlice';
 import { clearBasket } from '../../store/slices/basketSlice';
@@ -46,9 +47,9 @@ export default function SettingsScreen() {
 
     if ((language === 'ar') !== I18nManager.isRTL) {
       Alert.alert(
-        'تنبيه',
-        'يتطلب تغيير اللغة إعادة تشغيل التطبيق لتفعيل اتجاه النص بشكل صحيح.',
-        [{ text: 'حسناً' }]
+        t('settings.warning'),
+        t('settings.languageChangeHint'),
+        [{ text: t('settings.ok') }]
       );
     }
   };
@@ -64,26 +65,24 @@ export default function SettingsScreen() {
   const handleSignOut = async () => {
     console.log('🔴 [Settings] Sign out initiated');
 
-    // Web-compatible confirmation
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm('هل أنت متأكد من تسجيل الخروج؟');
+      const confirmed = window.confirm(t('settings.signOutConfirm'));
       if (!confirmed) {
         console.log('🔴 [Settings] User cancelled sign out');
         return;
       }
     } else {
-      // Native Alert for mobile
       Alert.alert(
-        'تسجيل الخروج',
-        'هل أنت متأكد من تسجيل الخروج؟',
+        t('settings.signOut'),
+        t('settings.signOutConfirm'),
         [
           {
-            text: 'إلغاء',
+            text: t('common.cancel'),
             style: 'cancel',
             onPress: () => console.log('🔴 [Settings] User cancelled sign out'),
           },
           {
-            text: 'تسجيل الخروج',
+            text: t('settings.signOut'),
             style: 'destructive',
             onPress: () => performSignOut(),
           },
@@ -92,7 +91,6 @@ export default function SettingsScreen() {
       return;
     }
 
-    // For web, continue immediately if confirmed
     await performSignOut();
   };
 
@@ -100,33 +98,29 @@ export default function SettingsScreen() {
     try {
       console.log('🔵 [Settings] Performing sign out');
 
-      // Call signOut thunk
       await dispatch(signOut()).unwrap();
       console.log('✅ [Settings] Sign out successful');
 
-      // Clear all user-related data
       dispatch(clearUser());
       dispatch(clearBasket());
       dispatch(clearFavorites());
 
-      // Navigate to auth screen
       router.replace('/auth/sign-in');
 
-      // Show success message
       setTimeout(() => {
         if (Platform.OS === 'web') {
-          alert('تم تسجيل الخروج بنجاح');
+          alert(t('settings.signOutSuccess'));
         } else {
-          Alert.alert('نجح', 'تم تسجيل الخروج بنجاح');
+          Alert.alert(t('common.success'), t('settings.signOutSuccess'));
         }
       }, 500);
     } catch (error: any) {
       console.error('❌ [Settings] Sign out error:', error);
 
       if (Platform.OS === 'web') {
-        alert(`خطأ: ${error.message || 'فشل تسجيل الخروج'}`);
+        alert(`${t('common.error')}: ${error.message || t('common.failed')}`);
       } else {
-        Alert.alert('خطأ', error.message || 'فشل تسجيل الخروج');
+        Alert.alert(t('common.error'), error.message || t('common.failed'));
       }
     }
   };
@@ -181,7 +175,7 @@ export default function SettingsScreen() {
     >
       {/* Account Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('settings.account') || 'الحساب'}</Text>
+        <Text style={styles.sectionTitle}>{t('settings.account')}</Text>
         <View style={styles.card}>
           {isAuthenticated && user ? (
             <>
@@ -195,36 +189,47 @@ export default function SettingsScreen() {
                   </View>
                 )}
                 <View style={styles.profileInfo}>
-                  <Text style={styles.profileName}>{user.displayName || 'مستخدم'}</Text>
+                  <Text style={styles.profileName}>{user.displayName || t('settings.user')}</Text>
                   <Text style={styles.profileEmail}>{user.email}</Text>
                   {isAdmin && (
                     <View style={styles.adminBadge}>
                       <Ionicons name="shield-checkmark" size={14} color={colors.white} />
-                      <Text style={styles.adminBadgeText}>مدير</Text>
+                      <Text style={styles.adminBadgeText}>{t('settings.admin')}</Text>
                     </View>
                   )}
                 </View>
               </View>
               <View style={styles.divider} />
 
-              {/* Admin Panel Link - ONLY shown to admin users */}
+              {/* Admin-only tools */}
               {isAdmin && (
                 <>
+                  <View style={styles.divider} />
+
+                  {renderSettingItem(
+                    'analytics-outline',
+                    t('settings.cacheMonitor'),
+                    t('settings.cacheMonitorDesc'),
+                    undefined,
+                    () => router.push('/cache-debug')
+                  )}
+
+                  <View style={styles.divider} />
+
                   {renderSettingItem(
                     'settings',
-                    'لوحة التحكم الإدارية',
-                    'إدارة الكتالوجات والعروض',
+                    t('settings.adminPanel'),
+                    t('settings.adminPanelDesc'),
                     undefined,
                     handleAdminPanel
                   )}
-                  <View style={styles.divider} />
                 </>
               )}
 
               {/* Sign Out Button */}
               {renderSettingItem(
                 'log-out',
-                'تسجيل الخروج',
+                t('settings.signOut'),
                 undefined,
                 undefined,
                 handleSignOut
@@ -234,8 +239,8 @@ export default function SettingsScreen() {
             /* Sign In Button */
             renderSettingItem(
               'log-in',
-              'تسجيل الدخول',
-              'احفظ المفضلة والسلة عبر جميع أجهزتك',
+              t('settings.signIn'),
+              t('settings.signInHint'),
               undefined,
               handleSignIn
             )
@@ -243,14 +248,30 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      {/* Shopping Section - NEW */}
+      {/* Location Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>التسوق</Text>
+        <Text style={styles.sectionTitle}>{t('settings.location')}</Text>
+        <View style={styles.card}>
+          <View style={styles.locationContainer}>
+            <LocationSelector showCitySelection={true} />
+          </View>
+          <View style={styles.locationHint}>
+            <Ionicons name="information-circle-outline" size={16} color={colors.textSecondary} />
+            <Text style={styles.locationHintText}>
+              {t('settings.locationHint')}
+            </Text>
+          </View>
+        </View>
+      </View>
+
+      {/* Shopping Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{t('settings.shopping')}</Text>
         <View style={styles.card}>
           {renderSettingItem(
             'storefront',
-            'المتاجر',
-            `${stores.length} ${stores.length === 1 ? 'متجر' : 'متاجر'} متاح`,
+            t('stores.title'),
+            `${stores.length} ${stores.length === 1 ? t('stores.store') : t('settings.storesAvailable')}`,
             undefined,
             handleStores
           )}
@@ -259,12 +280,12 @@ export default function SettingsScreen() {
 
       {/* Favorites Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('settings.favorites') || 'المفضلة'}</Text>
+        <Text style={styles.sectionTitle}>{t('settings.favorites')}</Text>
         <View style={styles.card}>
           {renderSettingItem(
             'heart',
-            'المفضلة',
-            `${favoriteStoreIds.length} ${favoriteStoreIds.length === 1 ? 'متجر' : 'متاجر'} • ${favoriteSubcategoryIds.length} ${favoriteSubcategoryIds.length === 1 ? 'فئة' : 'فئات'}`,
+            t('settings.favorites'),
+            `${favoriteStoreIds.length} ${favoriteStoreIds.length === 1 ? t('favorites.store') : t('favorites.stores')} • ${favoriteSubcategoryIds.length} ${favoriteSubcategoryIds.length === 1 ? t('favorites.category') : t('favorites.categories')}`,
             undefined,
             () => router.push('/(tabs)/favorites')
           )}
@@ -338,7 +359,7 @@ export default function SettingsScreen() {
             t('settings.notificationSettings'),
             undefined,
             undefined,
-            () => Alert.alert('قريباً', 'إعدادات الإشعارات قيد التطوير')
+            () => Alert.alert(t('settings.comingSoon'), t('settings.inDevelopment'))
           )}
         </View>
       </View>
@@ -352,7 +373,7 @@ export default function SettingsScreen() {
             t('settings.help'),
             undefined,
             undefined,
-            () => Alert.alert('المساعدة', 'للمساعدة تواصل معنا عبر البريد الإلكتروني')
+            () => Alert.alert(t('settings.help'), t('settings.helpDesc'))
           )}
           <View style={styles.divider} />
           {renderSettingItem(
@@ -360,7 +381,7 @@ export default function SettingsScreen() {
             t('settings.privacyPolicy'),
             undefined,
             undefined,
-            () => Alert.alert('قريباً', 'سياسة الخصوصية قيد الإعداد')
+            () => Alert.alert(t('settings.comingSoon'), t('settings.privacyPolicyDesc'))
           )}
           <View style={styles.divider} />
           {renderSettingItem(
@@ -368,7 +389,7 @@ export default function SettingsScreen() {
             t('settings.termsOfService'),
             undefined,
             undefined,
-            () => Alert.alert('قريباً', 'شروط الخدمة قيد الإعداد')
+            () => Alert.alert(t('settings.comingSoon'), t('settings.termsOfServiceDesc'))
           )}
           <View style={styles.divider} />
           {renderSettingItem(
@@ -438,6 +459,24 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[200],
     marginLeft: I18nManager.isRTL ? 0 : 72,
     marginRight: I18nManager.isRTL ? 72 : 0,
+  },
+  locationContainer: {
+    padding: spacing.md,
+  },
+  locationHint: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    backgroundColor: colors.gray[50],
+  },
+  locationHintText: {
+    flex: 1,
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    lineHeight: 18,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   languageOption: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
