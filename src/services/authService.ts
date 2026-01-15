@@ -1,4 +1,4 @@
-// src/services/authService.ts - PRODUCTION READY WITH WHITELIST
+// src/services/authService.ts - ✅ FIXED WITH PROPER LOCATION HANDLING
 import {
   signInWithCredential,
   GoogleAuthProvider,
@@ -12,14 +12,9 @@ import { getAuthInstance, getDbInstance } from '../config/firebase';
 import { UserProfile } from '../types';
 
 // ============================================
-// ADMIN CONFIGURATION - PRODUCTION READY
+// ADMIN CONFIGURATION
 // ============================================
 
-/**
- * ADMIN WHITELIST
- * ONLY these specific emails will have admin access
- * All other users will be regular users with NO admin privileges
- */
 const ADMIN_EMAILS = [
   'aliattia2@gmail.com',
   'aliattia02@gmail.com',
@@ -27,16 +22,9 @@ const ADMIN_EMAILS = [
   'aliattia2de@gmail.com'
 ];
 
-/**
- * Check if an email should have admin access
- * Returns true ONLY if email is in the ADMIN_EMAILS whitelist
- */
 const isAdminEmail = (email: string | null): boolean => {
   if (!email) return false;
-
   const emailLower = email.toLowerCase().trim();
-
-  // Check exact match in whitelist
   return ADMIN_EMAILS.some(adminEmail =>
     adminEmail.toLowerCase().trim() === emailLower
   );
@@ -46,9 +34,6 @@ const isAdminEmail = (email: string | null): boolean => {
 // AUTHENTICATION FUNCTIONS
 // ============================================
 
-/**
- * Sign in with Google using ID token and/or Access token
- */
 export const signInWithGoogleToken = async (
   idToken: string | null,
   accessToken: string | null
@@ -63,22 +48,17 @@ export const signInWithGoogleToken = async (
       throw new Error('No authentication token provided');
     }
 
-    // Create Firebase credential
     const credential = GoogleAuthProvider.credential(idToken, accessToken);
-
-    // Sign in to Firebase
     const userCredential: UserCredential = await signInWithCredential(auth, credential);
     const user = userCredential.user;
 
     console.log('✅ Firebase sign-in successful:', user.email);
 
-    // Wait for Firestore to be ready
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    // ✅ Wait a moment for Firestore to be ready
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    // Get or create user profile
     const userProfile = await getOrCreateUserProfile(user);
 
-    // Log admin status
     if (userProfile.isAdmin) {
       console.log('⭐ Admin user logged in:', user.email);
     } else {
@@ -92,9 +72,6 @@ export const signInWithGoogleToken = async (
   }
 };
 
-/**
- * Sign out the current user
- */
 export const signOut = async (): Promise<void> => {
   try {
     const auth = getAuthInstance();
@@ -107,8 +84,7 @@ export const signOut = async (): Promise<void> => {
 };
 
 /**
- * Get or create user profile in Firestore
- * Admin status is ONLY granted to emails in ADMIN_EMAILS whitelist
+ * ✅ Get or create user profile - UPDATED WITH SAFE LOCATION HANDLING
  */
 export const getOrCreateUserProfile = async (
   user: FirebaseUser
@@ -124,7 +100,6 @@ export const getOrCreateUserProfile = async (
       const userRef = doc(db, 'users', user.uid);
       const userSnap = await getDoc(userRef);
 
-      // Determine admin status based on email whitelist
       const shouldBeAdmin = isAdminEmail(user.email);
 
       if (userSnap.exists()) {
@@ -132,42 +107,50 @@ export const getOrCreateUserProfile = async (
 
         const userData = userSnap.data();
 
-        // Update last login and sync admin status
         const updateData: any = {
           lastLoginAt: serverTimestamp()
         };
 
-        // Sync admin status with whitelist
         if (shouldBeAdmin !== userData.isAdmin) {
           updateData.isAdmin = shouldBeAdmin;
 
           if (shouldBeAdmin) {
             console.log('⭐ User promoted to admin (whitelist match)');
           } else {
-            console.log('⚠️ Admin privileges removed (not in whitelist)');
+            console.warn('⚠️ Admin privileges removed (not in whitelist)');
           }
         }
 
         await setDoc(userRef, updateData, { merge: true });
+
+        // ✅ Safely extract location with null checks
+        const location = userData.location ? {
+          governorate: userData.location.governorate || null,
+          city: userData.location.city || null,
+        } : null;
+
+        console.log('📍 User location from Firestore:', location);
 
         return {
           uid: user.uid,
           email: user.email,
           displayName: user.displayName,
           photoURL: user.photoURL,
-          isAdmin: shouldBeAdmin, // Always use whitelist status
+          isAdmin: shouldBeAdmin,
+          location: location,
           createdAt: userData.createdAt,
           lastLoginAt: serverTimestamp(),
         };
       } else {
-        console.log('📝 Creating new user profile');
+        console.log('🆕 Creating new user profile');
 
         const newProfile: UserProfile = {
           uid: user.uid,
           email: user.email,
           displayName: user.displayName,
           photoURL: user.photoURL,
-          isAdmin: shouldBeAdmin, // Set admin status based on whitelist
+          isAdmin: shouldBeAdmin,
+          location: null,
           createdAt: serverTimestamp(),
           lastLoginAt: serverTimestamp(),
         };
@@ -198,7 +181,7 @@ export const getOrCreateUserProfile = async (
 };
 
 /**
- * Get user profile from Firestore
+ * ✅ Get user profile - UPDATED WITH SAFE LOCATION HANDLING
  */
 export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
   try {
@@ -208,16 +191,23 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
 
     if (userSnap.exists()) {
       const userData = userSnap.data();
-
-      // Always verify admin status against whitelist
       const shouldBeAdmin = isAdminEmail(userData.email);
+
+      // ✅ Safely extract location with null checks
+      const location = userData.location ? {
+        governorate: userData.location.governorate || null,
+        city: userData.location.city || null,
+      } : null;
+
+      console.log('📍 User location from Firestore:', location);
 
       return {
         uid,
         email: userData.email,
         displayName: userData.displayName,
         photoURL: userData.photoURL,
-        isAdmin: shouldBeAdmin, // Use whitelist, not stored value
+        isAdmin: shouldBeAdmin,
+        location: location,
         createdAt: userData.createdAt,
         lastLoginAt: userData.lastLoginAt,
       };
@@ -230,9 +220,6 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
   }
 };
 
-/**
- * Listen to auth state changes
- */
 export const onAuthChange = (callback: (user: UserProfile | null) => void) => {
   const auth = getAuthInstance();
 
@@ -251,9 +238,6 @@ export const onAuthChange = (callback: (user: UserProfile | null) => void) => {
   });
 };
 
-/**
- * Check if current user is admin (utility function)
- */
 export const checkIsAdmin = (email: string | null): boolean => {
   return isAdminEmail(email);
 };

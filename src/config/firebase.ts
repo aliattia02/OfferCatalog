@@ -1,11 +1,10 @@
-// src/config/firebase.ts - UPDATED WITH AUTH PERSISTENCE
+// src/config/firebase.ts - FIXED: Proper web auth initialization
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import {
   getAuth,
   Auth,
   initializeAuth,
   browserLocalPersistence,
-  browserSessionPersistence,
   indexedDBLocalPersistence
 } from 'firebase/auth';
 import {
@@ -78,30 +77,30 @@ export const initializeFirebase = async (): Promise<{
         console.log('✅ Using existing Firebase app');
       }
 
-      // ✅ Initialize Auth with platform-specific persistence
+      // ✅ CRITICAL FIX: Initialize Auth differently for web vs native
       if (!auth) {
         if (Platform.OS === 'web') {
-          // Web: Use initializeAuth with browser persistence
+          // ⚠️ For WEB: Use getAuth() - do NOT use initializeAuth
+          // Using initializeAuth on web can cause auth/argument-error
           try {
-            auth = initializeAuth(app, {
-              persistence: [
-                indexedDBLocalPersistence,
-                browserLocalPersistence,
-                browserSessionPersistence
-              ],
-            });
-            console.log('✅ Firebase Auth initialized for web with local persistence');
-          } catch (error: any) {
-            // Fallback to default auth if persistence fails
-            console.warn('⚠️ Custom persistence failed, using default auth:', error.message);
             auth = getAuth(app);
+            console.log('✅ Firebase Auth initialized for web with getAuth()');
+          } catch (error: any) {
+            console.error('❌ Error initializing web auth:', error);
+            throw error;
           }
         } else {
-          // React Native: Use AsyncStorage persistence
-          auth = initializeAuth(app, {
-            persistence: getReactNativePersistence(AsyncStorage)
-          });
-          console.log('✅ Firebase Auth initialized for React Native with AsyncStorage persistence');
+          // For React Native: Use initializeAuth with AsyncStorage persistence
+          try {
+            auth = initializeAuth(app, {
+              persistence: getReactNativePersistence(AsyncStorage)
+            });
+            console.log('✅ Firebase Auth initialized for React Native with AsyncStorage persistence');
+          } catch (error: any) {
+            // If initializeAuth fails (e.g., already initialized), use getAuth
+            console.warn('⚠️ initializeAuth failed, falling back to getAuth:', error.message);
+            auth = getAuth(app);
+          }
         }
       }
 

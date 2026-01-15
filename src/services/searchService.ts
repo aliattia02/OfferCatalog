@@ -1,16 +1,17 @@
-// src/services/searchService.ts - Comprehensive Search Service
+// src/services/searchService.ts - Comprehensive Search Service with Local Store Names
 import { getAllOffers, OfferWithCatalogue } from './offerService';
 import { getCategoryById, getMainCategories, getMainSubcategories } from '../data/categories';
 import type { Catalogue, Category, Store } from '../types';
 
 export interface SearchResult {
   id: string;
-  type: 'catalogue' | 'offer' | 'subcategory' | 'store'; // Added 'store'
+  type: 'catalogue' | 'offer' | 'subcategory' | 'store';
   title: string;
   subtitle?: string;
   imageUrl?: string;
-  data: Catalogue | OfferWithCatalogue | Category | Store; // Added Store
-  matchScore: number; // For ranking results
+  imageSource?: any; // NEW: For require() imported images like store logos
+  data: Catalogue | OfferWithCatalogue | Category | Store;
+  matchScore: number;
 }
 
 /**
@@ -72,12 +73,42 @@ const calculateMatchScore = (text: string, query: string): number => {
 };
 
 /**
+ * Get display name for catalogue
+ * Handles local stores with specific names
+ */
+const getCatalogueDisplayName = (catalogue: Catalogue, store: Store | undefined): string => {
+  // For local stores with specific local store name
+  if (catalogue.isLocalStore && catalogue.localStoreNameAr && catalogue.localStoreNameId !== 'unidentified') {
+    return catalogue.localStoreNameAr;
+  }
+
+  // For unidentified local stores
+  if (catalogue.isLocalStore && catalogue.localStoreNameId === 'unidentified') {
+    const governorate = catalogue.localStoreGovernorate || '';
+    const city = catalogue.localStoreCity || '';
+
+    if (city) {
+      return `${store?.nameAr || catalogue.storeName} - ${city}`;
+    }
+
+    if (governorate) {
+      return `${store?.nameAr || catalogue.storeName} - ${governorate}`;
+    }
+
+    return store?.nameAr || catalogue.storeName || 'متجر محلي';
+  }
+
+  // For regular stores, use store name
+  return store?.nameAr || catalogue.storeName || catalogue.titleAr;
+};
+
+/**
  * Search catalogues by name/title
  * Minimum 3 characters required
  */
 export const searchCatalogues = async (
   catalogues: Catalogue[],
-  stores: any[],
+  stores: Store[],
   query: string
 ): Promise<SearchResult[]> => {
   if (!query || query.trim().length < 3) return [];
@@ -86,21 +117,73 @@ export const searchCatalogues = async (
 
   catalogues.forEach(catalogue => {
     const store = stores.find(s => s.id === catalogue.storeId);
-    const storeName = store?.nameAr || '';
+    const displayName = getCatalogueDisplayName(catalogue, store);
 
-    // Search in catalogue title
+    // Search in catalogue title (Arabic)
     const titleScore = calculateMatchScore(catalogue.titleAr, query);
 
-    // Search in store name
-    const storeScore = calculateMatchScore(storeName, query);
+    // Search in catalogue title (English)
+    let titleEnScore = 0;
+    if (catalogue.titleEn) {
+      titleEnScore = calculateMatchScore(catalogue.titleEn, query);
+    }
 
-    const maxScore = Math.max(titleScore, storeScore);
+    // Search in display name (store name or local store name)
+    const displayNameScore = calculateMatchScore(displayName, query);
+
+    // Search in store name (Arabic)
+    let storeNameScore = 0;
+    if (store?.nameAr) {
+      storeNameScore = calculateMatchScore(store.nameAr, query);
+    }
+
+    // Search in store name (English)
+    let storeNameEnScore = 0;
+    if (store?.nameEn) {
+      storeNameEnScore = calculateMatchScore(store.nameEn, query);
+    }
+
+    // Search in local store name specifically (Arabic)
+    let localStoreScore = 0;
+    if (catalogue.isLocalStore && catalogue.localStoreNameAr) {
+      localStoreScore = calculateMatchScore(catalogue.localStoreNameAr, query);
+    }
+
+    // Search in local store name (English)
+    let localStoreEnScore = 0;
+    if (catalogue.isLocalStore && catalogue.localStoreNameEn) {
+      localStoreEnScore = calculateMatchScore(catalogue.localStoreNameEn, query);
+    }
+
+    // Search in governorate name for local stores
+    let governorateScore = 0;
+    if (catalogue.isLocalStore && catalogue.localStoreGovernorate) {
+      governorateScore = calculateMatchScore(catalogue.localStoreGovernorate, query);
+    }
+
+    // Search in city name for local stores
+    let cityScore = 0;
+    if (catalogue.isLocalStore && catalogue.localStoreCity) {
+      cityScore = calculateMatchScore(catalogue.localStoreCity, query);
+    }
+
+    const maxScore = Math.max(
+      titleScore,
+      titleEnScore,
+      displayNameScore,
+      storeNameScore,
+      storeNameEnScore,
+      localStoreScore,
+      localStoreEnScore,
+      governorateScore,
+      cityScore
+    );
 
     if (maxScore > 0) {
       results.push({
         id: catalogue.id,
         type: 'catalogue',
-        title: storeName,
+        title: displayName,
         subtitle: `${catalogue.startDate} - ${catalogue.endDate}`,
         imageUrl: catalogue.coverImage,
         data: catalogue,
@@ -150,16 +233,18 @@ export const searchOffers = async (query: string): Promise<SearchResult[]> => {
 };
 
 /**
- * Search stores by name
+ * Search stores by name (including local store names from catalogues)
  * Minimum 3 characters required
  */
 export const searchStores = (
   stores: Store[],
-  query: string
+  query: string,
+  catalogues?: Catalogue[]
 ): SearchResult[] => {
   if (!query || query.trim().length < 3) return [];
 
   const results: SearchResult[] = [];
+  const addedStores = new Set<string>(); // Track stores we've already added
 
   stores.forEach(store => {
     // Search in Arabic name
@@ -170,18 +255,59 @@ export const searchStores = (
       ? calculateMatchScore(store.nameEn, query)
       : 0;
 
-    const maxScore = Math.max(nameArScore, nameEnScore);
+    let maxScore = Math.max(nameArScore, nameEnScore);
 
-    if (maxScore > 0) {
+    // For local stores, also search in local store names from catalogues
+    if (store.isLocal && catalogues) {
+      const localStoreCatalogues = catalogues.filter(
+        cat => cat.storeId === store.id && cat.isLocalStore && cat.localStoreNameAr
+      );
+
+      // Search through all unique local store names for this store
+      const localStoreNames = new Set<string>();
+      localStoreCatalogues.forEach(cat => {
+        if (cat.localStoreNameAr) localStoreNames.add(cat.localStoreNameAr);
+        if (cat.localStoreNameEn) localStoreNames.add(cat.localStoreNameEn);
+      });
+
+      // Calculate match scores for local store names
+      localStoreNames.forEach(localName => {
+        const localScore = calculateMatchScore(localName, query);
+        maxScore = Math.max(maxScore, localScore);
+      });
+
+      // If we found a match in local store names, enhance the subtitle
+      if (maxScore > Math.max(nameArScore, nameEnScore) && maxScore > 0) {
+        const matchingLocalStores = Array.from(localStoreNames)
+          .filter(name => calculateMatchScore(name, query) > 0)
+          .slice(0, 2) // Show up to 2 matching local stores
+          .join(' • ');
+
+        results.push({
+          id: store.id,
+          type: 'store',
+          title: store.nameAr,
+          subtitle: matchingLocalStores || `${store.branches?.length || 0} ${(store.branches?.length || 0) === 1 ? 'فرع' : 'فروع'}`,
+          imageSource: store.logo, // Use imageSource for require() imported logos
+          data: store,
+          matchScore: maxScore,
+        });
+        addedStores.add(store.id);
+        return;
+      }
+    }
+
+    if (maxScore > 0 && !addedStores.has(store.id)) {
       results.push({
         id: store.id,
         type: 'store',
         title: store.nameAr,
-        subtitle: `${store.branches.length} ${store.branches.length === 1 ? 'فرع' : 'فروع'}`,
-        imageUrl: store.logo,
+        subtitle: `${store.branches?.length || 0} ${(store.branches?.length || 0) === 1 ? 'فرع' : 'فروع'}`,
+        imageSource: store.logo, // Use imageSource for require() imported logos
         data: store,
         matchScore: maxScore,
       });
+      addedStores.add(store.id);
     }
   });
 
@@ -252,12 +378,12 @@ export const searchAll = async (
     };
   }
 
-  // Run all searches in parallel
+  // Run all searches in parallel, passing catalogues to store search
   const [catalogueResults, offerResults, subcategoryResults, storeResults] = await Promise.all([
     searchCatalogues(catalogues, stores, query),
     searchOffers(query),
     Promise.resolve(searchSubcategories(query)),
-    Promise.resolve(searchStores(stores, query)),
+    Promise.resolve(searchStores(stores, query, catalogues)), // Pass catalogues here
   ]);
 
   // Combine all results
@@ -282,7 +408,7 @@ export const searchAll = async (
  */
 export const getSearchSuggestions = async (
   catalogues: Catalogue[],
-  stores: any[],
+  stores: Store[],
   query: string,
   limit: number = 5
 ): Promise<SearchResult[]> => {

@@ -17,6 +17,7 @@ import {
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { Button } from '../../components/common';
@@ -39,6 +40,7 @@ export default function FlyerDetailScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { getTitle, getName } = useLocalized();
+  const insets = useSafeAreaInsets();
 
   const [currentPage, setCurrentPage] = useState(0);
   const [catalogueOffers, setCatalogueOffers] = useState<OfferWithCatalogue[]>([]);
@@ -67,7 +69,7 @@ export default function FlyerDetailScreen() {
     if (page) {
       const pageNumber = parseInt(page, 10);
       if (!isNaN(pageNumber) && pageNumber > 0 && pageNumber <= totalPages) {
-        const pageIndex = pageNumber - 1; // Convert to 0-based index
+        const pageIndex = pageNumber - 1;
         setCurrentPage(pageIndex);
         console.log(`📄 [FlyerDetail] Navigated to page ${pageNumber} (index ${pageIndex})`);
       }
@@ -86,6 +88,9 @@ export default function FlyerDetailScreen() {
   const lastScale = useRef(1);
   const lastTranslateX = useRef(0);
   const lastTranslateY = useRef(0);
+
+  // ✅ FIXED: Track initial distance for pinch gesture
+  const initialDistance = useRef(0);
 
   // Load real offers from Firestore
   useEffect(() => {
@@ -117,10 +122,12 @@ export default function FlyerDetailScreen() {
     lastScale.current = 1;
     lastTranslateX.current = 0;
     lastTranslateY.current = 0;
+    initialDistance.current = 0;
   }, [currentPage, fullScreenImage]);
 
-  // Calculate distance between two touches
+  // ✅ FIXED: Improved distance calculation for mobile
   const distance = (touches: any[]) => {
+    if (touches.length < 2) return 0;
     const [touch1, touch2] = touches;
     const dx = touch1.pageX - touch2.pageX;
     const dy = touch1.pageY - touch2.pageY;
@@ -132,7 +139,6 @@ export default function FlyerDetailScreen() {
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
       onMoveShouldSetPanResponder: (_, gestureState) => {
-        // Only capture horizontal swipes, not taps
         return Math.abs(gestureState.dx) > 10;
       },
       onPanResponderRelease: (_, gestureState) => {
@@ -170,15 +176,19 @@ export default function FlyerDetailScreen() {
     })
   ).current;
 
-  // FULLSCREEN: Pinch to zoom + Swipe
+  // ✅ FIXED: Improved FULLSCREEN pinch-to-zoom for mobile
   const fullScreenPan = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => true,
       onPanResponderGrant: (evt) => {
-        if (evt.nativeEvent.touches.length === 2) {
+        const touches = evt.nativeEvent.touches;
+
+        if (touches.length === 2) {
+          // Store initial distance when pinch starts
+          initialDistance.current = distance(touches);
           lastScale.current = scale._value;
-        } else if (evt.nativeEvent.touches.length === 1) {
+        } else if (touches.length === 1) {
           lastTranslateX.current = translateX._value;
           lastTranslateY.current = translateY._value;
         }
@@ -187,10 +197,15 @@ export default function FlyerDetailScreen() {
         const touches = evt.nativeEvent.touches;
 
         if (touches.length === 2) {
+          // ✅ FIXED: Calculate scale based on distance ratio
           const currentDistance = distance(touches);
-          const newScale = Math.max(1, Math.min(lastScale.current * (currentDistance / 200), 4));
-          scale.setValue(newScale);
+          if (initialDistance.current > 0) {
+            const scaleRatio = currentDistance / initialDistance.current;
+            const newScale = Math.max(1, Math.min(lastScale.current * scaleRatio, 4));
+            scale.setValue(newScale);
+          }
         } else if (touches.length === 1 && lastScale.current > 1) {
+          // Allow panning only when zoomed in
           translateX.setValue(lastTranslateX.current + gestureState.dx);
           translateY.setValue(lastTranslateY.current + gestureState.dy);
         }
@@ -206,6 +221,7 @@ export default function FlyerDetailScreen() {
         const isFastSwipe = Math.abs(vx) > SWIPE_VELOCITY_THRESHOLD;
         const isLongSwipe = Math.abs(dx) > SWIPE_THRESHOLD;
 
+        // Reset zoom if almost at 1x and user swipes
         if (currentScale <= 1.1 && (isFastSwipe || isLongSwipe)) {
           scale.setValue(1);
           translateX.setValue(0);
@@ -213,6 +229,7 @@ export default function FlyerDetailScreen() {
           lastScale.current = 1;
           lastTranslateX.current = 0;
           lastTranslateY.current = 0;
+          initialDistance.current = 0;
 
           let newPage = page;
 
@@ -234,9 +251,11 @@ export default function FlyerDetailScreen() {
             setCurrentPage(newPage);
           }
         } else {
+          // Save the current zoom/pan state
           lastScale.current = currentScale;
           lastTranslateX.current = translateX._value;
           lastTranslateY.current = translateY._value;
+          initialDistance.current = 0;
         }
       },
     })
@@ -384,7 +403,11 @@ export default function FlyerDetailScreen() {
           headerBackTitle: 'عودة',
         }}
       />
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, spacing.md) }}
+        showsVerticalScrollIndicator={false}
+      >
         {hasPages ? (
           <View style={styles.pageContainer}>
             <View {...normalViewPan.panHandlers} style={styles.swipeContainer}>

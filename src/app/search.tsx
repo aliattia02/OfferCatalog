@@ -1,4 +1,4 @@
-// src/app/search.tsx - WITH URL PARAMETER SUPPORT
+// src/app/search.tsx - FIXED: Added safe area top padding
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
@@ -9,12 +9,13 @@ import {
   I18nManager,
   ActivityIndicator,
   Image,
-  TextInput,
 } from 'react-native';
 import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography, borderRadius } from '../constants/theme';
+import { SearchBar } from '../components/common';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { addToBasket } from '../store/slices/basketSlice';
 import { toggleFavoriteSubcategory, toggleFavoriteStore } from '../store/slices/favoritesSlice';
@@ -28,8 +29,8 @@ export default function SearchScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { paddingBottom } = useSafeTabBarHeight();
+  const insets = useSafeAreaInsets();
 
-  // ✅ Get query from URL params
   const params = useLocalSearchParams<{ q?: string }>();
   const initialQuery = params.q || '';
 
@@ -58,14 +59,12 @@ export default function SearchScreen() {
   const getCachedSearchKey = (query: string) =>
     `${CACHE_KEYS.SEARCH_RESULTS}_${query.toLowerCase().trim()}`;
 
-  // ✅ Perform search when component mounts if there's an initial query
   useEffect(() => {
     if (initialQuery.trim().length >= 3) {
       performSearch(initialQuery);
     }
   }, [initialQuery]);
 
-  // Debounced search - minimum 3 characters
   useEffect(() => {
     if (searchQuery.trim().length < 3) {
       setResults({
@@ -89,7 +88,6 @@ export default function SearchScreen() {
     const cacheKey = getCachedSearchKey(query);
 
     try {
-      // Try cache first
       const cached = await cacheService.get<typeof results>(cacheKey);
       if (cached) {
         console.log('📦 Using cached search results for:', query);
@@ -97,12 +95,10 @@ export default function SearchScreen() {
         return;
       }
 
-      // If not cached, search
       setSearching(true);
       console.log('🔍 Searching for:', query);
       const searchResults = await searchAll(catalogues, stores, query);
 
-      // Cache results
       await cacheService.set(cacheKey, searchResults, CACHE_DURATIONS.SEARCH);
       console.log('✅ Search results cached for:', query);
 
@@ -204,21 +200,29 @@ export default function SearchScreen() {
     }
   };
 
+  const handleSearchSubmit = () => {
+    if (searchQuery.trim().length >= 3) {
+      performSearch(searchQuery);
+    }
+  };
+
   const renderSearchBar = () => (
-    <View style={styles.searchContainer}>
-      <View style={styles.searchBar}>
-        <Ionicons name="search" size={20} color={colors.gray[400]} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="ابحث عن متجر، كتالوج، عرض، أو فئة..."
-          placeholderTextColor={colors.gray[400]}
+    <View style={[styles.searchContainer, { paddingTop: Math.max(insets.top, 40) + spacing.sm }]}>
+      <View style={styles.searchBarWrapper}>
+        <SearchBar
           value={searchQuery}
           onChangeText={setSearchQuery}
-          autoFocus={!initialQuery} // Only auto-focus if no initial query
-          textAlign={I18nManager.isRTL ? 'right' : 'left'}
+          placeholder="ابحث عن متجر، كتالوج، عرض، أو فئة..."
+          autoFocus={!initialQuery}
+          onSubmitEditing={handleSearchSubmit}
+          returnKeyType="search"
+          large={true}
         />
         {searchQuery.length > 0 && (
-          <TouchableOpacity onPress={() => setSearchQuery('')}>
+          <TouchableOpacity
+            style={styles.clearButtonInside}
+            onPress={() => setSearchQuery('')}
+          >
             <Ionicons name="close-circle" size={20} color={colors.gray[400]} />
           </TouchableOpacity>
         )}
@@ -419,32 +423,162 @@ export default function SearchScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.backgroundSecondary },
-  searchContainer: { padding: spacing.md, backgroundColor: colors.white, borderBottomWidth: 1, borderBottomColor: colors.gray[200] },
-  searchBar: { flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row', alignItems: 'center', backgroundColor: colors.gray[100], borderRadius: borderRadius.lg, paddingHorizontal: spacing.md, paddingVertical: spacing.sm, gap: spacing.sm },
-  searchInput: { flex: 1, fontSize: typography.fontSize.md, color: colors.text, padding: 0 },
-  tabsContainer: { flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row', backgroundColor: colors.white, paddingHorizontal: spacing.md, paddingBottom: spacing.sm, gap: spacing.xs, borderBottomWidth: 1, borderBottomColor: colors.gray[200] },
-  tab: { paddingVertical: spacing.sm, paddingHorizontal: spacing.md, borderRadius: borderRadius.md },
-  tabActive: { backgroundColor: colors.primary + '20' },
-  tabText: { fontSize: typography.fontSize.sm, color: colors.textSecondary, fontWeight: '500' },
-  tabTextActive: { color: colors.primary, fontWeight: '600' },
-  resultsList: { padding: spacing.md },
-  resultItem: { backgroundColor: colors.white, borderRadius: borderRadius.lg, marginBottom: spacing.sm, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2, elevation: 2 },
-  resultContent: { flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row', padding: spacing.md, alignItems: 'center', gap: spacing.md },
-  resultImage: { width: 60, height: 60, borderRadius: borderRadius.md, backgroundColor: colors.gray[100] },
-  resultImagePlaceholder: { justifyContent: 'center', alignItems: 'center' },
-  resultInfo: { flex: 1, gap: spacing.xs },
-  resultHeader: { flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row', alignItems: 'flex-start', gap: spacing.xs },
-  resultTitle: { flex: 1, fontSize: typography.fontSize.md, fontWeight: '600', color: colors.text, textAlign: I18nManager.isRTL ? 'right' : 'left' },
-  resultTypeBadge: { backgroundColor: colors.primary + '20', paddingHorizontal: spacing.xs, paddingVertical: 2, borderRadius: borderRadius.sm },
-  resultTypeText: { fontSize: typography.fontSize.xs, color: colors.primary, fontWeight: '600' },
-  resultSubtitle: { fontSize: typography.fontSize.sm, color: colors.textSecondary, textAlign: I18nManager.isRTL ? 'right' : 'left' },
-  actionButtons: { flexDirection: 'column', gap: spacing.xs, alignItems: 'center' },
-  favoriteIconButton: { padding: spacing.xs },
-  addButton: { width: 36, height: 36, borderRadius: borderRadius.full, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' },
-  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xxl },
-  loadingText: { marginTop: spacing.md, fontSize: typography.fontSize.md, color: colors.textSecondary },
-  emptyState: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: spacing.xxl, paddingHorizontal: spacing.lg },
-  emptyStateText: { fontSize: typography.fontSize.lg, fontWeight: 'bold', color: colors.text, marginTop: spacing.md, textAlign: 'center' },
-  emptyStateSubtext: { fontSize: typography.fontSize.md, color: colors.textSecondary, marginTop: spacing.sm, textAlign: 'center' },
+  container: {
+    flex: 1,
+    backgroundColor: colors.backgroundSecondary
+  },
+  searchContainer: {
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.md,
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+  },
+  searchBarWrapper: {
+    position: 'relative',
+    flex: 1,
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+  },
+  clearButtonInside: {
+    position: 'absolute',
+    right: I18nManager.isRTL ? undefined : spacing.lg,
+    left: I18nManager.isRTL ? spacing.lg : undefined,
+    padding: spacing.xs,
+    zIndex: 10,
+  },
+  tabsContainer: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    backgroundColor: colors.white,
+    paddingHorizontal: spacing.md,
+    paddingBottom: spacing.sm,
+    gap: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200]
+  },
+  tab: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md
+  },
+  tabActive: {
+    backgroundColor: colors.primary + '20'
+  },
+  tabText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    fontWeight: '500'
+  },
+  tabTextActive: {
+    color: colors.primary,
+    fontWeight: '600'
+  },
+  resultsList: {
+    padding: spacing.md
+  },
+  resultItem: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    marginBottom: spacing.sm,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2
+  },
+  resultContent: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    padding: spacing.md,
+    alignItems: 'center',
+    gap: spacing.md
+  },
+  resultImage: {
+    width: 60,
+    height: 60,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.gray[100]
+  },
+  resultImagePlaceholder: {
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  resultInfo: {
+    flex: 1,
+    gap: spacing.xs
+  },
+  resultHeader: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'flex-start',
+    gap: spacing.xs
+  },
+  resultTitle: {
+    flex: 1,
+    fontSize: typography.fontSize.md,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: I18nManager.isRTL ? 'right' : 'left'
+  },
+  resultTypeBadge: {
+    backgroundColor: colors.primary + '20',
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm
+  },
+  resultTypeText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.primary,
+    fontWeight: '600'
+  },
+  resultSubtitle: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    textAlign: I18nManager.isRTL ? 'right' : 'left'
+  },
+  actionButtons: {
+    flexDirection: 'column',
+    gap: spacing.xs,
+    alignItems: 'center'
+  },
+  favoriteIconButton: {
+    padding: spacing.xs
+  },
+  addButton: {
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.full,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl
+  },
+  loadingText: {
+    marginTop: spacing.md,
+    fontSize: typography.fontSize.md,
+    color: colors.textSecondary
+  },
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xxl,
+    paddingHorizontal: spacing.lg
+  },
+  emptyStateText: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginTop: spacing.md,
+    textAlign: 'center'
+  },
+  emptyStateSubtext: {
+    fontSize: typography.fontSize.md,
+    color: colors.textSecondary,
+    marginTop: spacing.sm,
+    textAlign: 'center'
+  },
 });

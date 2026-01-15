@@ -1,4 +1,4 @@
-// src/store/slices/authSlice.ts - UPDATED WITH AUTH STATE CHECKING
+// src/store/slices/authSlice.ts - ✅ FIXED WITH SAFE LOCATION RESTORATION
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
 import { onAuthStateChanged } from 'firebase/auth';
 import type { AuthState, UserProfile } from '../../types';
@@ -10,6 +10,7 @@ import {
 import { getAllUserData, syncAllUserData } from '../../services/userDataService';
 import { hydrateFavorites } from './favoritesSlice';
 import { hydrateBasket } from './basketSlice';
+import { hydrateLocation } from './settingsSlice';
 import { getAuthInstance } from '../../config/firebase';
 import type { RootState } from '../index';
 
@@ -17,19 +18,17 @@ const initialState: AuthState = {
   user: null,
   isAuthenticated: false,
   isAdmin: false,
-  loading: true, // ✅ Start with loading=true to check auth state
+  loading: true,
   error: null,
 };
 
-// Token payload type
 interface GoogleAuthTokens {
   idToken: string | null;
   accessToken: string | null;
 }
 
 /**
- * ✅ NEW: Check auth state on app start
- * This restores the user session if they're already logged in
+ * ✅ Check auth state on app start - FIXED WITH SAFE LOCATION RESTORATION
  */
 export const checkAuthState = createAsyncThunk(
   'auth/checkAuthState',
@@ -40,13 +39,12 @@ export const checkAuthState = createAsyncThunk(
 
       return new Promise<UserProfile | null>((resolve) => {
         const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-          unsubscribe(); // Unsubscribe after first check
+          unsubscribe();
 
           if (firebaseUser) {
             console.log('✅ User already logged in:', firebaseUser.email);
 
             try {
-              // Get user profile from Firestore
               const userProfile = await getUserProfile(firebaseUser.uid);
 
               if (!userProfile) {
@@ -57,11 +55,11 @@ export const checkAuthState = createAsyncThunk(
 
               // Load user data (favorites, basket)
               try {
-                console.log('📥 Loading user data from Firestore...');
+                console.log('🔥 Loading user data from Firestore...');
                 const { favorites, basket } = await getAllUserData(userProfile.uid);
 
                 if (favorites) {
-                  console.log('📦 Restoring favorites:', favorites.storeIds.length, 'stores');
+                  console.log('📦 Restoring favorites:', favorites.subcategoryIds.length, 'subcategories');
                   dispatch(hydrateFavorites(favorites));
                 }
 
@@ -76,10 +74,22 @@ export const checkAuthState = createAsyncThunk(
                   dispatch(hydrateBasket({ items: basket, total }));
                 }
 
+                // ✅ FIXED: Safely restore user location
+                if (userProfile.location) {
+                  const { governorate, city } = userProfile.location;
+                  console.log('📍 Restoring location from Firestore:', { governorate, city });
+
+                  dispatch(hydrateLocation({
+                    governorate: governorate || null,
+                    city: city || null,
+                  }));
+                } else {
+                  console.log('ℹ️ No saved location found in user profile');
+                }
+
                 console.log('✅ User data restored successfully');
               } catch (dataError) {
                 console.warn('⚠️ Could not load user data:', dataError);
-                // Don't fail auth check if data loading fails
               }
 
               resolve(userProfile);
@@ -101,7 +111,7 @@ export const checkAuthState = createAsyncThunk(
 );
 
 /**
- * Async thunk for Google Sign-In
+ * ✅ Sign in with Google - FIXED WITH SAFE LOCATION RESTORATION
  */
 export const signInWithGoogle = createAsyncThunk(
   'auth/signInWithGoogle',
@@ -150,9 +160,21 @@ export const signInWithGoogle = createAsyncThunk(
         } else {
           console.log('ℹ️ [authSlice] No basket items to restore');
         }
+
+        // ✅ FIXED: Safely restore user location
+        if (userProfile.location) {
+          const { governorate, city } = userProfile.location;
+          console.log('📍 [authSlice] Restoring location:', { governorate, city });
+
+          dispatch(hydrateLocation({
+            governorate: governorate || null,
+            city: city || null,
+          }));
+        } else {
+          console.log('ℹ️ [authSlice] No saved location found in user profile');
+        }
       } catch (dataError: any) {
         console.error('⚠️ [authSlice] Could not load user data:', dataError);
-        // Don't fail the sign-in if data loading fails
       }
 
       return userProfile;
@@ -164,7 +186,7 @@ export const signInWithGoogle = createAsyncThunk(
 );
 
 /**
- * Async thunk for Sign Out with data sync
+ * Sign out with data sync
  */
 export const signOut = createAsyncThunk(
   'auth/signOut',
@@ -175,7 +197,6 @@ export const signOut = createAsyncThunk(
       const state = getState() as RootState;
       const { user } = state.auth;
 
-      // Sync data to Firestore before signing out (if user exists)
       if (user) {
         try {
           console.log('💾 [authSlice] Syncing user data to Firestore before sign out...');
@@ -187,7 +208,6 @@ export const signOut = createAsyncThunk(
           console.log('✅ [authSlice] User data synced');
         } catch (syncError) {
           console.warn('⚠️ [authSlice] Failed to sync data before sign out:', syncError);
-          // Continue with sign out even if sync fails
         }
       }
 
@@ -229,7 +249,7 @@ const authSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
-      // ✅ Check auth state (on app start)
+      // Check auth state
       .addCase(checkAuthState.pending, (state) => {
         state.loading = true;
         console.log('⏳ Checking auth state...');
@@ -290,7 +310,6 @@ const authSlice = createSlice({
         console.error('❌ [authSlice] Sign out rejected:', action.payload);
         state.loading = false;
         state.error = action.payload as string;
-        // Still clear user even if sign out failed
         state.user = null;
         state.isAuthenticated = false;
         state.isAdmin = false;

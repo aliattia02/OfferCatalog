@@ -1,4 +1,4 @@
-// components/common/CompactLocationSelector.tsx
+// components/common/CompactLocationSelector.tsx - ✅ UPDATED WITH FIRESTORE SYNC
 import React, { useState } from 'react';
 import {
   View,
@@ -12,7 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
-import { setUserLocation, clearUserLocation } from '../../store/slices/settingsSlice';
+import { setUserLocation, clearUserLocation, syncLocation } from '../../store/slices/settingsSlice';
 import {
   governorateNames,
   getGovernorateName,
@@ -28,19 +28,44 @@ export const CompactLocationSelector: React.FC<CompactLocationSelectorProps> = (
 }) => {
   const dispatch = useAppDispatch();
   const userGovernorate = useAppSelector(state => state.settings.userGovernorate) as GovernorateId | null;
+  const isAuthenticated = useAppSelector(state => state.auth.isAuthenticated);
 
   const [showModal, setShowModal] = useState(false);
 
   const governorates = Object.keys(governorateNames) as GovernorateId[];
 
-  const handleGovernorateSelect = (governorate: GovernorateId) => {
+  const handleGovernorateSelect = async (governorate: GovernorateId) => {
+    console.log('📍 [CompactLocationSelector] Governorate selected:', governorate);
+
+    // ✅ Update Redux state immediately (for instant UI update)
     dispatch(setUserLocation({ governorate, city: null }));
+
+    // ✅ Sync to Firestore if user is logged in
+    if (isAuthenticated) {
+      console.log('💾 [CompactLocationSelector] Syncing to Firestore...');
+      dispatch(syncLocation({ governorate, city: null }));
+    } else {
+      console.log('ℹ️ [CompactLocationSelector] User not logged in, skipping Firestore sync');
+    }
+
     setShowModal(false);
     onLocationChange?.(governorate);
   };
 
-  const handleClearLocation = () => {
+  const handleClearLocation = async () => {
+    console.log('📍 [CompactLocationSelector] Clearing location');
+
+    // ✅ Clear Redux state immediately
     dispatch(clearUserLocation());
+
+    // ✅ Sync to Firestore if user is logged in
+    if (isAuthenticated) {
+      console.log('💾 [CompactLocationSelector] Syncing clear to Firestore...');
+      dispatch(syncLocation({ governorate: null, city: null }));
+    } else {
+      console.log('ℹ️ [CompactLocationSelector] User not logged in, skipping Firestore sync');
+    }
+
     setShowModal(false);
     onLocationChange?.(null);
   };
@@ -57,12 +82,12 @@ export const CompactLocationSelector: React.FC<CompactLocationSelectorProps> = (
         onPress={() => setShowModal(true)}
         activeOpacity={0.7}
       >
-        <Ionicons 
-          name="location" 
-          size={18} 
-          color={userGovernorate ? colors.primary : colors.textSecondary} 
+        <Ionicons
+          name="location"
+          size={18}
+          color={userGovernorate ? colors.primary : colors.textSecondary}
         />
-        <Text 
+        <Text
           style={[
             styles.text,
             userGovernorate && styles.textActive
@@ -71,10 +96,10 @@ export const CompactLocationSelector: React.FC<CompactLocationSelectorProps> = (
         >
           {getDisplayText()}
         </Text>
-        <Ionicons 
-          name="chevron-down" 
-          size={16} 
-          color={colors.gray[400]} 
+        <Ionicons
+          name="chevron-down"
+          size={16}
+          color={colors.gray[400]}
         />
       </TouchableOpacity>
 
