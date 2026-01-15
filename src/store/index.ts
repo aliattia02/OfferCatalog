@@ -1,4 +1,4 @@
-// src/store/index.ts
+// src/store/index.ts - WITH APP CONFIG
 import { configureStore } from '@reduxjs/toolkit';
 import basketReducer from './slices/basketSlice';
 import favoritesReducer from './slices/favoritesSlice';
@@ -6,6 +6,7 @@ import offersReducer from './slices/offersSlice';
 import storesReducer from './slices/storesSlice';
 import settingsReducer from './slices/settingsSlice';
 import authReducer from './slices/authSlice';
+import appConfigReducer from './slices/appConfigSlice'; // 🆕 ADD THIS
 import { syncMiddleware } from './middleware/syncMiddleware';
 
 export const store = configureStore({
@@ -16,19 +17,19 @@ export const store = configureStore({
     stores: storesReducer,
     settings: settingsReducer,
     auth: authReducer,
+    appConfig: appConfigReducer, // 🆕 ADD THIS
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
-        // Ignore these action types completely (they're already serialized in the thunks)
         ignoredActions: [
           'basket/hydrateBasket',
           'favorites/hydrateFavorites',
           'auth/signInWithGoogle/fulfilled',
           'auth/checkAuthState/fulfilled',
-          'auth/setUser', // Add this line - this is the action causing the error
+          'auth/setUser',
+          'appConfig/setConfig', // 🆕 ADD THIS
         ],
-        // Ignore these specific paths in case any timestamps slip through
         ignoredPaths: [
           'auth.user.createdAt',
           'auth.user.lastLoginAt',

@@ -1,4 +1,4 @@
-// src/app/offer/[id].tsx - UPDATED for subcategory favorites
+// src/app/offer/[id].tsx - UPDATED WITH TRANSLATIONS
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -38,7 +38,6 @@ export default function OfferDetailScreen() {
   const stores = useAppSelector(state => state.stores.stores);
   const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds);
 
-  // UPDATED: Check if the offer's subcategory is favorited
   const isFavorite = offer ? favoriteSubcategoryIds.includes(offer.categoryId) : false;
 
   useEffect(() => {
@@ -62,7 +61,7 @@ export default function OfferDetailScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={styles.loadingText}>جاري تحميل العرض...</Text>
+        <Text style={styles.loadingText}>{t('common.loading')}</Text>
       </View>
     );
   }
@@ -71,9 +70,9 @@ export default function OfferDetailScreen() {
     return (
       <View style={styles.errorContainer}>
         <Ionicons name="pricetag-outline" size={64} color={colors.gray[300]} />
-        <Text style={styles.errorText}>العرض غير موجود</Text>
+        <Text style={styles.errorText}>{t('offerDetails.notFound')}</Text>
         <Text style={styles.errorSubtext}>ID: {id}</Text>
-        <Button title="العودة" onPress={() => router.back()} />
+        <Button title={t('common.back')} onPress={() => router.back()} />
       </View>
     );
   }
@@ -92,7 +91,6 @@ export default function OfferDetailScreen() {
     : 0;
   const daysRemaining = getDaysRemaining(offer.catalogueEndDate);
 
-  // UPDATED: Toggle the subcategory instead of individual offer
   const handleToggleFavorite = () => {
     dispatch(toggleFavoriteSubcategory(offer.categoryId));
   };
@@ -139,7 +137,7 @@ export default function OfferDetailScreen() {
         options={{
           headerShown: true,
           title: offer.nameAr || getName(offer),
-          headerBackTitle: 'عودة',
+          headerBackTitle: t('common.back'),
           headerRight: () => (
             <TouchableOpacity onPress={handleToggleFavorite} style={styles.headerButton}>
               <Ionicons
@@ -162,7 +160,7 @@ export default function OfferDetailScreen() {
           )}
           {!offer.isActive && (
             <View style={styles.inactiveBadge}>
-              <Text style={styles.inactiveBadgeText}>منتهي</Text>
+              <Text style={styles.inactiveBadgeText}>{t('status.expired')}</Text>
             </View>
           )}
         </View>
@@ -171,7 +169,7 @@ export default function OfferDetailScreen() {
         <View style={styles.infoContainer}>
           <Text style={styles.productName}>{offer.nameAr}</Text>
 
-          {/* UPDATED: Show category with favorite indicator */}
+          {/* Category with favorite indicator */}
           {category && (
             <TouchableOpacity
               style={styles.categoryTag}
@@ -200,18 +198,18 @@ export default function OfferDetailScreen() {
           {/* Price Section */}
           <View style={styles.priceSection}>
             <View style={styles.priceRow}>
-              <Text style={styles.label}>{t('common.offerPrice')}</Text>
+              <Text style={styles.label}>{t('offerDetails.offerPrice')}</Text>
               <Text style={styles.offerPrice}>{formatCurrency(offer.offerPrice)}</Text>
             </View>
             {offer.originalPrice && (
               <View style={styles.priceRow}>
-                <Text style={styles.label}>{t('common.originalPrice')}</Text>
+                <Text style={styles.label}>{t('offerDetails.originalPrice')}</Text>
                 <Text style={styles.originalPrice}>{formatCurrency(offer.originalPrice)}</Text>
               </View>
             )}
             {offer.unit && (
               <View style={styles.priceRow}>
-                <Text style={styles.label}>الوحدة</Text>
+                <Text style={styles.label}>{t('offerDetails.unit')}</Text>
                 <Text style={styles.unitText}>{offer.unit}</Text>
               </View>
             )}
@@ -228,12 +226,12 @@ export default function OfferDetailScreen() {
                 ]}
               >
                 {daysRemaining > 0
-                  ? `متبقي ${daysRemaining} أيام`
-                  : 'انتهى العرض'}
+                  ? `${t('offerDetails.daysRemaining')} ${daysRemaining} ${t('basket.days')}`
+                  : t('status.expired')}
               </Text>
             </View>
             <Text style={styles.dateText}>
-              {t('flyers.validUntil')}: {formatDate(offer.catalogueEndDate, language)}
+              {t('offerDetails.validUntil')}: {formatDate(offer.catalogueEndDate, language)}
             </Text>
           </View>
 
@@ -242,11 +240,11 @@ export default function OfferDetailScreen() {
             <View style={styles.catalogueInfo}>
               <View style={styles.catalogueHeader}>
                 <Ionicons name="book-outline" size={20} color={colors.primary} />
-                <Text style={styles.catalogueLabel}>الكتالوج</Text>
+                <Text style={styles.catalogueLabel}>{t('offerDetails.catalogue')}</Text>
               </View>
               <Text style={styles.catalogueTitle}>{offer.catalogueTitle}</Text>
               {offer.pageNumber && (
-                <Text style={styles.pageNumber}>صفحة {offer.pageNumber}</Text>
+                <Text style={styles.pageNumber}>{t('common.page')} {offer.pageNumber}</Text>
               )}
             </View>
             <Ionicons
@@ -277,7 +275,7 @@ export default function OfferDetailScreen() {
       {/* Add to Basket Button */}
       <View style={styles.footer}>
         <Button
-          title={t('flyers.addToBasket')}
+          title={t('common.addToBasket')}
           onPress={handleAddToBasket}
           fullWidth
           size="large"

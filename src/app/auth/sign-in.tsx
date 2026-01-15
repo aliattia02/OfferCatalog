@@ -1,4 +1,4 @@
-// src/app/auth/sign-in.tsx
+// src/app/auth/sign-in.tsx - UPDATED: Wait for loading before redirecting
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -12,6 +12,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,14 +28,12 @@ import {
 import Constants from 'expo-constants';
 
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
+import LocationSelector from '../../components/common/LocationSelector';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { signInWithGoogle } from '../../store/slices/authSlice';
 import { getAuthInstance } from '../../config/firebase';
 import { getOrCreateUserProfile } from '../../services/authService';
 
-/**
- * Get Google OAuth client IDs from environment
- */
 const getGoogleClientIds = () => {
   return {
     webClientId: Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
@@ -50,9 +49,10 @@ export default function SignInScreen() {
 
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
-  const [signInMethod, setSignInMethod] = useState<'google' | 'email'>('email'); // Default to email
+  const [signInMethod, setSignInMethod] = useState<'google' | 'email'>('google');
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
 
-  // Email/Password form state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -61,7 +61,6 @@ export default function SignInScreen() {
 
   const clientIds = getGoogleClientIds();
 
-  // Configure Google Sign-In on component mount (Native only)
   useEffect(() => {
     if (Platform.OS !== 'web') {
       configureGoogleSignIn();
@@ -73,14 +72,11 @@ export default function SignInScreen() {
   const configureGoogleSignIn = async () => {
     try {
       console.log('🔧 Configuring Google Sign-In for native...');
-      console.log('Web Client ID:', clientIds.webClientId);
-
       GoogleSignin.configure({
         webClientId: clientIds.webClientId,
         offlineAccess: true,
         forceCodeForRefreshToken: true,
       });
-
       setIsConfigured(true);
       console.log('✅ Google Sign-In configured successfully');
     } catch (error) {
@@ -88,175 +84,163 @@ export default function SignInScreen() {
     }
   };
 
-  // Redirect if already authenticated
+  // ✅ UPDATED: Only redirect if authenticated AND not loading
   useEffect(() => {
-    if (isAuthenticated) {
+    if (isAuthenticated && !loading) {
+      console.log('✅ User authenticated and loading complete, redirecting...');
       router.replace('/(tabs)');
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, loading]);
 
-  /**
-   * Validate email format
-   */
+  const showLocationSetup = () => {
+    setShowLocationModal(true);
+  };
+
+  const handleLocationSetupComplete = () => {
+    setShowLocationModal(false);
+    setTimeout(() => {
+      router.replace('/(tabs)');
+    }, 300);
+  };
+
+  const handleSkipLocationSetup = () => {
+    setShowLocationModal(false);
+    setTimeout(() => {
+      router.replace('/(tabs)');
+    }, 300);
+  };
+
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
   };
 
-  /**
-   * Validate password strength
-   */
   const validatePassword = (password: string): boolean => {
     return password.length >= 6;
   };
 
-  /**
- * Handle Email/Password Sign-In with Auto-Registration
- */
-const handleEmailSignIn = async () => {
-  // Clear previous errors
-  setEmailError('');
-  setPasswordError('');
+  const handleEmailSignIn = async () => {
+    setEmailError('');
+    setPasswordError('');
 
-  // Validate inputs
-  if (!email.trim()) {
-    setEmailError(I18nManager.isRTL ? 'يرجى إدخال البريد الإلكتروني' : 'Please enter your email');
-    return;
-  }
+    if (!email.trim()) {
+      setEmailError(t('auth.email') + ' ' + t('common.error'));
+      return;
+    }
 
-  if (!validateEmail(email)) {
-    setEmailError(I18nManager.isRTL ? 'البريد الإلكتروني غير صحيح' : 'Invalid email format');
-    return;
-  }
+    if (!validateEmail(email)) {
+      setEmailError(t('auth.email') + ' ' + t('common.error'));
+      return;
+    }
 
-  if (!password) {
-    setPasswordError(I18nManager.isRTL ? 'يرجى إدخال كلمة المرور' : 'Please enter your password');
-    return;
-  }
+    if (!password) {
+      setPasswordError(t('auth.password') + ' ' + t('common.error'));
+      return;
+    }
 
-  if (!validatePassword(password)) {
-    setPasswordError(I18nManager.isRTL ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل' : 'Password must be at least 6 characters');
-    return;
-  }
-
-  try {
-    setIsSigningIn(true);
-    const auth = getAuthInstance();
-
-    console.log('📧 Attempting email sign-in...');
+    if (!validatePassword(password)) {
+      setPasswordError(t('auth.password') + ' ' + t('common.error'));
+      return;
+    }
 
     try {
-      // Try to sign in first
-      const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
-      console.log('✅ Sign-in successful:', userCredential.user.email);
+      setIsSigningIn(true);
+      const auth = getAuthInstance();
 
-      // Get or create user profile in Firestore
-      await getOrCreateUserProfile(userCredential.user);
+      console.log('🔧 Attempting email sign-in...');
 
-      // Show success message
-      if (Platform.OS === 'web') {
-        alert(I18nManager.isRTL ? 'مرحباً بعودتك! تم تسجيل الدخول بنجاح' : 'Welcome back! You have successfully signed in');
-      } else {
-        Alert.alert(
-          I18nManager.isRTL ? 'مرحباً بعودتك!' : 'Welcome back!',
-          I18nManager.isRTL ? 'تم تسجيل الدخول بنجاح' : 'You have successfully signed in',
-          [{ text: I18nManager.isRTL ? 'موافق' : 'OK' }]
-        );
-      }
+      try {
+        const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
+        console.log('✅ Sign-in successful:', userCredential.user.email);
 
-      // Wait a bit for auth state to propagate, then navigate
-      setTimeout(() => {
-        setIsSigningIn(false);
-        router.replace('/(tabs)');
-      }, 500);
+        await getOrCreateUserProfile(userCredential.user);
 
-    } catch (signInError: any) {
-      console.log('Sign-in error code:', signInError.code);
-
-      if (signInError.code === 'auth/user-not-found' || signInError.code === 'auth/invalid-credential') {
-        // User doesn't exist - create new account
-        console.log('👤 User not found, creating new account...');
-
-        const newUserCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
-        console.log('✅ Account created:', newUserCredential.user.email);
-
-        // Update display name (optional - you can ask for this later)
-        await updateProfile(newUserCredential.user, {
-          displayName: email.split('@')[0], // Use email prefix as default name
-        });
-
-        // Create user profile in Firestore
-        await getOrCreateUserProfile(newUserCredential.user);
-
-        // Show success message
         if (Platform.OS === 'web') {
-          alert(I18nManager.isRTL ? 'مرحباً! تم إنشاء حسابك بنجاح' : 'Welcome! Your account has been created successfully');
+          alert(t('settings.welcomeBack') + ' ' + t('settings.signInSuccess'));
         } else {
           Alert.alert(
-            I18nManager.isRTL ? 'مرحباً!' : 'Welcome!',
-            I18nManager.isRTL ? 'تم إنشاء حسابك بنجاح' : 'Your account has been created successfully',
-            [{ text: I18nManager.isRTL ? 'موافق' : 'OK' }]
+            t('settings.welcomeBack'),
+            t('settings.signInSuccess'),
+            [{ text: t('settings.ok') }]
           );
         }
 
-        // Wait a bit for auth state to propagate, then navigate
-        setTimeout(() => {
-          setIsSigningIn(false);
-          router.replace('/(tabs)');
-        }, 500);
+        setIsSigningIn(false);
+        router.replace('/(tabs)');
 
-      } else if (signInError.code === 'auth/wrong-password') {
-        setPasswordError(I18nManager.isRTL ? 'كلمة المرور غير صحيحة' : 'Incorrect password');
-        setIsSigningIn(false);
-        return;
-      } else if (signInError.code === 'auth/invalid-email') {
-        setEmailError(I18nManager.isRTL ? 'البريد الإلكتروني غير صحيح' : 'Invalid email format');
-        setIsSigningIn(false);
-        return;
-      } else if (signInError.code === 'auth/email-already-in-use') {
-        setEmailError(I18nManager.isRTL ? 'البريد الإلكتروني مستخدم بالفعل' : 'Email already in use');
-        setIsSigningIn(false);
-        return;
+      } catch (signInError: any) {
+        console.log('Sign-in error code:', signInError.code);
+
+        if (signInError.code === 'auth/user-not-found' || signInError.code === 'auth/invalid-credential') {
+          console.log('👤 User not found, creating new account...');
+
+          const newUserCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+          console.log('✅ Account created:', newUserCredential.user.email);
+
+          await updateProfile(newUserCredential.user, {
+            displayName: email.split('@')[0],
+          });
+
+          await getOrCreateUserProfile(newUserCredential.user);
+
+          if (Platform.OS === 'web') {
+            alert(t('settings.welcome') + ' ' + t('settings.accountCreated'));
+          } else {
+            Alert.alert(
+              t('settings.welcome'),
+              t('settings.accountCreated'),
+              [{ text: t('settings.ok') }]
+            );
+          }
+
+          setIsSigningIn(false);
+          setIsFirstTimeUser(true);
+          showLocationSetup();
+          return;
+
+        } else if (signInError.code === 'auth/wrong-password') {
+          setPasswordError(t('common.error'));
+          setIsSigningIn(false);
+          return;
+        } else if (signInError.code === 'auth/invalid-email') {
+          setEmailError(t('common.error'));
+          setIsSigningIn(false);
+          return;
+        } else if (signInError.code === 'auth/email-already-in-use') {
+          setEmailError(t('common.error'));
+          setIsSigningIn(false);
+          return;
+        } else {
+          throw signInError;
+        }
+      }
+
+      console.log('✅ Authentication complete');
+
+    } catch (error: any) {
+      console.error('❌ Error in email authentication:', error);
+      setIsSigningIn(false);
+
+      let errorMessage = t('common.error');
+
+      if (error.message?.includes('network') || error.code === 'auth/network-request-failed') {
+        errorMessage = t('errors.network');
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = t('common.error');
+      }
+
+      if (Platform.OS === 'web') {
+        alert(errorMessage);
       } else {
-        throw signInError;
+        Alert.alert(
+          t('common.error'),
+          errorMessage,
+          [{ text: t('settings.ok') }]
+        );
       }
     }
+  };
 
-    console.log('✅ Authentication complete');
-
-  } catch (error: any) {
-    console.error('❌ Error in email authentication:', error);
-    setIsSigningIn(false);
-
-    let errorMessage = I18nManager.isRTL
-      ? 'فشل تسجيل الدخول. يرجى المحاولة مرة أخرى.'
-      : 'Sign-in failed. Please try again.';
-
-    if (error.message?.includes('network') || error.code === 'auth/network-request-failed') {
-      errorMessage = I18nManager.isRTL
-        ? 'يبدو أنك غير متصل بالإنترنت'
-        : 'You appear to be offline';
-    } else if (error.code === 'auth/too-many-requests') {
-      errorMessage = I18nManager.isRTL
-        ? 'محاولات كثيرة جداً. يرجى المحاولة لاحقاً'
-        : 'Too many attempts. Please try again later';
-    }
-
-    if (Platform.OS === 'web') {
-      alert(errorMessage);
-    } else {
-      Alert.alert(
-        I18nManager.isRTL ? 'خطأ' : 'Error',
-        errorMessage,
-        [{ text: I18nManager.isRTL ? 'موافق' : 'OK' }]
-      );
-    }
-  }
-};
-
-  /**
-   * Handle Google Sign-In for WEB platform
-   */
   const handleWebGoogleSignIn = async () => {
     try {
       setIsSigningIn(true);
@@ -272,12 +256,22 @@ const handleEmailSignIn = async () => {
       const idToken = credential?.idToken || null;
       const accessToken = credential?.accessToken || null;
 
+      const isNewUser = result.user.metadata.creationTime === result.user.metadata.lastSignInTime;
+
       await dispatch(signInWithGoogle({
         idToken,
         accessToken,
       })).unwrap();
 
       console.log('✅ Sign-in successful');
+      setIsSigningIn(false);
+
+      if (isNewUser) {
+        setIsFirstTimeUser(true);
+        showLocationSetup();
+      } else {
+        router.replace('/(tabs)');
+      }
     } catch (error: any) {
       console.error('❌ Error in web Google sign-in:', error);
       setIsSigningIn(false);
@@ -287,21 +281,18 @@ const handleEmailSignIn = async () => {
       }
 
       Alert.alert(
-        I18nManager.isRTL ? 'خطأ' : 'Error',
-        I18nManager.isRTL ? 'فشل تسجيل الدخول بواسطة Google' : 'Google sign-in failed',
-        [{ text: I18nManager.isRTL ? 'موافق' : 'OK' }]
+        t('common.error'),
+        t('common.error'),
+        [{ text: t('settings.ok') }]
       );
     }
   };
 
-  /**
-   * Handle Google Sign-In for NATIVE platforms
-   */
   const handleNativeGoogleSignIn = async () => {
     if (!isConfigured) {
       Alert.alert(
-        I18nManager.isRTL ? 'خطأ' : 'Error',
-        I18nManager.isRTL ? 'جاري تهيئة تسجيل الدخول' : 'Setting up sign-in'
+        t('common.error'),
+        t('common.loading')
       );
       return;
     }
@@ -317,12 +308,22 @@ const handleEmailSignIn = async () => {
       const userInfo = await GoogleSignin.signIn();
       const tokens = await GoogleSignin.getTokens();
 
+      const isNewUser = true;
+
       await dispatch(signInWithGoogle({
         idToken: tokens.idToken || null,
         accessToken: tokens.accessToken || null,
       })).unwrap();
 
       console.log('✅ Sign-in successful');
+      setIsSigningIn(false);
+
+      if (isNewUser) {
+        setIsFirstTimeUser(true);
+        showLocationSetup();
+      } else {
+        router.replace('/(tabs)');
+      }
     } catch (error: any) {
       console.error('❌ Error in native Google sign-in:', error);
       setIsSigningIn(false);
@@ -332,9 +333,9 @@ const handleEmailSignIn = async () => {
       }
 
       Alert.alert(
-        I18nManager.isRTL ? 'خطأ' : 'Error',
-        I18nManager.isRTL ? 'فشل تسجيل الدخول بواسطة Google' : 'Google sign-in failed',
-        [{ text: I18nManager.isRTL ? 'موافق' : 'OK' }]
+        t('common.error'),
+        t('common.error'),
+        [{ text: t('settings.ok') }]
       );
     }
   };
@@ -352,206 +353,248 @@ const handleEmailSignIn = async () => {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
+    <>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <View style={styles.content}>
-          {/* Logo/Icon */}
-          <View style={styles.iconContainer}>
-            <Ionicons name="pricetags" size={80} color={colors.primary} />
-          </View>
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.content}>
+            {/* Logo/Icon */}
+            <View style={styles.iconContainer}>
+              <Ionicons name="pricetags" size={80} color={colors.primary} />
+            </View>
 
-          {/* Title */}
-          <Text style={styles.title}>
-            {I18nManager.isRTL ? 'مرحباً بك في كتالوج العروض' : 'Welcome to Offer Catalog'}
-          </Text>
+            {/* Title */}
+            <Text style={styles.title}>
+              {t('auth.welcome')}
+            </Text>
 
-          {/* Subtitle */}
-          <Text style={styles.subtitle}>
-            {I18nManager.isRTL
-              ? 'سجل الدخول لحفظ المفضلة والسلة عبر جميع أجهزتك'
-              : 'Sign in to save your favorites and basket across all your devices'}
-          </Text>
+            {/* Subtitle */}
+            <Text style={styles.subtitle}>
+              {t('auth.welcomeMessage')}
+            </Text>
 
-          {/* Sign-In Method Toggle */}
-          <View style={styles.toggleContainer}>
-            <TouchableOpacity
-              style={[
-                styles.toggleButton,
-                signInMethod === 'email' && styles.toggleButtonActive,
-              ]}
-              onPress={() => setSignInMethod('email')}
-            >
-              <Ionicons
-                name="mail"
-                size={20}
-                color={signInMethod === 'email' ? colors.white : colors.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.toggleText,
-                  signInMethod === 'email' && styles.toggleTextActive,
-                ]}
-              >
-                {I18nManager.isRTL ? 'البريد الإلكتروني' : 'Email'}
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.toggleButton,
-                signInMethod === 'google' && styles.toggleButtonActive,
-              ]}
-              onPress={() => setSignInMethod('google')}
-            >
-              <Ionicons
-                name="logo-google"
-                size={20}
-                color={signInMethod === 'google' ? colors.white : colors.textSecondary}
-              />
-              <Text
-                style={[
-                  styles.toggleText,
-                  signInMethod === 'google' && styles.toggleTextActive,
-                ]}
-              >
-                Google
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Email/Password Form */}
-          {signInMethod === 'email' && (
-            <View style={styles.formContainer}>
-              {/* Email Input */}
-              <View style={styles.inputContainer}>
-                <Ionicons name="mail-outline" size={20} color={colors.textSecondary} />
-                <TextInput
-                  style={styles.input}
-                  placeholder={I18nManager.isRTL ? 'البريد الإلكتروني' : 'Email'}
-                  placeholderTextColor={colors.textSecondary}
-                  value={email}
-                  onChangeText={(text) => {
-                    setEmail(text);
-                    setEmailError('');
-                  }}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  textAlign={I18nManager.isRTL ? 'right' : 'left'}
-                />
-              </View>
-              {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
-
-              {/* Password Input */}
-              <View style={styles.inputContainer}>
-                <Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} />
-                <TextInput
-                  style={styles.input}
-                  placeholder={I18nManager.isRTL ? 'كلمة المرور' : 'Password'}
-                  placeholderTextColor={colors.textSecondary}
-                  value={password}
-                  onChangeText={(text) => {
-                    setPassword(text);
-                    setPasswordError('');
-                  }}
-                  secureTextEntry={!showPassword}
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  textAlign={I18nManager.isRTL ? 'right' : 'left'}
-                />
-                <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                  <Ionicons
-                    name={showPassword ? 'eye-off-outline' : 'eye-outline'}
-                    size={20}
-                    color={colors.textSecondary}
-                  />
-                </TouchableOpacity>
-              </View>
-              {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
-
-              {/* Info Text */}
-              <Text style={styles.infoText}>
-                {I18nManager.isRTL
-                  ? 'إذا لم يكن لديك حساب، سيتم إنشاؤه تلقائياً'
-                  : "Don't have an account? One will be created automatically"}
-              </Text>
-
-              {/* Email Sign-In Button */}
+            {/* Sign-In Method Toggle */}
+            <View style={styles.toggleContainer}>
               <TouchableOpacity
-                style={[styles.signInButton, isSigningIn && styles.buttonDisabled]}
-                onPress={handleEmailSignIn}
-                disabled={isSigningIn || loading}
+                style={[
+                  styles.toggleButton,
+                  signInMethod === 'google' && styles.toggleButtonActive,
+                ]}
+                onPress={() => setSignInMethod('google')}
               >
-                {isSigningIn || loading ? (
-                  <ActivityIndicator size="small" color={colors.white} />
-                ) : (
-                  <Text style={styles.signInButtonText}>
-                    {I18nManager.isRTL ? 'تسجيل الدخول' : 'Sign In'}
-                  </Text>
-                )}
+                <Ionicons
+                  name="logo-google"
+                  size={20}
+                  color={signInMethod === 'google' ? colors.white : colors.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.toggleText,
+                    signInMethod === 'google' && styles.toggleTextActive,
+                  ]}
+                >
+                  Google
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.toggleButton,
+                  signInMethod === 'email' && styles.toggleButtonActive,
+                ]}
+                onPress={() => setSignInMethod('email')}
+              >
+                <Ionicons
+                  name="mail"
+                  size={20}
+                  color={signInMethod === 'email' ? colors.white : colors.textSecondary}
+                />
+                <Text
+                  style={[
+                    styles.toggleText,
+                    signInMethod === 'email' && styles.toggleTextActive,
+                  ]}
+                >
+                  {t('auth.email')}
+                </Text>
               </TouchableOpacity>
             </View>
-          )}
 
-          {/* Google Sign-In Button */}
-          {signInMethod === 'google' && (
+            {/* Google Sign-In Button */}
+            {signInMethod === 'google' && (
+              <TouchableOpacity
+                style={[styles.googleButton, (isSigningIn || loading || !isConfigured) && styles.buttonDisabled]}
+                onPress={handleGoogleSignIn}
+                disabled={isSigningIn || loading || !isConfigured}
+              >
+                {isSigningIn || loading ? (
+                  <ActivityIndicator size="small" color={colors.text} />
+                ) : (
+                  <>
+                    <Ionicons name="logo-google" size={24} color={colors.text} />
+                    <Text style={styles.googleButtonText}>
+                      {t('auth.signInWithGoogle')}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {/* Email/Password Form */}
+            {signInMethod === 'email' && (
+              <View style={styles.formContainer}>
+                {/* Email Input */}
+                <View style={styles.inputContainer}>
+                  <Ionicons name="mail-outline" size={20} color={colors.textSecondary} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder={t('auth.email')}
+                    placeholderTextColor={colors.textSecondary}
+                    value={email}
+                    onChangeText={(text) => {
+                      setEmail(text);
+                      setEmailError('');
+                    }}
+                    keyboardType="email-address"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    textAlign={I18nManager.isRTL ? 'right' : 'left'}
+                  />
+                </View>
+                {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
+
+                {/* Password Input */}
+                <View style={styles.inputContainer}>
+                  <Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} />
+                  <TextInput
+                    style={styles.input}
+                    placeholder={t('auth.password')}
+                    placeholderTextColor={colors.textSecondary}
+                    value={password}
+                    onChangeText={(text) => {
+                      setPassword(text);
+                      setPasswordError('');
+                    }}
+                    secureTextEntry={!showPassword}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    textAlign={I18nManager.isRTL ? 'right' : 'left'}
+                  />
+                  <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                    <Ionicons
+                      name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                      size={20}
+                      color={colors.textSecondary}
+                    />
+                  </TouchableOpacity>
+                </View>
+                {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
+
+                {/* Info Text */}
+                <Text style={styles.infoText}>
+                  {t('auth.noAccountCreated')}
+                </Text>
+
+                {/* Email Sign-In Button */}
+                <TouchableOpacity
+                  style={[styles.signInButton, (isSigningIn || loading) && styles.buttonDisabled]}
+                  onPress={handleEmailSignIn}
+                  disabled={isSigningIn || loading}
+                >
+                  {isSigningIn || loading ? (
+                    <ActivityIndicator size="small" color={colors.white} />
+                  ) : (
+                    <Text style={styles.signInButtonText}>
+                      {t('auth.signIn')}
+                    </Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {/* Skip Button */}
             <TouchableOpacity
-              style={[styles.googleButton, (isSigningIn || loading || !isConfigured) && styles.buttonDisabled]}
-              onPress={handleGoogleSignIn}
-              disabled={isSigningIn || loading || !isConfigured}
+              style={styles.skipButton}
+              onPress={handleSkipPress}
+              disabled={isSigningIn || loading}
             >
-              {isSigningIn || loading ? (
-                <ActivityIndicator size="small" color={colors.text} />
-              ) : (
-                <>
-                  <Ionicons name="logo-google" size={24} color={colors.text} />
-                  <Text style={styles.googleButtonText}>
-                    {I18nManager.isRTL ? 'تسجيل الدخول بواسطة Google' : 'Sign in with Google'}
-                  </Text>
-                </>
-              )}
+              <Text style={styles.skipButtonText}>
+                {t('auth.skipForNow')}
+              </Text>
             </TouchableOpacity>
-          )}
 
-          {/* Skip Button */}
-          <TouchableOpacity
-            style={styles.skipButton}
-            onPress={handleSkipPress}
-            disabled={isSigningIn || loading}
-          >
-            <Text style={styles.skipButtonText}>
-              {I18nManager.isRTL ? 'تخطي الآن' : 'Skip for now'}
+            {/* Error Message */}
+            {error && (
+              <View style={styles.errorContainer}>
+                <Ionicons name="alert-circle" size={20} color={colors.error} />
+                <Text style={styles.errorMessageText}>{error}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Footer */}
+          <View style={styles.footer}>
+            <Text style={styles.footerText}>
+              {t('auth.agreeToTerms')}
             </Text>
-          </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
-          {/* Error Message */}
-          {error && (
-            <View style={styles.errorContainer}>
-              <Ionicons name="alert-circle" size={20} color={colors.error} />
-              <Text style={styles.errorMessageText}>{error}</Text>
+      {/* Location Setup Modal */}
+      <Modal
+        visible={showLocationModal}
+        transparent
+        animationType="slide"
+        onRequestClose={handleSkipLocationSetup}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Ionicons name="location" size={40} color={colors.primary} />
+              <Text style={styles.modalTitle}>
+                {t('settings.chooseLocation')}
+              </Text>
+              <Text style={styles.modalSubtitle}>
+                {t('settings.locationHint')}
+              </Text>
             </View>
-          )}
-        </View>
 
-        {/* Footer */}
-        <View style={styles.footer}>
-          <Text style={styles.footerText}>
-            {I18nManager.isRTL
-              ? 'بالمتابعة، أنت توافق على شروط الخدمة وسياسة الخصوصية'
-              : 'By continuing, you agree to our Terms of Service and Privacy Policy'}
-          </Text>
+            <View style={styles.modalBody}>
+              <LocationSelector showCitySelection={true} />
+            </View>
+
+            <View style={styles.modalFooter}>
+              <TouchableOpacity
+                style={styles.modalSkipButton}
+                onPress={handleSkipLocationSetup}
+              >
+                <Text style={styles.modalSkipText}>
+                  {t('settings.skip')}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.modalContinueButton}
+                onPress={handleLocationSetupComplete}
+              >
+                <Text style={styles.modalContinueText}>
+                  {t('settings.continue')}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </Modal>
+    </>
   );
 }
 
+// Styles remain the same...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -717,5 +760,69 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 18,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    paddingBottom: Platform.OS === 'ios' ? spacing.xl : spacing.lg,
+  },
+  modalHeader: {
+    alignItems: 'center',
+    padding: spacing.xl,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200],
+  },
+  modalTitle: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginTop: spacing.md,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: spacing.xs,
+    textAlign: 'center',
+  },
+  modalBody: {
+    padding: spacing.xl,
+  },
+  modalFooter: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    paddingHorizontal: spacing.xl,
+    gap: spacing.md,
+  },
+  modalSkipButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    alignItems: 'center',
+  },
+  modalSkipText: {
+    fontSize: typography.fontSize.md,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  modalContinueButton: {
+    flex: 1,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.lg,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    ...shadows.sm,
+  },
+  modalContinueText: {
+    fontSize: typography.fontSize.md,
+    color: colors.white,
+    fontWeight: '600',
   },
 });

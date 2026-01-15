@@ -19,12 +19,19 @@ export const LeafletMap: React.FC<LeafletMapProps> = ({
   // Generate markers for all branches
   const markers = branches
     .filter(b => b.latitude && b.longitude)
-    .map(branch => ({
-      lat: branch.latitude!,
-      lng: branch.longitude!,
-      name: branch.addressAr,
-      isSelected: branch.id === selectedBranchId,
-    }));
+    .map(branch => {
+      // For local stores, show the specific store name in popup
+      const displayName = branch.storeName
+        ? `${branch.storeName} - ${branch.addressAr}`
+        : branch.addressAr;
+
+      return {
+        lat: branch.latitude!,
+        lng: branch.longitude!,
+        name: displayName,
+        isSelected: branch.id === selectedBranchId,
+      };
+    });
 
   // Calculate center from markers or use default
   const center = markers.length > 0

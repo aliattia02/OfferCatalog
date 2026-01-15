@@ -1,8 +1,9 @@
-// src/services/offerService.ts - FIXED DATE COMPARISON WITH EGYPT TIMEZONE
+// src/services/offerService.ts - OPTIMIZED WITH BATCHING + FAVORITES SUPPORT
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { CatalogueOffer } from './catalogueOfferService';
 import { getTodayString, normalizeDateString } from '../utils/dateUtils';
+import { cacheService, CACHE_KEYS, CACHE_DURATIONS } from './cacheService';
 
 export interface OfferWithCatalogue extends CatalogueOffer {
   catalogueId: string;
@@ -19,37 +20,48 @@ export interface OfferWithCatalogue extends CatalogueOffer {
  */
 const isOfferActive = (startDate: string, endDate: string): boolean => {
   const today = getTodayString();
-
-  // Normalize dates to YYYY-MM-DD format with zero-padding
   const normalizedStart = normalizeDateString(startDate);
   const normalizedEnd = normalizeDateString(endDate);
-
-  // Check if active
-  const startOk = normalizedStart <= today;
-  const endOk = normalizedEnd >= today;
-  const isActive = startOk && endOk;
-
-  console.log(`📅 Active check: start=${normalizedStart} ${startOk ? '✓' : '✗'} | today=${today} | end=${normalizedEnd} ${endOk ? '✓' : '✗'} = ${isActive ? 'ACTIVE' : 'NOT ACTIVE'}`);
-
-  return isActive;
+  return normalizedStart <= today && normalizedEnd >= today;
 };
 
-// Get ALL offers (no filtering - use sparingly, only when user explicitly wants to see all/expired/upcoming)
-export async function getAllOffers(): Promise<OfferWithCatalogue[]> {
-  console.log('📦 getAllOffers: Fetching all offers...');
+/**
+ * Get ALL offers - CACHED (use sparingly!)
+ */
+export async function getAllOffers(forceRefresh: boolean = false): Promise<OfferWithCatalogue[]> {
+  if (!forceRefresh) {
+    const cached = await cacheService.get<OfferWithCatalogue[]>(CACHE_KEYS.OFFERS_ALL);
+    if (cached) {
+      console.log(`📦 Using cached ALL offers (${cached.length} items)`);
+      return cached;
+    }
+  }
+
+  console.log('🔥 Firebase: Fetching ALL offers...');
   const snapshot = await getDocs(collection(db, 'offers'));
   const offers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfferWithCatalogue));
-  console.log(`📦 getAllOffers: Found ${offers.length} total offers`);
+
+  await cacheService.set(CACHE_KEYS.OFFERS_ALL, offers, CACHE_DURATIONS.OFFERS);
+
+  console.log(`✅ Fetched and cached ${offers.length} total offers`);
   return offers;
 }
 
-// Get all active offers (catalogues that are currently valid)
-export async function getActiveOffers(): Promise<OfferWithCatalogue[]> {
+/**
+ * Get all active offers - CACHED
+ */
+export async function getActiveOffers(forceRefresh: boolean = false): Promise<OfferWithCatalogue[]> {
+  if (!forceRefresh) {
+    const cached = await cacheService.get<OfferWithCatalogue[]>(CACHE_KEYS.OFFERS_ACTIVE);
+    if (cached) {
+      console.log(`📦 Using cached ACTIVE offers (${cached.length} items)`);
+      return cached;
+    }
+  }
+
   const today = getTodayString();
+  console.log(`🔥 Firebase: Fetching active offers for date: ${today}`);
 
-  console.log(`📦 getActiveOffers: Fetching active offers for date: ${today}`);
-
-  // Query offers where catalogue end date is >= today
   const q = query(
     collection(db, 'offers'),
     where('catalogueEndDate', '>=', today)
@@ -61,28 +73,161 @@ export async function getActiveOffers(): Promise<OfferWithCatalogue[]> {
     ...doc.data()
   } as OfferWithCatalogue));
 
-  console.log(`📦 getActiveOffers: Found ${allOffers.length} offers with endDate >= ${today}`);
+  const activeOffers = allOffers.filter(offer =>
+    isOfferActive(offer.catalogueStartDate, offer.catalogueEndDate)
+  );
 
-  // Filter for offers where start date is also <= today
-  const activeOffers = allOffers.filter(offer => {
-    const isActive = isOfferActive(offer.catalogueStartDate, offer.catalogueEndDate);
+  await cacheService.set(CACHE_KEYS.OFFERS_ACTIVE, activeOffers, CACHE_DURATIONS.OFFERS);
 
-    if (!isActive) {
-      console.log(`⏭️  Skipping offer ${offer.id}: ${offer.catalogueStartDate} to ${offer.catalogueEndDate}`);
-    } else {
-      console.log(`✅ Active offer ${offer.id}: ${offer.nameAr}`);
-    }
-
-    return isActive;
-  });
-
-  console.log(`📦 getActiveOffers: Returning ${activeOffers.length} active offers`);
+  console.log(`✅ Fetched and cached ${activeOffers.length} active offers`);
   return activeOffers;
 }
 
-// Get offers by catalogue
+/**
+ * Get lightweight offer stats - CACHED (for counts only)
+ */
+export async function getOfferStats(forceRefresh: boolean = false): Promise<{
+  all: number;
+  active: number;
+  upcoming: number;
+  expired: number;
+}> {
+  if (!forceRefresh) {
+    const cached = await cacheService.get<any>(CACHE_KEYS.OFFERS_STATS);
+    if (cached) {
+      console.log('📦 Using cached offer stats');
+      return cached;
+    }
+  }
+
+  console.log('🔥 Firebase: Calculating offer stats...');
+  const today = getTodayString();
+
+  const snapshot = await getDocs(collection(db, 'offers'));
+
+  let all = 0;
+  let active = 0;
+  let upcoming = 0;
+  let expired = 0;
+
+  snapshot.docs.forEach(doc => {
+    const data = doc.data();
+    const start = normalizeDateString(data.catalogueStartDate);
+    const end = normalizeDateString(data.catalogueEndDate);
+
+    all++;
+    if (start <= today && end >= today) {
+      active++;
+    } else if (start > today) {
+      upcoming++;
+    } else {
+      expired++;
+    }
+  });
+
+  const stats = { all, active, upcoming, expired };
+
+  await cacheService.set(CACHE_KEYS.OFFERS_STATS, stats, CACHE_DURATIONS.STATS);
+
+  console.log('✅ Calculated and cached offer stats:', stats);
+  return stats;
+}
+
+/**
+ * OPTIMIZED: Get offers for multiple categories in batches
+ * Firebase 'in' operator supports max 10 items per query
+ * Used for FAVORITES - fetching offers for multiple favorite subcategories
+ */
+export async function getOffersForCategories(
+  categoryIds: string[],
+  activeOnly: boolean = true
+): Promise<OfferWithCatalogue[]> {
+  if (categoryIds.length === 0) return [];
+
+  console.log(`🔥 Firebase: Fetching offers for ${categoryIds.length} categories (batched)`);
+
+  const today = getTodayString();
+  const batches: Promise<any>[] = [];
+
+  // Split into batches of 10 (Firebase limit)
+  for (let i = 0; i < categoryIds.length; i += 10) {
+    const batch = categoryIds.slice(i, i + 10);
+
+    const constraints = [
+      where('categoryId', 'in', batch)
+    ];
+
+    if (activeOnly) {
+      constraints.push(where('catalogueEndDate', '>=', today));
+    }
+
+    const q = query(collection(db, 'offers'), ...constraints);
+    batches.push(getDocs(q));
+  }
+
+  const snapshots = await Promise.all(batches);
+
+  const allOffers = snapshots.flatMap(snap =>
+    snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfferWithCatalogue))
+  );
+
+  // Filter for active if needed
+  const filteredOffers = activeOnly
+    ? allOffers.filter(offer => isOfferActive(offer.catalogueStartDate, offer.catalogueEndDate))
+    : allOffers;
+
+  console.log(`✅ Found ${filteredOffers.length} offers across ${categoryIds.length} categories`);
+  return filteredOffers;
+}
+
+/**
+ * OPTIMIZED: Get offers for multiple stores in batches
+ */
+export async function getOffersForStores(
+  storeIds: string[],
+  activeOnly: boolean = true
+): Promise<OfferWithCatalogue[]> {
+  if (storeIds.length === 0) return [];
+
+  console.log(`🔥 Firebase: Fetching offers for ${storeIds.length} stores (batched)`);
+
+  const today = getTodayString();
+  const batches: Promise<any>[] = [];
+
+  for (let i = 0; i < storeIds.length; i += 10) {
+    const batch = storeIds.slice(i, i + 10);
+
+    const constraints = [
+      where('storeId', 'in', batch)
+    ];
+
+    if (activeOnly) {
+      constraints.push(where('catalogueEndDate', '>=', today));
+    }
+
+    const q = query(collection(db, 'offers'), ...constraints);
+    batches.push(getDocs(q));
+  }
+
+  const snapshots = await Promise.all(batches);
+
+  const allOffers = snapshots.flatMap(snap =>
+    snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfferWithCatalogue))
+  );
+
+  const filteredOffers = activeOnly
+    ? allOffers.filter(offer => isOfferActive(offer.catalogueStartDate, offer.catalogueEndDate))
+    : allOffers;
+
+  console.log(`✅ Found ${filteredOffers.length} offers across ${storeIds.length} stores`);
+  return filteredOffers;
+}
+
+/**
+ * Get offers by catalogue - NO CACHE (specific queries)
+ */
 export async function getOffersByCatalogue(catalogueId: string): Promise<OfferWithCatalogue[]> {
-  console.log(`📦 getOffersByCatalogue: Fetching offers for catalogue ${catalogueId}`);
+  console.log(`🔥 Firebase: Fetching offers for catalogue ${catalogueId}`);
 
   const q = query(
     collection(db, 'offers'),
@@ -92,27 +237,28 @@ export async function getOffersByCatalogue(catalogueId: string): Promise<OfferWi
   const snapshot = await getDocs(q);
   const offers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfferWithCatalogue));
 
-  console.log(`📦 getOffersByCatalogue: Found ${offers.length} offers`);
+  console.log(`✅ Found ${offers.length} offers for catalogue`);
   return offers;
 }
 
-// Get offers by category (active only by default)
-export async function getOffersByCategory(categoryId: string, activeOnly: boolean = true): Promise<OfferWithCatalogue[]> {
-  console.log(`📦 getOffersByCategory: category=${categoryId}, activeOnly=${activeOnly}`);
+/**
+ * Get offers by category - NO CACHE (filtered queries)
+ */
+export async function getOffersByCategory(
+  categoryId: string,
+  activeOnly: boolean = true
+): Promise<OfferWithCatalogue[]> {
+  console.log(`🔥 Firebase: category=${categoryId}, activeOnly=${activeOnly}`);
 
   if (!activeOnly) {
-    // Get all offers for this category
     const q = query(
       collection(db, 'offers'),
       where('categoryId', '==', categoryId)
     );
     const snapshot = await getDocs(q);
-    const offers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfferWithCatalogue));
-    console.log(`📦 getOffersByCategory: Found ${offers.length} total offers for category`);
-    return offers;
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfferWithCatalogue));
   }
 
-  // Get only active offers
   const today = getTodayString();
   const q = query(
     collection(db, 'offers'),
@@ -123,32 +269,32 @@ export async function getOffersByCategory(categoryId: string, activeOnly: boolea
   const snapshot = await getDocs(q);
   const allOffers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfferWithCatalogue));
 
-  // Filter for active offers
   const activeOffers = allOffers.filter(offer =>
     isOfferActive(offer.catalogueStartDate, offer.catalogueEndDate)
   );
 
-  console.log(`📦 getOffersByCategory: Found ${activeOffers.length} active offers for category`);
+  console.log(`✅ Found ${activeOffers.length} active offers for category`);
   return activeOffers;
 }
 
-// Get offers by store (active only by default)
-export async function getOffersByStore(storeId: string, activeOnly: boolean = true): Promise<OfferWithCatalogue[]> {
-  console.log(`📦 getOffersByStore: store=${storeId}, activeOnly=${activeOnly}`);
+/**
+ * Get offers by store - NO CACHE (filtered queries)
+ */
+export async function getOffersByStore(
+  storeId: string,
+  activeOnly: boolean = true
+): Promise<OfferWithCatalogue[]> {
+  console.log(`🔥 Firebase: store=${storeId}, activeOnly=${activeOnly}`);
 
   if (!activeOnly) {
-    // Get all offers for this store
     const q = query(
       collection(db, 'offers'),
       where('storeId', '==', storeId)
     );
     const snapshot = await getDocs(q);
-    const offers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfferWithCatalogue));
-    console.log(`📦 getOffersByStore: Found ${offers.length} total offers for store`);
-    return offers;
+    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfferWithCatalogue));
   }
 
-  // Get only active offers
   const today = getTodayString();
   const q = query(
     collection(db, 'offers'),
@@ -159,28 +305,154 @@ export async function getOffersByStore(storeId: string, activeOnly: boolean = tr
   const snapshot = await getDocs(q);
   const allOffers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfferWithCatalogue));
 
-  // Filter for active offers
   const activeOffers = allOffers.filter(offer =>
     isOfferActive(offer.catalogueStartDate, offer.catalogueEndDate)
   );
 
-  console.log(`📦 getOffersByStore: Found ${activeOffers.length} active offers for store`);
+  console.log(`✅ Found ${activeOffers.length} active offers for store`);
   return activeOffers;
 }
 
-// Get single offer by ID
+/**
+ * Get single offer by ID - NO CACHE (individual document reads are cheap)
+ */
 export async function getOfferById(offerId: string): Promise<OfferWithCatalogue | null> {
-  console.log(`📦 getOfferById: Fetching offer ${offerId}`);
+  console.log(`🔥 Firebase: Fetching offer ${offerId}`);
 
   const docRef = doc(db, 'offers', offerId);
   const docSnap = await getDoc(docRef);
 
   if (docSnap.exists()) {
-    const offer = { id: docSnap.id, ...docSnap.data() } as OfferWithCatalogue;
-    console.log(`📦 getOfferById: Found offer ${offer.nameAr}`);
-    return offer;
+    return { id: docSnap.id, ...docSnap.data() } as OfferWithCatalogue;
   }
 
-  console.log(`📦 getOfferById: Offer ${offerId} not found`);
   return null;
+}
+
+// ============================================
+// FAVORITES SUPPORT FUNCTIONS
+// ============================================
+
+/**
+ * Get offers by subcategory ID (single category)
+ * Used for displaying favorite subcategory offers
+ * Alias for getOffersByCategory for better naming in favorites context
+ */
+export async function getOffersBySubcategory(
+  subcategoryId: string,
+  activeOnly: boolean = true
+): Promise<OfferWithCatalogue[]> {
+  return getOffersByCategory(subcategoryId, activeOnly);
+}
+
+/**
+ * Get offers by multiple subcategory IDs (batch query)
+ * Efficient batch query for favorites - uses getOffersForCategories
+ * This is the MAIN function for favorites screen
+ */
+export async function getOffersBySubcategories(
+  subcategoryIds: string[],
+  activeOnly: boolean = true
+): Promise<OfferWithCatalogue[]> {
+  return getOffersForCategories(subcategoryIds, activeOnly);
+}
+
+/**
+ * Check if a subcategory has any active offers
+ * Useful for showing/hiding empty favorite subcategories
+ */
+export async function subcategoryHasOffers(
+  subcategoryId: string
+): Promise<boolean> {
+  try {
+    const today = getTodayString();
+    const q = query(
+      collection(db, 'offers'),
+      where('categoryId', '==', subcategoryId),
+      where('catalogueEndDate', '>=', today)
+    );
+
+    const snapshot = await getDocs(q);
+
+    // Check if any offers are actually active (not just in date range)
+    const hasActiveOffers = snapshot.docs.some(doc => {
+      const data = doc.data();
+      return isOfferActive(data.catalogueStartDate, data.catalogueEndDate);
+    });
+
+    return hasActiveOffers;
+  } catch (error) {
+    console.error(`❌ Error checking subcategory offers:`, error);
+    return false;
+  }
+}
+
+/**
+ * Get counts of offers per subcategory (for favorites overview)
+ * Returns a map of subcategoryId -> count
+ */
+export async function getOfferCountsBySubcategories(
+  subcategoryIds: string[]
+): Promise<Record<string, number>> {
+  if (subcategoryIds.length === 0) return {};
+
+  try {
+    const offers = await getOffersForCategories(subcategoryIds, true);
+
+    const counts: Record<string, number> = {};
+    subcategoryIds.forEach(id => {
+      counts[id] = 0;
+    });
+
+    offers.forEach(offer => {
+      if (counts[offer.categoryId] !== undefined) {
+        counts[offer.categoryId]++;
+      }
+    });
+
+    console.log('📊 Offer counts by subcategory:', counts);
+    return counts;
+  } catch (error) {
+    console.error('❌ Error getting offer counts:', error);
+    return {};
+  }
+}
+
+/**
+ * Check which favorite subcategories are empty (no active offers)
+ * Returns array of subcategory IDs that have no offers
+ */
+export async function getEmptyFavoriteSubcategories(
+  subcategoryIds: string[]
+): Promise<string[]> {
+  if (subcategoryIds.length === 0) return [];
+
+  try {
+    const counts = await getOfferCountsBySubcategories(subcategoryIds);
+    const emptySubcategories = Object.entries(counts)
+      .filter(([_, count]) => count === 0)
+      .map(([id, _]) => id);
+
+    console.log(`⚠️ ${emptySubcategories.length} subcategories are empty:`, emptySubcategories);
+    return emptySubcategories;
+  } catch (error) {
+    console.error('❌ Error checking empty subcategories:', error);
+    return [];
+  }
+}
+
+// ============================================
+// CACHE MANAGEMENT
+// ============================================
+
+/**
+ * Invalidate all offer caches (call after data changes)
+ */
+export async function invalidateOfferCaches(): Promise<void> {
+  await Promise.all([
+    cacheService.invalidate(CACHE_KEYS.OFFERS_ALL),
+    cacheService.invalidate(CACHE_KEYS.OFFERS_ACTIVE),
+    cacheService.invalidate(CACHE_KEYS.OFFERS_STATS),
+  ]);
+  console.log('🗑️ All offer caches invalidated');
 }

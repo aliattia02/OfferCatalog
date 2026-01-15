@@ -1,5 +1,5 @@
-// src/app/(tabs)/index.tsx - UPDATED with subcategory favorites
-import React, { useState, useEffect, useMemo } from 'react';
+// src/app/(tabs)/index.tsx - FIXED: Show top 3 stores by catalogue count
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,27 +12,35 @@ import {
   Image,
   Dimensions,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
-import { SearchBar } from '../../components/common';
+import { SearchBar, AdBanner } from '../../components/common';
+import { InterstitialAdModal } from '../../components/common/InterstitialAdModal';
+import { CompactLocationSelector } from '../../components/common/CompactLocationSelector';
 import { FeaturedOffers } from '../../components/home';
 import { StoreCard } from '../../components/stores';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
-import { useAppInitialization, usePersistBasket, usePersistFavorites, useSafeTabBarHeight } from '../../hooks';
+import {
+  useAppInitialization,
+  usePersistBasket,
+  usePersistFavorites,
+  useSafeTabBarHeight,
+  useInterstitialAd
+} from '../../hooks';
 import { addToBasket } from '../../store/slices/basketSlice';
 import { toggleFavoriteStore, toggleFavoriteSubcategory } from '../../store/slices/favoritesSlice';
 import { loadCatalogues } from '../../store/slices/offersSlice';
 import { getMainCategories } from '../../data/categories';
 import { getActiveOffers } from '../../services/offerService';
 import { formatDateRange } from '../../utils/catalogueUtils';
-import type { Category, Catalogue } from '../../types';
+import type { Category, Catalogue, Store } from '../../types';
 import type { OfferWithCatalogue } from '../../services/offerService';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = (width - (spacing.md * 4)) / 3; // 3 columns
+const CARD_WIDTH = (width - (spacing.md * 4)) / 3;
 
 type CatalogueStatus = 'active' | 'upcoming' | 'expired';
 
@@ -58,7 +66,8 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Initialize app and persist data
+  const { showAd, currentAd, checkAndShowAd, dismissAd } = useInterstitialAd();
+
   const isReady = useAppInitialization();
   usePersistBasket();
   usePersistFavorites();
@@ -67,12 +76,19 @@ export default function HomeScreen() {
   const catalogues = useAppSelector(state => state.offers.catalogues);
   const cataloguesLoading = useAppSelector(state => state.offers.loading);
   const favoriteStoreIds = useAppSelector(state => state.favorites.storeIds);
-  const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds); // NEW
+  const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds);
+  const userGovernorate = useAppSelector(state => state.settings.userGovernorate);
   const mainCategories = getMainCategories();
 
-  // Load catalogues and offers
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🏠 [Home] Screen focused - refreshing data');
+      loadOffers();
+      checkAndShowAd();
+    }, [])
+  );
+
   useEffect(() => {
-    loadOffers();
     if (catalogues.length === 0 && !cataloguesLoading) {
       dispatch(loadCatalogues());
     }
@@ -80,20 +96,12 @@ export default function HomeScreen() {
 
   const loadOffers = async () => {
     try {
-      console.log('📄 [Home] Loading active offers from Firestore...');
+      console.log('🔄 [Home] Loading active offers from Firestore...');
       setLoading(true);
-
       const offers = await getActiveOffers();
-      console.log(`✅ [Home] Service returned ${offers.length} active offers`);
-
-      offers.forEach(offer => {
-        console.log(`  📝 [Home] ${offer.nameAr}: ${offer.catalogueStartDate} to ${offer.catalogueEndDate}`);
-      });
-
       const featured = offers.slice(0, 6);
       setFeaturedOffers(featured);
-
-      console.log(`✅ [Home] Set ${featured.length} featured offers`);
+      console.log(`✅ [Home] Loaded ${featured.length} featured offers`);
     } catch (error) {
       console.error('❌ [Home] Error loading offers:', error);
       setFeaturedOffers([]);
@@ -103,12 +111,10 @@ export default function HomeScreen() {
   };
 
   const handleRefresh = async () => {
-    console.log('🔄 [Home] Refreshing data...');
     setRefreshing(true);
     try {
       await loadOffers();
       await dispatch(loadCatalogues()).unwrap();
-      console.log('✅ [Home] Refresh complete');
     } catch (error) {
       console.error('❌ [Home] Refresh error:', error);
     } finally {
@@ -116,26 +122,69 @@ export default function HomeScreen() {
     }
   };
 
-  const getCatalogueStatus = (startDate: string, endDate: string): CatalogueStatus => {
-    const now = new Date();
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    now.setHours(0, 0, 0, 0);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
+  const normalizeDate = (dateStr: string): string => {
+    try {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const year = parts[0];
+        const month = parts[1].padStart(2, '0');
+        const day = parts[2].padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+      return dateStr;
+    } catch (error) {
+      console.error('Error normalizing date:', dateStr, error);
+      return dateStr;
+    }
+  };
 
-    if (now < start) return 'upcoming';
-    if (now > end) return 'expired';
-    return 'active';
+  const getCatalogueStatus = (startDate: string, endDate: string): CatalogueStatus => {
+    try {
+      const now = new Date();
+      const normalizedStart = normalizeDate(startDate);
+      const normalizedEnd = normalizeDate(endDate);
+
+      const start = new Date(normalizedStart);
+      const end = new Date(normalizedEnd);
+
+      now.setHours(0, 0, 0, 0);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        console.error('❌ Invalid date format:', { startDate, endDate });
+        return 'expired';
+      }
+
+      if (now < start) return 'upcoming';
+      if (now > end) return 'expired';
+      return 'active';
+    } catch (error) {
+      console.error('❌ Error getting catalogue status:', error);
+      return 'expired';
+    }
   };
 
   const categoryGroups: CategoryGroup[] = useMemo(() => {
-    const cataloguesWithStatus: CatalogueWithStatus[] = catalogues.map(cat => ({
-      ...cat,
-      status: getCatalogueStatus(cat.startDate, cat.endDate),
-    }));
+    console.log(`📚 [Home] Processing ${catalogues.length} catalogues...`);
 
-    const activeCatalogues = cataloguesWithStatus.filter(cat => cat.status === 'active');
+    const cataloguesWithStatus: CatalogueWithStatus[] = catalogues.map(cat => {
+      const status = getCatalogueStatus(cat.startDate, cat.endDate);
+      return {
+        ...cat,
+        status,
+      };
+    });
+
+    let activeCatalogues = cataloguesWithStatus.filter(cat => cat.status === 'active');
+
+    if (userGovernorate) {
+      activeCatalogues = activeCatalogues.filter(cat => {
+        if (!cat.isLocalStore) return true;
+        return cat.localStoreGovernorate === userGovernorate;
+      });
+    }
+
     const groups: { [categoryId: string]: CategoryGroup } = {};
 
     activeCatalogues.forEach(catalogue => {
@@ -145,7 +194,7 @@ export default function HomeScreen() {
       if (!groups[categoryId]) {
         groups[categoryId] = {
           categoryId,
-          categoryName: category?.nameAr || 'عام',
+          categoryName: category?.nameAr || t('categories.general'),
           categoryIcon: category?.icon || 'apps',
           categoryColor: category?.color || colors.primary,
           catalogues: [],
@@ -157,7 +206,7 @@ export default function HomeScreen() {
 
     Object.values(groups).forEach(group => {
       group.catalogues.sort((a, b) =>
-        new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
+        new Date(normalizeDate(b.startDate)).getTime() - new Date(normalizeDate(a.startDate)).getTime()
       );
     });
 
@@ -169,7 +218,52 @@ export default function HomeScreen() {
     });
 
     return groupArray;
-  }, [catalogues, mainCategories]);
+  }, [catalogues, mainCategories, userGovernorate, t]);
+
+  // ✅ NEW: Get top 3 stores by catalogue count (filtered by location)
+  const topStoresByCatalogueCount = useMemo(() => {
+    console.log('📊 [Home] Calculating top stores by catalogue count...');
+
+    // Get active catalogues filtered by location
+    const cataloguesWithStatus: CatalogueWithStatus[] = catalogues.map(cat => {
+      const status = getCatalogueStatus(cat.startDate, cat.endDate);
+      return { ...cat, status };
+    });
+
+    let activeCatalogues = cataloguesWithStatus.filter(cat => cat.status === 'active');
+
+    // Filter by user location
+    if (userGovernorate) {
+      activeCatalogues = activeCatalogues.filter(cat => {
+        if (!cat.isLocalStore) return true;
+        return cat.localStoreGovernorate === userGovernorate;
+      });
+    }
+
+    // Count catalogues per store
+    const storeCatalogueCount: Record<string, number> = {};
+    activeCatalogues.forEach(cat => {
+      const storeId = cat.storeId;
+      if (storeId) {
+        storeCatalogueCount[storeId] = (storeCatalogueCount[storeId] || 0) + 1;
+      }
+    });
+
+    // Sort stores by catalogue count and get top 3
+    const sortedStores = stores
+      .map(store => ({
+        store,
+        catalogueCount: storeCatalogueCount[store.id] || 0,
+      }))
+      .filter(item => item.catalogueCount > 0) // Only stores with catalogues
+      .sort((a, b) => b.catalogueCount - a.catalogueCount)
+      .slice(0, 3)
+      .map(item => item.store);
+
+    console.log(`✅ [Home] Top 3 stores:`, sortedStores.map(s => s.nameAr));
+
+    return sortedStores;
+  }, [stores, catalogues, userGovernorate]);
 
   const handleOfferPress = (offer: OfferWithCatalogue) => {
     router.push(`/offer/${offer.id}`);
@@ -186,13 +280,11 @@ export default function HomeScreen() {
     }));
   };
 
-  // NEW: Handle toggle favorite subcategory
   const handleToggleFavoriteSubcategory = (subcategoryId: string) => {
     dispatch(toggleFavoriteSubcategory(subcategoryId));
   };
 
   const handleCategoryPress = (category: Category) => {
-    console.log(`🖱️ [Home] Category clicked: ${category.id}`);
     router.push({
       pathname: '/(tabs)/flyers',
       params: { mainCategoryId: category.id },
@@ -211,6 +303,10 @@ export default function HomeScreen() {
     dispatch(toggleFavoriteStore(storeId));
   };
 
+  const handleSearchFocus = () => {
+    router.push('/search');
+  };
+
   const getStatusBadgeStyle = (status: CatalogueStatus) => {
     switch (status) {
       case 'active': return { backgroundColor: colors.success };
@@ -220,6 +316,13 @@ export default function HomeScreen() {
   };
 
   const getStoreName = (catalogue: CatalogueWithStatus): string => {
+    if (catalogue.isLocalStore) {
+      if (catalogue.localStoreNameAr && catalogue.localStoreNameAr !== 'غير محدد') {
+        return catalogue.localStoreNameAr;
+      }
+      return catalogue.titleAr;
+    }
+
     const store = stores.find(s => s.id === catalogue.storeId);
     return store?.nameAr || catalogue.titleAr.replace('عروض ', '');
   };
@@ -288,6 +391,12 @@ export default function HomeScreen() {
                 color={isFavorite ? colors.primary : colors.white}
               />
             </TouchableOpacity>
+
+            {catalogue.isLocalStore && (
+              <View style={styles.localBadge}>
+                <Text style={styles.localBadgeText}>محلي</Text>
+              </View>
+            )}
           </View>
 
           <Text style={styles.thumbnailStoreName} numberOfLines={1}>
@@ -295,7 +404,7 @@ export default function HomeScreen() {
           </Text>
 
           <Text style={styles.thumbnailDate} numberOfLines={1}>
-            {formatDateRange(catalogue.startDate, catalogue.endDate)}
+            {formatDateRange(normalizeDate(catalogue.startDate), normalizeDate(catalogue.endDate))}
           </Text>
         </TouchableOpacity>
       </View>
@@ -310,7 +419,7 @@ export default function HomeScreen() {
         </View>
         <Text style={styles.categoryGroupName}>{group.categoryName}</Text>
         <Text style={styles.catalogueCount}>
-          {group.catalogues.length} {group.catalogues.length === 1 ? 'كتالوج' : 'كتالوجات'}
+          {group.catalogues.length} {group.catalogues.length === 1 ? t('home.catalogue') : t('home.catalogues')}
         </Text>
       </View>
       <View style={styles.cataloguesGrid}>
@@ -330,27 +439,30 @@ export default function HomeScreen() {
           onRefresh={handleRefresh}
           colors={[colors.primary]}
           tintColor={colors.primary}
-          title="جاري التحديث..."
-          titleColor={colors.textSecondary}
         />
       }
     >
-      {/* Search Bar */}
-      <View style={styles.searchContainer}>
+      <TouchableOpacity
+        style={styles.searchContainer}
+        onPress={handleSearchFocus}
+        activeOpacity={0.7}
+      >
         <SearchBar
           value={searchQuery}
           onChangeText={setSearchQuery}
           placeholder={t('home.searchPlaceholder')}
+          editable={false}
+          pointerEvents="none"
         />
-      </View>
+      </TouchableOpacity>
 
-      {/* Horizontal Categories */}
+      <AdBanner position="home" />
+
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>الفئات الرئيسية</Text>
+        <Text style={styles.sectionTitle}>{t('home.mainCategories')}</Text>
         {renderHorizontalCategories()}
       </View>
 
-      {/* Featured Offers - NOW WITH FAVORITES */}
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>{t('home.featuredOffers')}</Text>
@@ -361,7 +473,7 @@ export default function HomeScreen() {
         {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color={colors.primary} />
-            <Text style={styles.loadingText}>جاري تحميل العروض...</Text>
+            <Text style={styles.loadingText}>{t('home.loadingOffers')}</Text>
           </View>
         ) : featuredOffers.length > 0 ? (
           <FeaturedOffers
@@ -374,24 +486,26 @@ export default function HomeScreen() {
         ) : (
           <View style={styles.emptyState}>
             <Ionicons name="pricetag-outline" size={48} color={colors.gray[300]} />
-            <Text style={styles.emptyText}>لا توجد عروض نشطة حالياً</Text>
+            <Text style={styles.emptyText}>{t('home.noActiveOffers')}</Text>
           </View>
         )}
       </View>
 
-      {/* Active Catalogues by Category */}
       {categoryGroups.length > 0 && (
         <View style={styles.section}>
+          <View style={styles.locationSelectorRow}>
+            <CompactLocationSelector />
+          </View>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>الكتالوجات النشطة</Text>
+            <Text style={styles.sectionTitle}>{t('home.activeCatalogues')}</Text>
             <TouchableOpacity onPress={() => router.push('/(tabs)/flyers')}>
-              <Text style={styles.viewAll}>عرض الكل</Text>
+              <Text style={styles.viewAll}>{t('home.viewAll')}</Text>
             </TouchableOpacity>
           </View>
           {cataloguesLoading ? (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={styles.loadingText}>جاري تحميل الكتالوجات...</Text>
+              <Text style={styles.loadingText}>{t('home.loadingCatalogues')}</Text>
             </View>
           ) : (
             <View style={styles.cataloguesSection}>
@@ -401,26 +515,30 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Nearby Stores */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>{t('home.nearbyStores')}</Text>
-          <TouchableOpacity onPress={() => router.push('/(tabs)/stores')}>
-            <Text style={styles.viewAll}>{t('home.viewAll')}</Text>
-          </TouchableOpacity>
+      {/* ✅ FIXED: Show top 3 stores by catalogue count */}
+      {topStoresByCatalogueCount.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>{t('home.nearbyStores')}</Text>
+            <TouchableOpacity onPress={() => router.push('/(tabs)/stores')}>
+              <Text style={styles.viewAll}>{t('home.viewAll')}</Text>
+            </TouchableOpacity>
+          </View>
+             <View style={styles.storesList}>
+            {topStoresByCatalogueCount.map(store => (
+              <StoreCard
+                key={store.id}
+                store={store}
+                onPress={() => handleStorePress(store.id)}
+                isFavorite={favoriteStoreIds.includes(store.id)}
+                onToggleFavorite={() => handleToggleFavoriteStore(store.id)}
+                hideBranchCount={true}
+              />
+            ))}
+          </View>
         </View>
-        <View style={styles.storesList}>
-          {stores.slice(0, 2).map(store => (
-            <StoreCard
-              key={store.id}
-              store={store}
-              onPress={() => handleStorePress(store.id)}
-            />
-          ))}
-        </View>
-      </View>
+      )}
 
-      {/* Trending Deals - NOW WITH FAVORITES */}
       {!loading && featuredOffers.length > 4 && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -434,6 +552,14 @@ export default function HomeScreen() {
             onToggleFavorite={handleToggleFavoriteSubcategory}
           />
         </View>
+      )}
+
+      {currentAd && (
+        <InterstitialAdModal
+          ad={currentAd}
+          visible={showAd}
+          onDismiss={dismissAd}
+        />
       )}
     </ScrollView>
   );
@@ -457,6 +583,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     marginBottom: spacing.md,
   },
+  sectionTitleRow: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    flex: 1,
+  },
   sectionTitle: {
     fontSize: typography.fontSize.xl,
     fontWeight: 'bold',
@@ -471,6 +603,13 @@ const styles = StyleSheet.create({
   },
   categoriesScroll: {
     maxHeight: 100,
+  },
+  locationSelectorRow: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm,
   },
   categoriesContainer: {
     paddingHorizontal: spacing.md,
@@ -627,6 +766,20 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 2,
     elevation: 2,
+  },
+  localBadge: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    backgroundColor: colors.success,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2,
+    borderRadius: borderRadius.xs,
+  },
+  localBadgeText: {
+    fontSize: 9,
+    color: colors.white,
+    fontWeight: '600',
   },
   thumbnailStoreName: {
     fontSize: 11,

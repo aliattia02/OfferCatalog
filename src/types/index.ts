@@ -1,38 +1,45 @@
 // src/types/index.ts - COMPLETE UPDATED VERSION
 
-import { Timestamp } from 'firebase/firestore';
+import { ImageSourcePropType } from 'react-native';
 
-/**
- * Category Type - Supports hierarchical structure
- */
-export interface Category {
+export interface Store {
   id: string;
   nameAr: string;
   nameEn: string;
-  icon: string;
-  color?: string; // For main categories
-  parentId?: string; // For subcategories - references main category
+  logo: string | ImageSourcePropType; // ✅ Support both URI and require()
+  categories?: string[];
+  branches: Branch[];
+  isLocal?: boolean;
+  governorate?: string;
 }
 
+
 /**
- * Store Type
+ * Store Type - Updated with categories and local store support
  */
 export interface Store {
   id: string;
   nameAr: string;
   nameEn: string;
   logo: string;
-  branches: StoreBranch[];
+  categories?: string[]; // Array of category IDs this store belongs to
+  isLocal?: boolean; // True if this is a local governorate store group
+  governorate?: string; // For local stores: which governorate
+  branches: Branch[]; // Will be populated dynamically
 }
 
 /**
- * Store Branch Type
+ * Branch Type - Updated to support local store names
  */
-export interface StoreBranch {
+export interface Branch {
   id: string;
-  storeId: string;
+  storeId: string; // References the main store ID
+  storeName?: string; // For local stores: the specific store name (e.g., "زهران")
+  storeNameEn?: string; // English name for local stores
   addressAr: string;
   addressEn: string;
+  governorate: string;
+  city: string;
   latitude?: number;
   longitude?: number;
   phone?: string;

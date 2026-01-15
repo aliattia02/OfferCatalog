@@ -1,4 +1,4 @@
-// src/app/(tabs)/favorites.tsx - UPDATED FOR SUBCATEGORIES
+// src/app/(tabs)/favorites.tsx - ENHANCED VERSION WITH MANAGEMENT
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Image,
   Dimensions,
+  Modal,
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -23,18 +24,25 @@ import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { addToBasket } from '../../store/slices/basketSlice';
 import { toggleFavoriteSubcategory, toggleFavoriteStore } from '../../store/slices/favoritesSlice';
 import { loadCatalogues } from '../../store/slices/offersSlice';
-import { getAllOffers } from '../../services/offerService';
+import {
+  getOffersBySubcategories,
+  getOfferCountsBySubcategories,
+  getEmptyFavoriteSubcategories
+} from '../../services/offerService';
 import { formatDateRange } from '../../utils/catalogueUtils';
 import { useSafeTabBarHeight } from '../../hooks';
-import { getCategoryById, getSubcategories } from '../../data/categories';
-import type { Catalogue, Category } from '../../types';
+import { getCategoryById, getMainSubcategories } from '../../data/categories';
+import { stores as allStores, getStoreById } from '../../data/stores';
+import type { Catalogue } from '../../types';
 import type { OfferWithCatalogue } from '../../services/offerService';
+import { AdBanner } from '../../components/common';
 
 const { width } = Dimensions.get('window');
 const CARD_WIDTH = (width - (spacing.md * 4)) / 3;
 
 type ViewMode = 'catalogues' | 'subcategories';
 type CatalogueStatus = 'active' | 'upcoming' | 'expired';
+type ManageMode = 'stores' | 'subcategories' | null;
 
 interface CatalogueWithStatus extends Catalogue {
   status: CatalogueStatus;
@@ -61,16 +69,21 @@ export default function FavoritesScreen() {
   const dispatch = useAppDispatch();
   const { paddingBottom } = useSafeTabBarHeight();
 
-  const [viewMode, setViewMode] = useState<ViewMode>('subcategories');
+  const [viewMode, setViewMode] = useState<ViewMode>('catalogues');
   const [refreshing, setRefreshing] = useState(false);
   const [offersData, setOffersData] = useState<OfferWithCatalogue[]>([]);
   const [offersLoading, setOffersLoading] = useState(false);
+  const [offerCounts, setOfferCounts] = useState<Record<string, number>>({});
+  const [emptySubcategories, setEmptySubcategories] = useState<string[]>([]);
+  const [manageMode, setManageMode] = useState<ManageMode>(null);
 
   const stores = useAppSelector(state => state.stores.stores);
   const catalogues = useAppSelector(state => state.offers.catalogues);
   const cataloguesLoading = useAppSelector(state => state.offers.loading);
   const favoriteStoreIds = useAppSelector(state => state.favorites.storeIds);
   const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds);
+
+  const allSubcategories = getMainSubcategories();
 
   useEffect(() => {
     if (catalogues.length === 0 && !cataloguesLoading) {
@@ -79,7 +92,7 @@ export default function FavoritesScreen() {
   }, []);
 
   useEffect(() => {
-    if (viewMode === 'subcategories') {
+    if (viewMode === 'subcategories' && favoriteSubcategoryIds.length > 0) {
       loadFavoriteSubcategoryOffers();
     }
   }, [viewMode, favoriteSubcategoryIds]);
@@ -87,17 +100,32 @@ export default function FavoritesScreen() {
   const loadFavoriteSubcategoryOffers = async () => {
     try {
       setOffersLoading(true);
-      const allOffers = await getAllOffers();
+      console.log(`📊 Loading offers for ${favoriteSubcategoryIds.length} favorite subcategories`);
 
-      // Filter offers by favorite subcategories
-      const favoriteOffers = allOffers.filter(offer =>
-        favoriteSubcategoryIds.includes(offer.categoryId)
-      );
+      if (favoriteSubcategoryIds.length === 0) {
+        setOffersData([]);
+        setOfferCounts({});
+        setEmptySubcategories([]);
+        setOffersLoading(false);
+        return;
+      }
 
-      setOffersData(favoriteOffers);
-      console.log(`✅ Loaded ${favoriteOffers.length} offers from ${favoriteSubcategoryIds.length} favorite subcategories`);
+      const [offers, counts, empty] = await Promise.all([
+        getOffersBySubcategories(favoriteSubcategoryIds, true),
+        getOfferCountsBySubcategories(favoriteSubcategoryIds),
+        getEmptyFavoriteSubcategories(favoriteSubcategoryIds)
+      ]);
+
+      setOffersData(offers);
+      setOfferCounts(counts);
+      setEmptySubcategories(empty);
+
+      console.log(`✅ Loaded ${offers.length} offers from ${favoriteSubcategoryIds.length} subcategories`);
+      if (empty.length > 0) {
+        console.log(`⚠️ ${empty.length} subcategories have no active offers`);
+      }
     } catch (error) {
-      console.error('Error loading favorite subcategory offers:', error);
+      console.error('❌ Error loading favorite subcategory offers:', error);
     } finally {
       setOffersLoading(false);
     }
@@ -106,12 +134,14 @@ export default function FavoritesScreen() {
   const handleRefresh = async () => {
     setRefreshing(true);
     try {
-      await dispatch(loadCatalogues()).unwrap();
+      console.log('🔄 Force refreshing with cache invalidation...');
+      await dispatch(loadCatalogues(true)).unwrap();
       if (viewMode === 'subcategories') {
         await loadFavoriteSubcategoryOffers();
       }
+      console.log('✅ Refresh complete');
     } catch (error) {
-      console.error('Error refreshing:', error);
+      console.error('❌ Refresh error:', error);
     }
     setRefreshing(false);
   };
@@ -129,7 +159,6 @@ export default function FavoritesScreen() {
     return 'active';
   };
 
-  // Get favorite stores' catalogues
   const favoriteCatalogues: CatalogueWithStatus[] = useMemo(() => {
     return catalogues
       .filter(cat => favoriteStoreIds.includes(cat.storeId))
@@ -143,7 +172,6 @@ export default function FavoritesScreen() {
       });
   }, [catalogues, favoriteStoreIds, stores]);
 
-  // Group catalogues by store
   const storeGroups: StoreGroup[] = useMemo(() => {
     const groups: { [storeId: string]: StoreGroup } = {};
 
@@ -171,10 +199,10 @@ export default function FavoritesScreen() {
         return new Date(b.startDate).getTime() - new Date(a.startDate).getTime();
       });
     });
+
     return groupArray;
   }, [favoriteCatalogues]);
 
-  // Group offers by subcategory
   const subcategoryGroups: SubcategoryGroup[] = useMemo(() => {
     const groups: { [subcategoryId: string]: SubcategoryGroup } = {};
 
@@ -194,7 +222,6 @@ export default function FavoritesScreen() {
       groups[subcategoryId].offers.push(offer);
     });
 
-    // Convert to array and sort by name
     const groupArray = Object.values(groups);
     groupArray.sort((a, b) => a.subcategoryName.localeCompare(b.subcategoryName, 'ar'));
 
@@ -235,6 +262,107 @@ export default function FavoritesScreen() {
       case 'expired': return { backgroundColor: colors.gray[400] };
     }
   };
+
+  // NEW: Manage Stores Modal Content
+  const renderManageStoresModal = () => (
+    <Modal
+      visible={manageMode === 'stores'}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setManageMode(null)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>إدارة المتاجر المفضلة</Text>
+            <TouchableOpacity onPress={() => setManageMode(null)}>
+              <Ionicons name="close" size={28} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalScroll}>
+            {allStores.map(store => {
+              const isFavorite = favoriteStoreIds.includes(store.id);
+              return (
+                <TouchableOpacity
+                  key={store.id}
+                  style={[styles.manageItem, isFavorite && styles.manageItemActive]}
+                  onPress={() => handleToggleFavoriteStore(store.id)}
+                >
+                  <Image source={{ uri: store.logo }} style={styles.manageStoreLogo} />
+                  <Text style={[styles.manageItemText, isFavorite && styles.manageItemTextActive]}>
+                    {store.nameAr}
+                  </Text>
+                  <Ionicons
+                    name={isFavorite ? 'heart' : 'heart-outline'}
+                    size={24}
+                    color={isFavorite ? colors.primary : colors.gray[400]}
+                  />
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  // NEW: Manage Subcategories Modal Content
+  const renderManageSubcategoriesModal = () => (
+    <Modal
+      visible={manageMode === 'subcategories'}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={() => setManageMode(null)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>إدارة الفئات المفضلة</Text>
+            <TouchableOpacity onPress={() => setManageMode(null)}>
+              <Ionicons name="close" size={28} color={colors.text} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView style={styles.modalScroll}>
+            {allSubcategories.map(subcategory => {
+              const isFavorite = favoriteSubcategoryIds.includes(subcategory.id);
+              const count = offerCounts[subcategory.id] || 0;
+
+              return (
+                <TouchableOpacity
+                  key={subcategory.id}
+                  style={[styles.manageItem, isFavorite && styles.manageItemActive]}
+                  onPress={() => handleToggleFavoriteSubcategory(subcategory.id)}
+                >
+                  <Ionicons
+                    name={subcategory.icon as any}
+                    size={24}
+                    color={isFavorite ? colors.primary : colors.gray[600]}
+                  />
+                  <View style={styles.manageItemInfo}>
+                    <Text style={[styles.manageItemText, isFavorite && styles.manageItemTextActive]}>
+                      {subcategory.nameAr}
+                    </Text>
+                    {isFavorite && (
+                      <Text style={styles.manageItemCount}>
+                        {count} {count === 1 ? 'عرض' : 'عروض'}
+                      </Text>
+                    )}
+                  </View>
+                  <Ionicons
+                    name={isFavorite ? 'heart' : 'heart-outline'}
+                    size={24}
+                    color={isFavorite ? colors.primary : colors.gray[400]}
+                  />
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
 
   const renderViewToggle = () => (
     <View style={styles.viewToggle}>
@@ -362,7 +490,7 @@ export default function FavoritesScreen() {
             />
           )}
           keyExtractor={item => item.id}
-          numColumns={2}
+          numColumns={3}
           columnWrapperStyle={styles.offerRow}
           scrollEnabled={false}
           showsVerticalScrollIndicator={false}
@@ -381,22 +509,40 @@ export default function FavoritesScreen() {
       />
       <View style={styles.container}>
         {renderViewToggle()}
+        <AdBanner position="favorites" />
 
-        {/* Stats Bar */}
+        {/* Stats Bar with Management Buttons */}
         <View style={styles.statsBar}>
-          <View style={styles.statItem}>
+          <TouchableOpacity
+            style={styles.statItem}
+            onPress={() => setManageMode('stores')}
+          >
             <Ionicons name="storefront" size={20} color={colors.primary} />
             <Text style={styles.statText}>
               {favoriteStoreIds.length} {favoriteStoreIds.length === 1 ? 'متجر' : 'متاجر'}
             </Text>
-          </View>
-          <View style={styles.statItem}>
+            <Ionicons name="pencil" size={16} color={colors.gray[400]} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.statItem}
+            onPress={() => setManageMode('subcategories')}
+          >
             <Ionicons name="pricetag" size={20} color={colors.primary} />
             <Text style={styles.statText}>
               {favoriteSubcategoryIds.length} {favoriteSubcategoryIds.length === 1 ? 'فئة' : 'فئات'}
             </Text>
-          </View>
+            <Ionicons name="pencil" size={16} color={colors.gray[400]} />
+          </TouchableOpacity>
         </View>
+
+        {viewMode === 'subcategories' && emptySubcategories.length > 0 && (
+          <View style={styles.warningBanner}>
+            <Ionicons name="information-circle" size={20} color={colors.warning} />
+            <Text style={styles.warningText}>
+              {emptySubcategories.length} من الفئات المفضلة لا تحتوي على عروض حالياً
+            </Text>
+          </View>
+        )}
 
         {viewMode === 'catalogues' ? (
           <ScrollView
@@ -404,10 +550,7 @@ export default function FavoritesScreen() {
             contentContainerStyle={{ paddingBottom }}
             showsVerticalScrollIndicator={false}
             refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-              />
+              <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
             }
           >
             {cataloguesLoading ? (
@@ -422,14 +565,8 @@ export default function FavoritesScreen() {
                 <Ionicons name="heart-outline" size={64} color={colors.gray[300]} />
                 <Text style={styles.emptyStateText}>لا توجد متاجر مفضلة</Text>
                 <Text style={styles.emptyStateSubtext}>
-                  اضغط على ❤️ على أي متجر لإضافته للمفضلة
+                  اضغط على زر "إدارة" أعلاه لإضافة متاجر مفضلة
                 </Text>
-                <TouchableOpacity
-                  style={styles.exploreButton}
-                  onPress={() => router.push('/(tabs)/flyers')}
-                >
-                  <Text style={styles.exploreButtonText}>تصفح الكتالوجات</Text>
-                </TouchableOpacity>
               </View>
             )}
           </ScrollView>
@@ -439,10 +576,7 @@ export default function FavoritesScreen() {
             contentContainerStyle={{ paddingBottom }}
             showsVerticalScrollIndicator={false}
             refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={handleRefresh}
-              />
+              <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
             }
           >
             {offersLoading ? (
@@ -457,18 +591,15 @@ export default function FavoritesScreen() {
                 <Ionicons name="pricetag-outline" size={64} color={colors.gray[300]} />
                 <Text style={styles.emptyStateText}>لا توجد فئات مفضلة</Text>
                 <Text style={styles.emptyStateSubtext}>
-                  اضغط على ❤️ على أي عرض لحفظ فئته
+                  اضغط على زر "إدارة" أعلاه لإضافة فئات مفضلة
                 </Text>
-                <TouchableOpacity
-                  style={styles.exploreButton}
-                  onPress={() => router.push('/(tabs)/flyers')}
-                >
-                  <Text style={styles.exploreButtonText}>تصفح العروض</Text>
-                </TouchableOpacity>
               </View>
             )}
           </ScrollView>
         )}
+
+        {renderManageStoresModal()}
+        {renderManageSubcategoriesModal()}
       </View>
     </>
   );
@@ -477,14 +608,14 @@ export default function FavoritesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundSecondary,
+    backgroundColor: colors.backgroundSecondary
   },
   viewToggle: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     margin: spacing.md,
     backgroundColor: colors.gray[100],
     borderRadius: borderRadius.lg,
-    padding: spacing.xs,
+    padding: spacing.xs
   },
   toggleButton: {
     flex: 1,
@@ -493,19 +624,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.md,
+    gap: spacing.xs,
   },
   toggleButtonActive: {
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primary
   },
   toggleText: {
     fontSize: typography.fontSize.md,
     color: colors.text,
-    marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
-    marginRight: I18nManager.isRTL ? spacing.xs : 0,
   },
   toggleTextActive: {
     color: colors.white,
-    fontWeight: '600',
+    fontWeight: '600'
   },
   statsBar: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
@@ -519,34 +649,50 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
-    elevation: 1,
+    elevation: 1
   },
   statItem: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
-    gap: spacing.xs,
+    gap: spacing.xs
   },
   statText: {
     fontSize: typography.fontSize.md,
     fontWeight: '600',
-    color: colors.text,
+    color: colors.text
+  },
+  warningBanner: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    backgroundColor: colors.warning + '20',
+    marginHorizontal: spacing.md,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    gap: spacing.sm,
+  },
+  warningText: {
+    flex: 1,
+    fontSize: typography.fontSize.sm,
+    color: colors.warning,
+    fontWeight: '500',
   },
   content: {
     flex: 1,
-    padding: spacing.md,
+    padding: spacing.md
   },
   loadingContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: spacing.xxl,
+    paddingVertical: spacing.xxl
   },
   loadingText: {
     marginTop: spacing.md,
     fontSize: typography.fontSize.md,
-    color: colors.textSecondary,
+    color: colors.textSecondary
   },
   storeGroup: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.lg
   },
   storeHeader: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
@@ -561,14 +707,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 1,
-    gap: spacing.xs,
+    gap: spacing.xs
   },
   storeName: {
     flex: 1,
     fontSize: typography.fontSize.md,
     fontWeight: 'bold',
     color: colors.text,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    textAlign: I18nManager.isRTL ? 'right' : 'left'
   },
   catalogueCount: {
     fontSize: typography.fontSize.xs,
@@ -576,20 +722,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[100],
     paddingHorizontal: spacing.xs,
     paddingVertical: 2,
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.sm
   },
   cataloguesGrid: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     flexWrap: 'wrap',
-    gap: spacing.sm,
+    gap: spacing.sm
   },
   catalogueThumbnailWrapper: {
-    width: CARD_WIDTH,
+    width: CARD_WIDTH
   },
   catalogueThumbnail: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: spacing.xs,
+    marginBottom: spacing.xs
   },
   thumbnailImageContainer: {
     width: CARD_WIDTH,
@@ -602,11 +748,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.12,
     shadowRadius: 3,
-    elevation: 3,
+    elevation: 3
   },
   thumbnailImage: {
     width: '100%',
-    height: '100%',
+    height: '100%'
   },
   statusBadgeThumbnail: {
     position: 'absolute',
@@ -616,11 +762,11 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     borderWidth: 1.5,
-    borderColor: colors.white,
+    borderColor: colors.white
   },
   statusDot: {
     width: '100%',
-    height: '100%',
+    height: '100%'
   },
   favoriteButton: {
     position: 'absolute',
@@ -631,7 +777,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.full,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems: 'center'
   },
   thumbnailStoreName: {
     fontSize: 11,
@@ -639,7 +785,7 @@ const styles = StyleSheet.create({
     marginTop: 5,
     textAlign: 'center',
     width: '100%',
-    fontWeight: '600',
+    fontWeight: '600'
   },
   thumbnailDate: {
     fontSize: 10,
@@ -647,10 +793,10 @@ const styles = StyleSheet.create({
     marginTop: 2,
     textAlign: 'center',
     width: '100%',
-    fontWeight: '500',
+    fontWeight: '500'
   },
   subcategoryGroup: {
-    marginBottom: spacing.lg,
+    marginBottom: spacing.lg
   },
   subcategoryHeader: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
@@ -665,20 +811,20 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
     shadowRadius: 2,
-    elevation: 1,
+    elevation: 1
   },
   subcategoryHeaderLeft: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     flex: 1,
-    gap: spacing.xs,
+    gap: spacing.xs
   },
   subcategoryName: {
     flex: 1,
     fontSize: typography.fontSize.md,
     fontWeight: 'bold',
     color: colors.text,
-    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    textAlign: I18nManager.isRTL ? 'right' : 'left'
   },
   offerCount: {
     fontSize: typography.fontSize.xs,
@@ -686,43 +832,100 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[100],
     paddingHorizontal: spacing.xs,
     paddingVertical: 2,
-    borderRadius: borderRadius.sm,
+    borderRadius: borderRadius.sm
   },
   favoriteIconButton: {
-    padding: spacing.xs,
+    padding: spacing.xs
+  },
+  offerRow: {
+    justifyContent: 'flex-start',
+    gap: spacing.sm,
   },
   emptyState: {
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: spacing.lg
   },
   emptyStateText: {
     fontSize: typography.fontSize.lg,
     fontWeight: 'bold',
     color: colors.text,
     marginTop: spacing.md,
-    textAlign: 'center',
+    textAlign: 'center'
   },
   emptyStateSubtext: {
     fontSize: typography.fontSize.md,
     color: colors.textSecondary,
     marginTop: spacing.sm,
-    textAlign: 'center',
+    textAlign: 'center'
   },
-  exploreButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.lg,
-    marginTop: spacing.lg,
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end'
   },
-  exploreButtonText: {
-    color: colors.white,
+  modalContent: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: borderRadius.xl,
+    borderTopRightRadius: borderRadius.xl,
+    maxHeight: '80%',
+    paddingBottom: spacing.xl
+  },
+  modalHeader: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.gray[200]
+  },
+  modalTitle: {
+    fontSize: typography.fontSize.xl,
+    fontWeight: 'bold',
+    color: colors.text
+  },
+  modalScroll: {
+    padding: spacing.md
+  },
+  manageItem: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.sm,
+    borderWidth: 2,
+    borderColor: colors.gray[200],
+    gap: spacing.md
+  },
+  manageItemActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primary + '10'
+  },
+  manageStoreLogo: {
+    width: 48,
+    height: 48,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.gray[100]
+  },
+  manageItemInfo: {
+    flex: 1,
+  },
+  manageItemText: {
     fontSize: typography.fontSize.md,
     fontWeight: '600',
+    color: colors.text,
+    textAlign: I18nManager.isRTL ? 'right' : 'left'
   },
-  offerRow: {
-    justifyContent: 'space-between',
+  manageItemTextActive: {
+    color: colors.primary
+  },
+  manageItemCount: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: 2,
+    textAlign: I18nManager.isRTL ? 'right' : 'left'
   },
 });

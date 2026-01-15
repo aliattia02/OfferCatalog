@@ -1,4 +1,4 @@
-// src/app/(tabs)/basket.tsx - WITH STORE FILTER & SMART SORTING
+// src/app/(tabs)/basket.tsx - FIXED: Mobile-compatible alerts
 import React, { useMemo, useState } from 'react';
 import {
   View,
@@ -6,8 +6,8 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Alert,
   I18nManager,
+  Alert, // ADD THIS
 } from 'react-native';
 import { useRouter, Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +16,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { BasketItemCard, SavedPageCard } from '../../components/basket';
 import { Button } from '../../components/common';
+import { AdBanner } from '../../components/common';
+
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import {
   removeFromBasket,
@@ -40,7 +42,7 @@ export default function BasketScreen() {
 
   const [selectedStore, setSelectedStore] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<SortOption>('default');
-  const [showFilters, setShowFilters] = useState(false);
+  const [showFilters, setShowFilters] = useState(true);
 
   const basketItems = useAppSelector(state => state.basket.items);
   const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds);
@@ -65,7 +67,6 @@ export default function BasketScreen() {
     let activeOffersCount = 0;
     let activePagesCount = 0;
 
-    // First, separate by expiry status
     basketItems.forEach(item => {
       const itemExpired = item.offerEndDate ? isDateExpired(item.offerEndDate) : false;
 
@@ -73,7 +74,6 @@ export default function BasketScreen() {
         expired.push(item);
       } else {
         active.push(item);
-        // Count by type
         if (item.type === 'offer') {
           activeOffersCount++;
           total += (item.offer?.offerPrice || 0) * item.quantity;
@@ -83,19 +83,16 @@ export default function BasketScreen() {
       }
     });
 
-    // Filter by selected store
     if (selectedStore) {
       active = active.filter(item => item.storeName === selectedStore);
       expired = expired.filter(item => item.storeName === selectedStore);
     }
 
-    // Sort active items
     switch (sortBy) {
       case 'store':
         active.sort((a, b) => {
           const storeCompare = (a.storeName || '').localeCompare(b.storeName || '', 'ar');
           if (storeCompare !== 0) return storeCompare;
-          // Secondary sort by type (offers first)
           if (a.type === 'offer' && b.type !== 'offer') return -1;
           if (a.type !== 'offer' && b.type === 'offer') return 1;
           return 0;
@@ -108,7 +105,6 @@ export default function BasketScreen() {
           const dateB = b.offerEndDate || '9999-12-31';
           const dateCompare = dateA.localeCompare(dateB);
           if (dateCompare !== 0) return dateCompare;
-          // Secondary sort by type
           if (a.type === 'offer' && b.type !== 'offer') return -1;
           if (a.type !== 'offer' && b.type === 'offer') return 1;
           return 0;
@@ -117,12 +113,9 @@ export default function BasketScreen() {
 
       case 'default':
       default:
-        // Keep original order but ensure offers and pages are mixed
-        // No additional sorting
         break;
     }
 
-    // Sort expired items (always by store, then by type)
     expired.sort((a, b) => {
       const storeCompare = (a.storeName || '').localeCompare(b.storeName || '', 'ar');
       if (storeCompare !== 0) return storeCompare;
@@ -152,49 +145,61 @@ export default function BasketScreen() {
   };
 
   const handleRemoveItem = (itemId: string) => {
+    // FIXED: Use Alert.alert instead of window.confirm
     Alert.alert(
       'حذف العنصر',
       'هل تريد حذف هذا العنصر من السلة؟',
       [
-        { text: 'إلغاء', style: 'cancel' },
+        {
+          text: 'إلغاء',
+          style: 'cancel'
+        },
         {
           text: 'حذف',
           style: 'destructive',
-          onPress: () => dispatch(removeFromBasket(itemId)),
-        },
+          onPress: () => dispatch(removeFromBasket(itemId))
+        }
       ]
     );
   };
 
   const handleClearBasket = () => {
+    // FIXED: Use Alert.alert instead of window.confirm
     Alert.alert(
       'إفراغ السلة',
       'هل تريد حذف جميع العناصر من السلة؟',
       [
-        { text: 'إلغاء', style: 'cancel' },
         {
-          text: 'إفراغ',
-          style: 'destructive',
-          onPress: () => dispatch(clearBasket()),
+          text: 'إلغاء',
+          style: 'cancel'
         },
+        {
+          text: 'حذف الكل',
+          style: 'destructive',
+          onPress: () => dispatch(clearBasket())
+        }
       ]
     );
   };
 
   const handleDeleteExpired = () => {
+    // FIXED: Use Alert.alert instead of window.confirm and window.alert
     Alert.alert(
-      'حذف العروض المنتهية',
+      'حذف العناصر المنتهية',
       `هل تريد حذف ${stats.expired} ${stats.expired === 1 ? 'عنصر منتهي' : 'عنصر منتهي'}؟`,
       [
-        { text: 'إلغاء', style: 'cancel' },
+        {
+          text: 'إلغاء',
+          style: 'cancel'
+        },
         {
           text: 'حذف',
           style: 'destructive',
           onPress: () => {
             dispatch(removeExpiredItems());
-            Alert.alert('تم', 'تم حذف العناصر المنتهية بنجاح');
-          },
-        },
+            Alert.alert('نجح', 'تم حذف العناصر المنتهية بنجاح');
+          }
+        }
       ]
     );
   };
@@ -305,10 +310,10 @@ export default function BasketScreen() {
         contentContainerStyle={{ paddingBottom }}
         showsVerticalScrollIndicator={false}
       >
-        {/* Filters Panel */}
+        <AdBanner position="basket" />
+
         {showFilters && (
           <View style={styles.filtersPanel}>
-            {/* Store Filter */}
             <View style={styles.filterSection}>
               <Text style={styles.filterLabel}>تصفية حسب المتجر</Text>
               <ScrollView
@@ -350,7 +355,6 @@ export default function BasketScreen() {
               </ScrollView>
             </View>
 
-            {/* Sort Options */}
             <View style={styles.filterSection}>
               <Text style={styles.filterLabel}>ترتيب حسب</Text>
               <View style={styles.sortButtons}>
@@ -418,7 +422,6 @@ export default function BasketScreen() {
           </View>
         )}
 
-        {/* Delete Expired Items Banner */}
         {stats.expired > 0 && (
           <TouchableOpacity
             style={styles.expiredBanner}
@@ -440,36 +443,6 @@ export default function BasketScreen() {
           </TouchableOpacity>
         )}
 
-        {/* Summary Card */}
-        <View style={styles.summaryCard}>
-          <View style={styles.summaryRow}>
-            <View style={styles.summaryItem}>
-              <Ionicons name="pricetag" size={20} color={colors.primary} />
-              <Text style={styles.summaryLabel}>عروض نشطة</Text>
-              <Text style={styles.summaryValue}>{stats.activeOffers}</Text>
-            </View>
-            <View style={styles.summaryDivider} />
-            <View style={styles.summaryItem}>
-              <Ionicons name="bookmark" size={20} color={colors.primary} />
-              <Text style={styles.summaryLabel}>صفحات محفوظة</Text>
-              <Text style={styles.summaryValue}>{stats.activePages}</Text>
-            </View>
-            {stats.expired > 0 && (
-              <>
-                <View style={styles.summaryDivider} />
-                <View style={styles.summaryItem}>
-                  <Ionicons name="time" size={20} color={colors.error} />
-                  <Text style={styles.summaryLabel}>منتهية</Text>
-                  <Text style={[styles.summaryValue, styles.summaryValueExpired]}>
-                    {stats.expired}
-                  </Text>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-
-        {/* Active Items */}
         {activeItems.length > 0 && (
           <View style={styles.itemsSection}>
             <View style={styles.sectionHeader}>
@@ -482,7 +455,6 @@ export default function BasketScreen() {
           </View>
         )}
 
-        {/* Expired Items - Always at Bottom */}
         {expiredItems.length > 0 && (
           <View style={styles.itemsSection}>
             <View style={styles.sectionHeader}>
@@ -498,7 +470,6 @@ export default function BasketScreen() {
         <View style={styles.bottomPadding} />
       </ScrollView>
 
-      {/* Total Footer - Only for Active Offers */}
       {stats.activeOffers > 0 && (
         <View style={styles.footer}>
           <View style={styles.totalContainer}>
@@ -514,6 +485,7 @@ export default function BasketScreen() {
   );
 }
 
+// Styles remain the same...
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -662,45 +634,6 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: typography.fontSize.sm,
     opacity: 0.9,
-  },
-  summaryCard: {
-    backgroundColor: colors.white,
-    margin: spacing.md,
-    padding: spacing.md,
-    borderRadius: borderRadius.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  summaryRow: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-  },
-  summaryItem: {
-    alignItems: 'center',
-    flex: 1,
-  },
-  summaryDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: colors.gray[200],
-  },
-  summaryLabel: {
-    fontSize: typography.fontSize.xs,
-    color: colors.textSecondary,
-    marginTop: spacing.xs,
-    marginBottom: 2,
-  },
-  summaryValue: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  summaryValueExpired: {
-    color: colors.error,
   },
   itemsSection: {
     paddingHorizontal: spacing.md,
