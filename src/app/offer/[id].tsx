@@ -1,9 +1,8 @@
-// src/app/offer/[id].tsx - FIXED PRODUCTION ERRORS
-import React, { useState, useEffect, useCallback } from 'react';
+// src/app/offer/[id].tsx - FIXED HOOKS ORDER
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
-  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -27,11 +26,11 @@ import { formatCurrency, calculateDiscount, formatDate, getDaysRemaining } from 
 import { logScreenView, logViewItem, logAddToCart } from '../../services/analyticsService';
 
 export default function OfferDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id } = useLocalSearchParams<{ id:  string }>();
   const { t } = useTranslation();
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { getName, getDescription, language } = useLocalized();
+  const { getName, language } = useLocalized();
 
   const [offer, setOffer] = useState<OfferWithCatalogue | null>(null);
   const [loading, setLoading] = useState(true);
@@ -40,8 +39,106 @@ export default function OfferDetailScreen() {
   const stores = useAppSelector(state => state.stores.stores);
   const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds);
 
-  const isFavorite = offer ? favoriteSubcategoryIds.includes(offer.categoryId) : false;
+  // ✅ FIXED:  All hooks MUST be called before any early returns
+  const isFavorite = useMemo(() => {
+    return offer ?  favoriteSubcategoryIds.includes(offer.categoryId) : false;
+  }, [offer, favoriteSubcategoryIds]);
 
+  // ✅ FIXED:  Compute derived values with useMemo (before early returns)
+  const store = useMemo(() => {
+    return stores.find(s => s.id === offer?.storeId);
+  }, [stores, offer?.storeId]);
+
+  const storeName = useMemo(() => {
+    return offer?.storeName || store?.nameAr || 'Unknown Store';
+  }, [offer?. storeName, store?. nameAr]);
+
+  const storeLogo = useMemo(() => {
+    return store?.logo || `https://placehold.co/100x100/e63946/ffffff?text=${offer?.storeId || 'S'}`;
+  }, [store?.logo, offer?.storeId]);
+
+  const category = useMemo(() => {
+    return offer?.categoryId ? getCategoryById(offer. categoryId) : undefined;
+  }, [offer?.categoryId]);
+
+  const discount = useMemo(() => {
+    return offer?.originalPrice && offer?. offerPrice
+      ? calculateDiscount(offer.originalPrice, offer.offerPrice)
+      : 0;
+  }, [offer?. originalPrice, offer?. offerPrice]);
+
+  const daysRemaining = useMemo(() => {
+    return offer?. catalogueEndDate ?  getDaysRemaining(offer.catalogueEndDate) : 0;
+  }, [offer?.catalogueEndDate]);
+
+  // ✅ FIXED: All useCallback hooks defined before early returns
+  const handleToggleFavorite = useCallback(() => {
+    if (offer?. categoryId) {
+      dispatch(toggleFavoriteSubcategory(offer.categoryId));
+    }
+  }, [offer?.categoryId, dispatch]);
+
+  const handleAddToBasket = useCallback(() => {
+    if (! offer) return;
+
+    try {
+      const serializableOffer = {
+        id: offer.id,
+        storeId: offer.storeId,
+        catalogueId: offer.catalogueId,
+        categoryId: offer.categoryId,
+        nameAr: offer. nameAr,
+        nameEn: offer. nameEn,
+        descriptionAr: offer.descriptionAr,
+        descriptionEn: offer.descriptionEn,
+        imageUrl: offer.imageUrl,
+        offerPrice: offer. offerPrice,
+        originalPrice: offer.originalPrice,
+        unit: offer.unit,
+        pageNumber: offer.pageNumber,
+        isActive: offer.isActive,
+        catalogueStartDate: offer.catalogueStartDate,
+        catalogueEndDate: offer.catalogueEndDate,
+        startDate: offer.startDate,
+        endDate: offer.endDate,
+      };
+
+      dispatch(addToBasket({
+        offer: serializableOffer,
+        storeName: storeName,
+      }));
+
+      logAddToCart(offer.id, offer.nameAr, offer.offerPrice, {
+        catalogue_id: offer.catalogueId,
+        store_id: offer. storeId,
+      });
+    } catch (err) {
+      console.error('Error adding to basket:', err);
+    }
+  }, [offer, storeName, dispatch]);
+
+  const handleViewStore = useCallback(() => {
+    if (store?. id) {
+      router.push(`/store/${store.id}`);
+    }
+  }, [store?. id, router]);
+
+  const handleViewCatalogue = useCallback(() => {
+    if (! offer?. catalogueId) return;
+
+    try {
+      if (offer.pageNumber) {
+        router.push(`/flyer/${offer.catalogueId}? page=${offer.pageNumber}`);
+        console.log(`📄 Navigating to catalogue ${offer.catalogueId}, page ${offer.pageNumber}`);
+      } else {
+        router.push(`/flyer/${offer.catalogueId}`);
+      }
+    } catch (err) {
+      console.error('Error navigating to catalogue:', err);
+    }
+  }, [offer?. catalogueId, offer?.pageNumber, router]);
+
+  // Load offer data
   useEffect(() => {
     const loadOffer = async () => {
       try {
@@ -61,16 +158,16 @@ export default function OfferDetailScreen() {
 
         setOffer(offerData);
         console.log('✅ Offer loaded:', offerData);
-        
-        // Analytics: Log screen view and view item
+
+        // Analytics:  Log screen view and view item
         logScreenView('OfferDetail', id);
-        logViewItem(offerData.id, offerData.nameAr, offerData.categoryId, {
+        logViewItem(offerData. id, offerData.nameAr, offerData.categoryId, {
           catalogue_id: offerData.catalogueId,
           store_id: offerData.storeId,
         });
-      } catch (error: any) {
-        console.error('❌ Error loading offer:', error);
-        setError(error?.message || 'Failed to load offer');
+      } catch (err:  any) {
+        console.error('❌ Error loading offer:', err);
+        setError(err?. message || 'Failed to load offer');
       } finally {
         setLoading(false);
       }
@@ -78,9 +175,10 @@ export default function OfferDetailScreen() {
     loadOffer();
   }, [id]);
 
+  // ✅ NOW we can have early returns (after all hooks are defined)
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={styles. loadingContainer}>
         <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>{t('common.loading')}</Text>
       </View>
@@ -90,7 +188,7 @@ export default function OfferDetailScreen() {
   if (error || !offer) {
     return (
       <View style={styles.errorContainer}>
-        <Ionicons name="alert-circle-outline" size={64} color={colors.error} />
+        <Ionicons name="alert-circle-outline" size={64} color={colors. error} />
         <Text style={styles.errorText}>
           {error || t('offerDetails.notFound')}
         </Text>
@@ -104,97 +202,15 @@ export default function OfferDetailScreen() {
     );
   }
 
-  // ✅ FIXED: Safe store lookup with fallback
-  const store = stores.find(s => s.id === offer.storeId);
-  const storeName = offer.storeName || store?.nameAr || 'Unknown Store';
-  const storeLogo = store?.logo || `https://placehold.co/100x100/e63946/ffffff?text=${offer.storeId}`;
-
-  // ✅ FIXED: Safe category lookup
-  const category = offer.categoryId ? getCategoryById(offer.categoryId) : undefined;
-
-  // ✅ FIXED: Safe discount calculation
-  const discount = offer.originalPrice && offer.offerPrice
-    ? calculateDiscount(offer.originalPrice, offer.offerPrice)
-    : 0;
-
-  // ✅ FIXED: Safe days remaining calculation
-  const daysRemaining = offer.catalogueEndDate
-    ? getDaysRemaining(offer.catalogueEndDate)
-    : 0;
-
-  const handleToggleFavorite = useCallback(() => {
-    if (offer.categoryId) {
-      dispatch(toggleFavoriteSubcategory(offer.categoryId));
-    }
-  }, [offer?.categoryId, dispatch]);
-
-  const handleAddToBasket = useCallback(() => {
-    try {
-      const serializableOffer = {
-        id: offer.id,
-        storeId: offer.storeId,
-        catalogueId: offer.catalogueId,
-        categoryId: offer.categoryId,
-        nameAr: offer.nameAr,
-        nameEn: offer.nameEn,
-        descriptionAr: offer.descriptionAr,
-        descriptionEn: offer.descriptionEn,
-        imageUrl: offer.imageUrl,
-        offerPrice: offer.offerPrice,
-        originalPrice: offer.originalPrice,
-        unit: offer.unit,
-        pageNumber: offer.pageNumber,
-        isActive: offer.isActive,
-        catalogueStartDate: offer.catalogueStartDate,
-        catalogueEndDate: offer.catalogueEndDate,
-        startDate: offer.startDate,
-        endDate: offer.endDate,
-      };
-
-      dispatch(addToBasket({
-        offer: serializableOffer,
-        storeName: storeName,
-      }));
-      
-      logAddToCart(offer.id, offer.nameAr, offer.offerPrice, {
-        catalogue_id: offer.catalogueId,
-        store_id: offer.storeId,
-      });
-    } catch (error) {
-      console.error('Error adding to basket:', error);
-    }
-  }, [offer, storeName, dispatch]);
-
-  const handleViewStore = useCallback(() => {
-    if (store?.id) {
-      router.push(`/store/${store.id}`);
-    }
-  }, [store?.id, router]);
-
-  const handleViewCatalogue = useCallback(() => {
-    try {
-      if (offer.catalogueId) {
-        if (offer.pageNumber) {
-          router.push(`/flyer/${offer.catalogueId}?page=${offer.pageNumber}`);
-          console.log(`📄 Navigating to catalogue ${offer.catalogueId}, page ${offer.pageNumber}`);
-        } else {
-          router.push(`/flyer/${offer.catalogueId}`);
-        }
-      }
-    } catch (error) {
-      console.error('Error navigating to catalogue:', error);
-    }
-  }, [offer?.catalogueId, offer?.pageNumber, router]);
-
   return (
     <>
       <Stack.Screen
         options={{
           headerShown: true,
-          title: offer.nameAr || getName(offer),
+          title: offer. nameAr || getName(offer),
           headerBackTitle: t('common.back'),
           headerRight: () => (
-            <TouchableOpacity onPress={handleToggleFavorite} style={styles.headerButton}>
+            <TouchableOpacity onPress={handleToggleFavorite} style={styles. headerButton}>
               <Ionicons
                 name={isFavorite ? 'heart' : 'heart-outline'}
                 size={24}
@@ -208,7 +224,7 @@ export default function OfferDetailScreen() {
         {/* Product Image */}
         <View style={styles.imageContainer}>
           <CachedImage
-            source={offer.imageUrl}
+            source={offer. imageUrl}
             style={styles.image}
             contentFit="contain"
           />
@@ -217,7 +233,7 @@ export default function OfferDetailScreen() {
               <Text style={styles.discountText}>{discount}% {t('common.off')}</Text>
             </View>
           )}
-          {!offer.isActive && (
+          {! offer.isActive && (
             <View style={styles.inactiveBadge}>
               <Text style={styles.inactiveBadgeText}>{t('status.expired')}</Text>
             </View>
@@ -242,9 +258,9 @@ export default function OfferDetailScreen() {
               />
               <Text style={styles.categoryText}>{category.nameAr}</Text>
               <Ionicons
-                name={isFavorite ? 'heart' : 'heart-outline'}
+                name={isFavorite ?  'heart' :  'heart-outline'}
                 size={14}
-                color={isFavorite ? colors.primary : colors.gray[400]}
+                color={isFavorite ? colors.primary :  colors.gray[400]}
                 style={styles.categoryHeartIcon}
               />
             </TouchableOpacity>
@@ -255,14 +271,14 @@ export default function OfferDetailScreen() {
           )}
 
           {/* Price Section */}
-          <View style={styles.priceSection}>
+          <View style={styles. priceSection}>
             <View style={styles.priceRow}>
               <Text style={styles.label}>{t('offerDetails.offerPrice')}</Text>
-              <Text style={styles.offerPrice}>{formatCurrency(offer.offerPrice)}</Text>
+              <Text style={styles.offerPrice}>{formatCurrency(offer. offerPrice)}</Text>
             </View>
             {offer.originalPrice && (
               <View style={styles.priceRow}>
-                <Text style={styles.label}>{t('offerDetails.originalPrice')}</Text>
+                <Text style={styles. label}>{t('offerDetails.originalPrice')}</Text>
                 <Text style={styles.originalPrice}>{formatCurrency(offer.originalPrice)}</Text>
               </View>
             )}
@@ -284,7 +300,7 @@ export default function OfferDetailScreen() {
               />
               <Text
                 style={[
-                  styles.validityText,
+                  styles. validityText,
                   daysRemaining <= 2 && styles.validityTextWarning,
                 ]}
               >
@@ -295,7 +311,7 @@ export default function OfferDetailScreen() {
             </View>
             {offer.catalogueEndDate && (
               <Text style={styles.dateText}>
-                {t('offerDetails.validUntil')}: {formatDate(offer.catalogueEndDate, language)}
+                {t('offerDetails. validUntil')}: {formatDate(offer.catalogueEndDate, language)}
               </Text>
             )}
           </View>
@@ -306,12 +322,12 @@ export default function OfferDetailScreen() {
               <View style={styles.catalogueInfo}>
                 <View style={styles.catalogueHeader}>
                   <Ionicons name="book-outline" size={20} color={colors.primary} />
-                  <Text style={styles.catalogueLabel}>{t('offerDetails.catalogue')}</Text>
+                  <Text style={styles.catalogueLabel}>{t('offerDetails. catalogue')}</Text>
                 </View>
                 <Text style={styles.catalogueTitle}>{offer.catalogueTitle}</Text>
                 {offer.pageNumber && (
                   <View style={styles.pageNumberBadge}>
-                    <Ionicons name="document-outline" size={14} color={colors.primary} />
+                    <Ionicons name="document-outline" size={14} color={colors. primary} />
                     <Text style={styles.pageNumber}>
                       {t('common.page')} {offer.pageNumber}
                     </Text>
@@ -330,7 +346,7 @@ export default function OfferDetailScreen() {
           {store && (
             <TouchableOpacity style={styles.storeCard} onPress={handleViewStore}>
               <CachedImage
-                source={typeof storeLogo === 'string' ? storeLogo : storeLogo}
+                source={storeLogo}
                 style={styles.storeLogo}
                 contentFit="contain"
               />
@@ -341,13 +357,13 @@ export default function OfferDetailScreen() {
               <Ionicons
                 name={I18nManager.isRTL ? 'chevron-back' : 'chevron-forward'}
                 size={24}
-                color={colors.gray[400]}
+                color={colors. gray[400]}
               />
             </TouchableOpacity>
           )}
         </View>
 
-        <View style={styles.bottomPadding} />
+        <View style={styles. bottomPadding} />
       </ScrollView>
 
       {/* Add to Basket Button */}
@@ -367,40 +383,40 @@ export default function OfferDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.backgroundSecondary,
+    backgroundColor: colors. backgroundSecondary,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.backgroundSecondary,
+    alignItems:  'center',
+    backgroundColor: colors. backgroundSecondary,
   },
   loadingText: {
     marginTop: spacing.md,
-    fontSize: typography.fontSize.md,
+    fontSize:  typography.fontSize.md,
     color: colors.textSecondary,
   },
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
-    alignItems: 'center',
+    alignItems:  'center',
     padding: spacing.lg,
-    backgroundColor: colors.backgroundSecondary,
+    backgroundColor:  colors.backgroundSecondary,
   },
   errorText: {
-    fontSize: typography.fontSize.lg,
+    fontSize: typography.fontSize. lg,
     color: colors.text,
     marginTop: spacing.md,
     marginBottom: spacing.sm,
     textAlign: 'center',
   },
   errorSubtext: {
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.fontSize. sm,
     color: colors.textSecondary,
     marginBottom: spacing.lg,
   },
   backButton: {
-    marginTop: spacing.md,
+    marginTop:  spacing.md,
   },
   headerButton: {
     padding: spacing.sm,
@@ -410,8 +426,8 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     alignItems: 'center',
   },
-  image: {
-    width: '100%',
+  image:  {
+    width:  '100%',
     height: 250,
     backgroundColor: colors.gray[100],
     borderRadius: borderRadius.lg,
@@ -420,90 +436,90 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: spacing.lg,
     left: I18nManager.isRTL ? undefined : spacing.lg,
-    right: I18nManager.isRTL ? spacing.lg : undefined,
-    backgroundColor: colors.primary,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    right:  I18nManager. isRTL ?  spacing.lg : undefined,
+    backgroundColor:  colors.primary,
+    paddingHorizontal:  spacing.md,
+    paddingVertical: spacing. sm,
     borderRadius: borderRadius.md,
   },
   discountText: {
     color: colors.white,
-    fontSize: typography.fontSize.md,
+    fontSize:  typography.fontSize.md,
     fontWeight: 'bold',
   },
   inactiveBadge: {
     position: 'absolute',
     top: spacing.lg,
-    right: I18nManager.isRTL ? undefined : spacing.lg,
-    left: I18nManager.isRTL ? spacing.lg : undefined,
+    right: I18nManager.isRTL ? undefined : spacing. lg,
+    left: I18nManager.isRTL ? spacing.lg :  undefined,
     backgroundColor: colors.gray[500],
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    paddingVertical:  spacing.sm,
     borderRadius: borderRadius.md,
   },
-  inactiveBadgeText: {
-    color: colors.white,
-    fontSize: typography.fontSize.sm,
+  inactiveBadgeText:  {
+    color:  colors.white,
+    fontSize: typography. fontSize.sm,
     fontWeight: '600',
   },
   infoContainer: {
     padding: spacing.md,
   },
   productName: {
-    fontSize: typography.fontSize.xxl,
+    fontSize: typography.fontSize. xxl,
     fontWeight: 'bold',
     color: colors.text,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
-    marginBottom: spacing.sm,
+    marginBottom: spacing. sm,
   },
   categoryTag: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
+    alignItems:  'center',
     backgroundColor: colors.primaryLight + '20',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.md,
-    alignSelf: I18nManager.isRTL ? 'flex-end' : 'flex-start',
+    alignSelf: I18nManager.isRTL ? 'flex-end' :  'flex-start',
     marginBottom: spacing.md,
   },
   categoryText: {
-    fontSize: typography.fontSize.sm,
+    fontSize: typography.fontSize. sm,
     color: colors.primary,
     marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
-    marginRight: I18nManager.isRTL ? spacing.xs : 0,
+    marginRight: I18nManager.isRTL ? spacing. xs : 0,
   },
   categoryHeartIcon: {
-    marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
+    marginLeft:  I18nManager. isRTL ?  0 : spacing. xs,
     marginRight: I18nManager.isRTL ? spacing.xs : 0,
   },
   description: {
-    fontSize: typography.fontSize.md,
-    color: colors.textSecondary,
+    fontSize: typography.fontSize. md,
+    color:  colors.textSecondary,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
     lineHeight: 24,
     marginBottom: spacing.md,
   },
-  priceSection: {
+  priceSection:  {
     backgroundColor: colors.white,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
+    borderRadius: borderRadius. lg,
+    padding:  spacing.md,
     marginBottom: spacing.md,
-    ...shadows.sm,
+    ... shadows. sm,
   },
-  priceRow: {
+  priceRow:  {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: spacing.xs,
   },
-  label: {
-    fontSize: typography.fontSize.md,
+  label:  {
+    fontSize:  typography.fontSize.md,
     color: colors.textSecondary,
   },
   offerPrice: {
-    fontSize: typography.fontSize.xxl,
+    fontSize: typography. fontSize.xxl,
     fontWeight: 'bold',
-    color: colors.primary,
+    color:  colors.primary,
   },
   originalPrice: {
     fontSize: typography.fontSize.lg,
@@ -512,12 +528,12 @@ const styles = StyleSheet.create({
   },
   unitText: {
     fontSize: typography.fontSize.md,
-    color: colors.text,
+    color:  colors.text,
   },
   validitySection: {
     backgroundColor: colors.white,
     borderRadius: borderRadius.lg,
-    padding: spacing.md,
+    padding:  spacing.md,
     marginBottom: spacing.md,
     ...shadows.sm,
   },
@@ -526,82 +542,82 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.xs,
   },
-  validityText: {
-    fontSize: typography.fontSize.md,
-    color: colors.success,
+  validityText:  {
+    fontSize:  typography.fontSize.md,
+    color:  colors.success,
     fontWeight: '600',
     marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
-    marginRight: I18nManager.isRTL ? spacing.xs : 0,
+    marginRight: I18nManager.isRTL ? spacing.xs :  0,
   },
-  validityTextWarning: {
+  validityTextWarning:  {
     color: colors.error,
   },
   dateText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.textSecondary,
+    fontSize: typography.fontSize. sm,
+    color:  colors.textSecondary,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   catalogueCard: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     backgroundColor: colors.white,
-    borderRadius: borderRadius.lg,
+    borderRadius:  borderRadius.lg,
     padding: spacing.md,
-    marginBottom: spacing.md,
-    ...shadows.sm,
+    marginBottom: spacing. md,
+    ... shadows.sm,
   },
   catalogueInfo: {
     flex: 1,
   },
   catalogueHeader: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' :  'row',
     alignItems: 'center',
     marginBottom: spacing.xs,
   },
-  catalogueLabel: {
-    fontSize: typography.fontSize.sm,
-    color: colors.primary,
+  catalogueLabel:  {
+    fontSize:  typography.fontSize.sm,
+    color:  colors.primary,
     fontWeight: '600',
     marginLeft: I18nManager.isRTL ? 0 : spacing.xs,
-    marginRight: I18nManager.isRTL ? spacing.xs : 0,
+    marginRight: I18nManager.isRTL ? spacing. xs : 0,
   },
   catalogueTitle: {
     fontSize: typography.fontSize.md,
-    color: colors.text,
+    color:  colors.text,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
     marginBottom: spacing.xs,
   },
-  pageNumberBadge: {
+  pageNumberBadge:  {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     backgroundColor: colors.primary + '20',
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
     borderRadius: borderRadius.sm,
-    alignSelf: I18nManager.isRTL ? 'flex-end' : 'flex-start',
+    alignSelf: I18nManager.isRTL ? 'flex-end' :  'flex-start',
     gap: spacing.xs,
   },
   pageNumber: {
-    fontSize: typography.fontSize.sm,
-    color: colors.primary,
+    fontSize: typography. fontSize.sm,
+    color: colors. primary,
     fontWeight: '600',
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   storeCard: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.lg,
+    alignItems:  'center',
+    backgroundColor: colors. white,
+    borderRadius: borderRadius. lg,
     padding: spacing.md,
-    ...shadows.sm,
+    ... shadows.sm,
   },
   storeLogo: {
     width: 50,
-    height: 50,
+    height:  50,
     borderRadius: borderRadius.md,
     backgroundColor: colors.gray[100],
-    marginRight: I18nManager.isRTL ? 0 : spacing.md,
-    marginLeft: I18nManager.isRTL ? spacing.md : 0,
+    marginRight: I18nManager.isRTL ? 0 : spacing. md,
+    marginLeft: I18nManager.isRTL ? spacing.md :  0,
   },
   storeInfo: {
     flex: 1,
@@ -612,9 +628,9 @@ const styles = StyleSheet.create({
     color: colors.text,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
-  storeAction: {
-    fontSize: typography.fontSize.sm,
-    color: colors.primary,
+  storeAction:  {
+    fontSize:  typography.fontSize.sm,
+    color:  colors.primary,
     marginTop: spacing.xs,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
