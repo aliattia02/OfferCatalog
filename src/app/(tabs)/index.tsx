@@ -1,10 +1,11 @@
-
-// src/app/(tabs)/index.tsx - OPTIMIZED: Performance fixes
-import React, { useState, useEffect, useMemo, useCallback, memo } from 'react';
+// src/app/(tabs)/index.tsx - FIXED: Search bar redirects on any touch (mobile & web)
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
   ScrollView,
+  StyleSheet,
+  I18nManager,
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
@@ -55,98 +56,6 @@ interface CategoryGroup {
   catalogues: CatalogueWithStatus[];
 }
 
-// ✅ OPTIMIZATION 1: Memoized category button component
-const CategoryButton = memo(({
-  category,
-  onPress
-}: {
-  category: Category;
-  onPress: (category: Category) => void;
-}) => (
-  <TouchableOpacity
-    style={styles.categoryButton}
-    onPress={() => onPress(category)}
-    activeOpacity={0.7}
-  >
-    <View style={[styles.categoryIcon, { backgroundColor: category.color }]}>
-      <Ionicons name={category.icon as any} size={24} color={colors.white} />
-    </View>
-    <Text style={styles.categoryLabel} numberOfLines={1}>
-      {category.nameAr}
-    </Text>
-  </TouchableOpacity>
-));
-
-// ✅ OPTIMIZATION 2: Memoized catalogue card component
-const CatalogueCard = memo(({
-  catalogue,
-  storeName,
-  isFavorite,
-  onPress,
-  onToggleFavorite
-}: {
-  catalogue: CatalogueWithStatus;
-  storeName: string;
-  isFavorite: boolean;
-  onPress: () => void;
-  onToggleFavorite: () => void;
-}) => {
-  const getStatusBadgeStyle = useCallback((status: CatalogueStatus) => {
-    switch (status) {
-      case 'active': return { backgroundColor: colors.success };
-      case 'upcoming': return { backgroundColor: colors.warning };
-      case 'expired': return { backgroundColor: colors.gray[400] };
-    }
-  }, []);
-
-  return (
-    <View style={styles.catalogueThumbnailWrapper}>
-      <TouchableOpacity
-        style={styles.catalogueThumbnail}
-        onPress={onPress}
-        activeOpacity={0.7}
-      >
-        <View style={styles.thumbnailImageContainer}>
-          <Image
-            source={{ uri: catalogue.coverImage }}
-            style={styles.thumbnailImage}
-            resizeMode="cover"
-          />
-          <View style={[styles.statusBadgeThumbnail, getStatusBadgeStyle(catalogue.status)]}>
-            <View style={styles.statusDot} />
-          </View>
-
-          <TouchableOpacity
-            style={styles.favoriteButton}
-            onPress={onToggleFavorite}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={isFavorite ? 'heart' : 'heart-outline'}
-              size={18}
-              color={isFavorite ? colors.primary : colors.white}
-            />
-          </TouchableOpacity>
-
-          {catalogue.isLocalStore && (
-            <View style={styles.localBadge}>
-              <Text style={styles.localBadgeText}>محلي</Text>
-            </View>
-          )}
-        </View>
-
-        <Text style={styles.thumbnailStoreName} numberOfLines={1}>
-          {storeName}
-        </Text>
-
-        <Text style={styles.thumbnailDate} numberOfLines={1}>
-          {formatDateRange(catalogue.startDate, catalogue.endDate)}
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
-});
-
 export default function HomeScreen() {
   const { t } = useTranslation();
   const router = useRouter();
@@ -169,9 +78,7 @@ export default function HomeScreen() {
   const favoriteStoreIds = useAppSelector(state => state.favorites.storeIds);
   const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds);
   const userGovernorate = useAppSelector(state => state.settings.userGovernorate);
-
-  // ✅ OPTIMIZATION 3: Cache main categories (they never change)
-  const mainCategories = useMemo(() => getMainCategories(), []);
+  const mainCategories = getMainCategories();
 
   useFocusEffect(
     useCallback(() => {
@@ -220,8 +127,7 @@ export default function HomeScreen() {
     }
   };
 
-  // ✅ OPTIMIZATION 4: Extract date normalization to separate memoized function
-  const normalizeDate = useCallback((dateStr: string): string => {
+  const normalizeDate = (dateStr: string): string => {
     try {
       const parts = dateStr.split('-');
       if (parts.length === 3) {
@@ -235,10 +141,9 @@ export default function HomeScreen() {
       console.error('Error normalizing date:', dateStr, error);
       return dateStr;
     }
-  }, []);
+  };
 
-  // ✅ OPTIMIZATION 5: Memoize status calculation function
-  const getCatalogueStatus = useCallback((startDate: string, endDate: string): CatalogueStatus => {
+  const getCatalogueStatus = (startDate: string, endDate: string): CatalogueStatus => {
     try {
       const now = new Date();
       const normalizedStart = normalizeDate(startDate);
@@ -263,22 +168,21 @@ export default function HomeScreen() {
       console.error('❌ Error getting catalogue status:', error);
       return 'expired';
     }
-  }, [normalizeDate]);
+  };
 
-  // ✅ OPTIMIZATION 6: Optimized category groups - only recalculate when dependencies change
   const categoryGroups: CategoryGroup[] = useMemo(() => {
     console.log(`📚 [Home] Processing ${catalogues.length} catalogues...`);
 
-    // First pass: Add status to all catalogues (do this once)
-    const cataloguesWithStatus: CatalogueWithStatus[] = catalogues.map(cat => ({
-      ...cat,
-      status: getCatalogueStatus(cat.startDate, cat.endDate),
-    }));
+    const cataloguesWithStatus: CatalogueWithStatus[] = catalogues.map(cat => {
+      const status = getCatalogueStatus(cat.startDate, cat.endDate);
+      return {
+        ...cat,
+        status,
+      };
+    });
 
-    // Second pass: Filter active catalogues
     let activeCatalogues = cataloguesWithStatus.filter(cat => cat.status === 'active');
 
-    // Third pass: Apply location filter if needed
     if (userGovernorate) {
       activeCatalogues = activeCatalogues.filter(cat => {
         if (!cat.isLocalStore) return true;
@@ -286,14 +190,13 @@ export default function HomeScreen() {
       });
     }
 
-    // Fourth pass: Group by category
     const groups: { [categoryId: string]: CategoryGroup } = {};
 
     activeCatalogues.forEach(catalogue => {
       const categoryId = catalogue.categoryId || 'general';
+      const category = mainCategories.find(c => c.id === categoryId);
 
       if (!groups[categoryId]) {
-        const category = mainCategories.find(c => c.id === categoryId);
         groups[categoryId] = {
           categoryId,
           categoryName: category?.nameAr || t('categories.general'),
@@ -306,14 +209,12 @@ export default function HomeScreen() {
       groups[categoryId].catalogues.push(catalogue);
     });
 
-    // Fifth pass: Sort catalogues within groups
     Object.values(groups).forEach(group => {
       group.catalogues.sort((a, b) =>
-        new Date(b.startDate).getTime() - new Date(a.startDate).getTime()
+        new Date(normalizeDate(b.startDate)).getTime() - new Date(normalizeDate(a.startDate)).getTime()
       );
     });
 
-    // Final pass: Sort groups by category order
     const groupArray = Object.values(groups);
     groupArray.sort((a, b) => {
       const orderA = mainCategories.findIndex(c => c.id === a.categoryId);
@@ -322,17 +223,15 @@ export default function HomeScreen() {
     });
 
     return groupArray;
-  }, [catalogues, userGovernorate, mainCategories, t, getCatalogueStatus]);
+  }, [catalogues, mainCategories, userGovernorate, t]);
 
-  // ✅ OPTIMIZATION 7: Optimized top stores calculation
   const topStoresByCatalogueCount = useMemo(() => {
     console.log('📊 [Home] Calculating top stores by catalogue count...');
 
-    // Reuse cataloguesWithStatus from categoryGroups if possible
-    const cataloguesWithStatus: CatalogueWithStatus[] = catalogues.map(cat => ({
-      ...cat,
-      status: getCatalogueStatus(cat.startDate, cat.endDate),
-    }));
+    const cataloguesWithStatus: CatalogueWithStatus[] = catalogues.map(cat => {
+      const status = getCatalogueStatus(cat.startDate, cat.endDate);
+      return { ...cat, status };
+    });
 
     let activeCatalogues = cataloguesWithStatus.filter(cat => cat.status === 'active');
 
@@ -364,14 +263,13 @@ export default function HomeScreen() {
     console.log(`✅ [Home] Top 3 stores:`, sortedStores.map(s => s.nameAr));
 
     return sortedStores;
-  }, [stores, catalogues, userGovernorate, getCatalogueStatus]);
+  }, [stores, catalogues, userGovernorate]);
 
-  // ✅ OPTIMIZATION 8: Memoized event handlers
-  const handleOfferPress = useCallback((offer: OfferWithCatalogue) => {
+  const handleOfferPress = (offer: OfferWithCatalogue) => {
     router.push(`/offer/${offer.id}`);
-  }, [router]);
+  };
 
-  const handleAddToBasket = useCallback((offer: OfferWithCatalogue) => {
+  const handleAddToBasket = (offer: OfferWithCatalogue) => {
     dispatch(addToBasket({
       offer: {
         ...offer,
@@ -380,37 +278,45 @@ export default function HomeScreen() {
       },
       storeName: offer.storeName,
     }));
-  }, [dispatch]);
+  };
 
-  const handleToggleFavoriteSubcategory = useCallback((subcategoryId: string) => {
+  const handleToggleFavoriteSubcategory = (subcategoryId: string) => {
     dispatch(toggleFavoriteSubcategory(subcategoryId));
-  }, [dispatch]);
+  };
 
-  const handleCategoryPress = useCallback((category: Category) => {
+  const handleCategoryPress = (category: Category) => {
     router.push({
       pathname: '/(tabs)/flyers',
       params: { mainCategoryId: category.id },
     });
-  }, [router]);
+  };
 
-  const handleStorePress = useCallback((storeId: string) => {
+  const handleStorePress = (storeId: string) => {
     router.push(`/store/${storeId}`);
-  }, [router]);
+  };
 
-  const handleCataloguePress = useCallback((catalogueId: string) => {
+  const handleCataloguePress = (catalogueId: string) => {
     router.push(`/flyer/${catalogueId}`);
-  }, [router]);
+  };
 
-  const handleToggleFavoriteStore = useCallback((storeId: string) => {
+  const handleToggleFavoriteStore = (storeId: string) => {
     dispatch(toggleFavoriteStore(storeId));
-  }, [dispatch]);
+  };
 
-  const handleSearchPress = useCallback(() => {
+  // ✅ FIXED: Navigate to search page on any touch of the search bar container
+  const handleSearchPress = () => {
     router.push('/search');
-  }, [router]);
+  };
 
-  // ✅ OPTIMIZATION 9: Memoized store name getter
-  const getStoreName = useCallback((catalogue: CatalogueWithStatus): string => {
+  const getStatusBadgeStyle = (status: CatalogueStatus) => {
+    switch (status) {
+      case 'active': return { backgroundColor: colors.success };
+      case 'upcoming': return { backgroundColor: colors.warning };
+      case 'expired': return { backgroundColor: colors.gray[400] };
+    }
+  };
+
+  const getStoreName = (catalogue: CatalogueWithStatus): string => {
     if (catalogue.isLocalStore) {
       if (catalogue.localStoreNameAr && catalogue.localStoreNameAr !== 'غير محدد') {
         return catalogue.localStoreNameAr;
@@ -420,10 +326,9 @@ export default function HomeScreen() {
 
     const store = stores.find(s => s.id === catalogue.storeId);
     return store?.nameAr || catalogue.titleAr.replace('عروض ', '');
-  }, [stores]);
+  };
 
-  // ✅ OPTIMIZATION 10: Memoized horizontal categories renderer
-  const renderHorizontalCategories = useMemo(() => (
+  const renderHorizontalCategories = () => (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
@@ -431,34 +336,83 @@ export default function HomeScreen() {
       contentContainerStyle={styles.categoriesContainer}
     >
       {mainCategories.map(category => (
-        <CategoryButton
+        <TouchableOpacity
           key={category.id}
-          category={category}
-          onPress={handleCategoryPress}
-        />
+          style={styles.categoryButton}
+          onPress={() => handleCategoryPress(category)}
+          activeOpacity={0.7}
+        >
+          <View style={[
+            styles.categoryIcon,
+            { backgroundColor: category.color }
+          ]}>
+            <Ionicons
+              name={category.icon as any}
+              size={24}
+              color={colors.white}
+            />
+          </View>
+          <Text style={styles.categoryLabel} numberOfLines={1}>
+            {category.nameAr}
+          </Text>
+        </TouchableOpacity>
       ))}
     </ScrollView>
-  ), [mainCategories, handleCategoryPress]);
+  );
 
-  // ✅ OPTIMIZATION 11: Memoized catalogue card renderer
-  const renderCatalogueCard = useCallback((catalogue: CatalogueWithStatus) => {
+  const renderCatalogueCard = (catalogue: CatalogueWithStatus) => {
     const storeName = getStoreName(catalogue);
     const isFavorite = favoriteStoreIds.includes(catalogue.storeId);
 
     return (
-      <CatalogueCard
-        key={catalogue.id}
-        catalogue={catalogue}
-        storeName={storeName}
-        isFavorite={isFavorite}
-        onPress={() => handleCataloguePress(catalogue.id)}
-        onToggleFavorite={() => handleToggleFavoriteStore(catalogue.storeId)}
-      />
-    );
-  }, [getStoreName, favoriteStoreIds, handleCataloguePress, handleToggleFavoriteStore]);
+      <View key={catalogue.id} style={styles.catalogueThumbnailWrapper}>
+        <TouchableOpacity
+          style={styles.catalogueThumbnail}
+          onPress={() => handleCataloguePress(catalogue.id)}
+          activeOpacity={0.7}
+        >
+          <View style={styles.thumbnailImageContainer}>
+            <Image
+              source={{ uri: catalogue.coverImage }}
+              style={styles.thumbnailImage}
+              resizeMode="cover"
+            />
+            <View style={[styles.statusBadgeThumbnail, getStatusBadgeStyle(catalogue.status)]}>
+              <View style={styles.statusDot} />
+            </View>
 
-  // ✅ OPTIMIZATION 12: Memoized category group renderer
-  const renderCategoryGroup = useCallback((group: CategoryGroup) => (
+            <TouchableOpacity
+              style={styles.favoriteButton}
+              onPress={() => handleToggleFavoriteStore(catalogue.storeId)}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={isFavorite ? 'heart' : 'heart-outline'}
+                size={18}
+                color={isFavorite ? colors.primary : colors.white}
+              />
+            </TouchableOpacity>
+
+            {catalogue.isLocalStore && (
+              <View style={styles.localBadge}>
+                <Text style={styles.localBadgeText}>محلي</Text>
+              </View>
+            )}
+          </View>
+
+          <Text style={styles.thumbnailStoreName} numberOfLines={1}>
+            {storeName}
+          </Text>
+
+          <Text style={styles.thumbnailDate} numberOfLines={1}>
+            {formatDateRange(normalizeDate(catalogue.startDate), normalizeDate(catalogue.endDate))}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
+  const renderCategoryGroup = (group: CategoryGroup) => (
     <View key={group.categoryId} style={styles.categoryGroup}>
       <View style={styles.categoryHeader}>
         <View style={[styles.categoryHeaderIcon, { backgroundColor: group.categoryColor }]}>
@@ -473,7 +427,7 @@ export default function HomeScreen() {
         {group.catalogues.map(renderCatalogueCard)}
       </View>
     </View>
-  ), [t, renderCatalogueCard]);
+  );
 
   return (
     <ScrollView
@@ -489,6 +443,7 @@ export default function HomeScreen() {
         />
       }
     >
+      {/* ✅ FIXED: Entire search container is now touchable */}
       <TouchableOpacity
         style={styles.searchContainer}
         onPress={handleSearchPress}
@@ -507,7 +462,7 @@ export default function HomeScreen() {
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('home.mainCategories')}</Text>
-        {renderHorizontalCategories}
+        {renderHorizontalCategories()}
       </View>
 
       <View style={styles.section}>
@@ -610,7 +565,6 @@ export default function HomeScreen() {
     </ScrollView>
   );
 }
-
 
 const styles = StyleSheet.create({
   container: {

@@ -62,7 +62,7 @@ export const CompactLocationSelector: React.FC<CompactLocationSelectorProps> = (
     }
 
     setShowModal(false);
-    onLocationChange? .(governorate);
+onLocationChange?.(governorate)
   };
 
   const handleClearLocation = async () => {
@@ -85,7 +85,7 @@ export const CompactLocationSelector: React.FC<CompactLocationSelectorProps> = (
     }
 
     setShowModal(false);
-    onLocationChange? .(null);
+    onLocationChange?.(null);
   };
 
   const getDisplayText = () => {
