@@ -134,7 +134,7 @@ export interface BasketItem {
 }
 
 /**
- * User Profile Type - ✅ UPDATED WITH LOCATION
+ * User Profile Type - ✅ UPDATED WITH PHONE NUMBER
  */
 export interface UserProfile {
   uid: string;
@@ -142,8 +142,9 @@ export interface UserProfile {
   displayName?: string | null;
   photoURL?: string | null;
   isAdmin: boolean;
+  phoneNumber?: string | null; // ✅ NEW
 
-  // ✅ NEW: Location preferences
+  // Location preferences
   location?: {
     governorate: string | null;
     city: string | null;
@@ -204,13 +205,14 @@ export interface BasketState {
 }
 
 /**
- * Settings State Type - ✅ UPDATED WITH LOCATION
+ * Settings State Type - UPDATED WITH LOCATION
  */
 export interface SettingsState {
   userGovernorate: string | null;
   userCity: string | null;
   language: 'ar' | 'en';
   notificationsEnabled: boolean;
+  isRTL?: boolean;
 }
 
 /**
@@ -279,3 +281,12 @@ export interface Category {
 }
 
 export type Timestamp = any;
+export interface SettingsState {
+  language: 'ar' | 'en';
+  notificationsEnabled: boolean;
+  isRTL: boolean;
+  userGovernorate: string | null;
+  userCity: string | null;
+}
+
+// Also ensure UserProfile has location

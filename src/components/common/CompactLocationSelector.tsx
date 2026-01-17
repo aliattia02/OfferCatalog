@@ -1,5 +1,5 @@
-// components/common/CompactLocationSelector.tsx - ✅ UPDATED WITH FIRESTORE SYNC
-import React, { useState } from 'react';
+// components/common/CompactLocationSelector.tsx - FIXED WITH PROPER SYNC
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -20,7 +20,7 @@ import {
 } from '../../data/stores';
 
 interface CompactLocationSelectorProps {
-  onLocationChange?: (governorate: GovernorateId | null) => void;
+  onLocationChange?:  (governorate: GovernorateId | null) => void;
 }
 
 export const CompactLocationSelector: React.FC<CompactLocationSelectorProps> = ({
@@ -29,50 +29,72 @@ export const CompactLocationSelector: React.FC<CompactLocationSelectorProps> = (
   const dispatch = useAppDispatch();
   const userGovernorate = useAppSelector(state => state.settings.userGovernorate) as GovernorateId | null;
   const isAuthenticated = useAppSelector(state => state.auth.isAuthenticated);
+  const user = useAppSelector(state => state. auth.user);
 
   const [showModal, setShowModal] = useState(false);
 
+  // DEBUG: Log when userGovernorate changes
+  useEffect(() => {
+    console.log('🔍 [CompactLocationSelector] userGovernorate changed:', userGovernorate);
+    console.log('🔍 [CompactLocationSelector] isAuthenticated:', isAuthenticated);
+    console.log('🔍 [CompactLocationSelector] user uid:', user?. uid);
+  }, [userGovernorate, isAuthenticated, user]);
+
   const governorates = Object.keys(governorateNames) as GovernorateId[];
 
-  const handleGovernorateSelect = async (governorate: GovernorateId) => {
+  const handleGovernorateSelect = async (governorate:  GovernorateId) => {
     console.log('📍 [CompactLocationSelector] Governorate selected:', governorate);
 
-    // ✅ Update Redux state immediately (for instant UI update)
+    // Update Redux state immediately (for instant UI update)
     dispatch(setUserLocation({ governorate, city: null }));
 
-    // ✅ Sync to Firestore if user is logged in
-    if (isAuthenticated) {
-      console.log('💾 [CompactLocationSelector] Syncing to Firestore...');
-      dispatch(syncLocation({ governorate, city: null }));
+    // Sync to Firestore if user is logged in
+    if (isAuthenticated && user) {
+      console.log('💾 [CompactLocationSelector] Syncing to Firestore for user:', user.uid);
+      try {
+        await dispatch(syncLocation({ governorate, city: null })).unwrap();
+        console.log('✅ [CompactLocationSelector] Location synced to Firestore');
+      } catch (error) {
+        console.error('❌ [CompactLocationSelector] Failed to sync location:', error);
+      }
     } else {
       console.log('ℹ️ [CompactLocationSelector] User not logged in, skipping Firestore sync');
     }
 
     setShowModal(false);
-    onLocationChange?.(governorate);
+    onLocationChange? .(governorate);
   };
 
   const handleClearLocation = async () => {
     console.log('📍 [CompactLocationSelector] Clearing location');
 
-    // ✅ Clear Redux state immediately
+    // Clear Redux state immediately
     dispatch(clearUserLocation());
 
-    // ✅ Sync to Firestore if user is logged in
-    if (isAuthenticated) {
-      console.log('💾 [CompactLocationSelector] Syncing clear to Firestore...');
-      dispatch(syncLocation({ governorate: null, city: null }));
+    // Sync to Firestore if user is logged in
+    if (isAuthenticated && user) {
+      console.log('💾 [CompactLocationSelector] Syncing clear to Firestore.. .');
+      try {
+        await dispatch(syncLocation({ governorate: null, city:  null })).unwrap();
+        console.log('✅ [CompactLocationSelector] Location cleared in Firestore');
+      } catch (error) {
+        console. error('❌ [CompactLocationSelector] Failed to clear location in Firestore:', error);
+      }
     } else {
       console.log('ℹ️ [CompactLocationSelector] User not logged in, skipping Firestore sync');
     }
 
     setShowModal(false);
-    onLocationChange?.(null);
+    onLocationChange? .(null);
   };
 
   const getDisplayText = () => {
-    if (!userGovernorate) return 'كل المحافظات';
-    return getGovernorateName(userGovernorate);
+    if (! userGovernorate) {
+      return 'كل المحافظات';
+    }
+    const name = getGovernorateName(userGovernorate);
+    console.log('📍 [CompactLocationSelector] Display:', name, '(governorate:', userGovernorate + ')');
+    return name;
   };
 
   return (
@@ -89,7 +111,7 @@ export const CompactLocationSelector: React.FC<CompactLocationSelectorProps> = (
         />
         <Text
           style={[
-            styles.text,
+            styles. text,
             userGovernorate && styles.textActive
           ]}
           numberOfLines={1}
@@ -128,30 +150,30 @@ export const CompactLocationSelector: React.FC<CompactLocationSelectorProps> = (
               <TouchableOpacity
                 style={[
                   styles.modalItem,
-                  !userGovernorate && styles.modalItemActive,
+                  ! userGovernorate && styles.modalItemActive,
                 ]}
                 onPress={handleClearLocation}
               >
                 <Ionicons
                   name="apps"
                   size={20}
-                  color={!userGovernorate ? colors.primary : colors.gray[400]}
+                  color={! userGovernorate ?  colors.primary : colors.gray[400]}
                 />
                 <Text
                   style={[
-                    styles.modalItemText,
-                    !userGovernorate && styles.modalItemTextActive,
+                    styles. modalItemText,
+                    !userGovernorate && styles. modalItemTextActive,
                   ]}
                 >
                   كل المحافظات
                 </Text>
-                {!userGovernorate && (
-                  <Ionicons name="checkmark" size={20} color={colors.primary} />
+                {! userGovernorate && (
+                  <Ionicons name="checkmark" size={20} color={colors. primary} />
                 )}
               </TouchableOpacity>
 
               {/* Individual Governorates */}
-              {governorates.map((gov) => (
+              {governorates. map((gov) => (
                 <TouchableOpacity
                   key={gov}
                   style={[
@@ -163,15 +185,15 @@ export const CompactLocationSelector: React.FC<CompactLocationSelectorProps> = (
                   <Ionicons
                     name="location"
                     size={20}
-                    color={userGovernorate === gov ? colors.primary : colors.gray[400]}
+                    color={userGovernorate === gov ?  colors.primary : colors.gray[400]}
                   />
                   <Text
                     style={[
-                      styles.modalItemText,
+                      styles. modalItemText,
                       userGovernorate === gov && styles.modalItemTextActive,
                     ]}
                   >
-                    {governorateNames[gov].ar}
+                    {governorateNames[gov]. ar}
                   </Text>
                   {userGovernorate === gov && (
                     <Ionicons name="checkmark" size={20} color={colors.primary} />
@@ -185,6 +207,7 @@ export const CompactLocationSelector: React.FC<CompactLocationSelectorProps> = (
     </>
   );
 };
+
 
 const styles = StyleSheet.create({
   container: {

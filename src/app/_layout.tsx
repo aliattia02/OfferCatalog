@@ -1,4 +1,4 @@
-// app/_layout.tsx - UPDATED WITH AUTH STATE CHECK ON STARTUP
+// app/_layout.tsx - FIXED: Prevent auth listener from clearing state during sign-up
 import React, { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { Provider } from 'react-redux';
@@ -45,17 +45,49 @@ export default function RootLayout() {
           console.log(`🧹 Cleaned ${cleaned} expired cache entries on startup`);
         }
 
+        // ✅ FIX: Debounce auth changes to prevent race conditions during sign-up
+        let authChangeTimeout: NodeJS.Timeout | null = null;
+        let lastAuthState: any = null;
+
         // Listen to auth state changes (for future changes)
         const unsubscribe = onAuthChange((user) => {
           console.log('🔄 Auth state changed:', user ? user.email : 'Not logged in');
 
-          if (user) {
-            store.dispatch(setUser(user));
-          } else {
-            store.dispatch(clearUser());
-            // Clear user-specific caches on sign-out
-            cacheService.clearUserCaches();
+          // Clear any pending timeout
+          if (authChangeTimeout) {
+            clearTimeout(authChangeTimeout);
           }
+
+          // ✅ Debounce: Wait 500ms before processing auth change
+          // This prevents the temporary "not logged in" state during account creation
+          authChangeTimeout = setTimeout(() => {
+            // Only process if state actually changed
+            const currentState = user ? user.uid : null;
+            if (currentState === lastAuthState) {
+              console.log('⏭️ Auth state unchanged, skipping');
+              return;
+            }
+
+            lastAuthState = currentState;
+
+            if (user) {
+              console.log('✅ User authenticated, updating store');
+              store.dispatch(setUser(user));
+            } else {
+              // ✅ Only clear if we're sure the user signed out
+              // Check Redux state to see if we're in the middle of sign-up
+              const state = store.getState();
+              const isSigningIn = state.auth.loading;
+
+              if (!isSigningIn) {
+                console.log('🗑️ User signed out, clearing store');
+                store.dispatch(clearUser());
+                cacheService.clearUserCaches();
+              } else {
+                console.log('⏸️ Sign-in in progress, ignoring temporary auth state');
+              }
+            }
+          }, 500); // 500ms debounce
         });
 
         // Start background sync service
@@ -69,6 +101,9 @@ export default function RootLayout() {
         // Cleanup
         return () => {
           console.log('🛑 Cleaning up...');
+          if (authChangeTimeout) {
+            clearTimeout(authChangeTimeout);
+          }
           unsubscribe();
           stopBackgroundSync();
         };

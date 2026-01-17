@@ -1,4 +1,4 @@
-// src/components/flyers/OfferCard.tsx - UPDATED for subcategory favorites
+// src/components/flyers/OfferCard.tsx - COMPACT LAYOUT WITH FIXED BUTTON POSITION
 import React from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -36,10 +36,6 @@ export const OfferCard: React.FC<OfferCardProps> = ({
             <Text style={styles.discountText}>{discount}%</Text>
           </View>
         )}
-        {/* 
-          UPDATED: Now toggles the subcategory (categoryId) instead of individual offer
-          When clicked, it favorites/unfavorites the entire subcategory
-        */}
         {onToggleFavorite && (
           <TouchableOpacity style={styles.favoriteButton} onPress={onToggleFavorite}>
             <Ionicons
@@ -50,25 +46,39 @@ export const OfferCard: React.FC<OfferCardProps> = ({
           </TouchableOpacity>
         )}
       </View>
-      
+
       <View style={styles.content}>
+        {/* Product Name */}
         <Text style={styles.name} numberOfLines={2}>
           {getName(offer)}
         </Text>
-        
+
+        {/* Description (if available) */}
         {getDescription(offer) && (
           <Text style={styles.description} numberOfLines={1}>
             {getDescription(offer)}
           </Text>
         )}
-        
-        <View style={styles.priceContainer}>
-          <Text style={styles.offerPrice}>{formatCurrency(offer.offerPrice)}</Text>
+
+        {/* Spacer to push prices and button to bottom */}
+        <View style={styles.spacer} />
+
+        {/* ✅ Price Section - Compact 2 Rows */}
+        <View style={styles.priceSection}>
+          {/* Offer Price Row */}
+          <View style={styles.priceRow}>
+            <Text style={styles.offerPrice}>{formatCurrency(offer.offerPrice)}</Text>
+          </View>
+
+          {/* Original Price Row (if available) */}
           {offer.originalPrice && (
-            <Text style={styles.originalPrice}>{formatCurrency(offer.originalPrice)}</Text>
+            <View style={styles.originalPriceRow}>
+              <Text style={styles.originalPrice}>{formatCurrency(offer.originalPrice)}</Text>
+            </View>
           )}
         </View>
-        
+
+        {/* ✅ Add Button - Always at Bottom */}
         <TouchableOpacity style={styles.addButton} onPress={onAddToBasket}>
           <Ionicons name="add" size={20} color={colors.white} />
           <Text style={styles.addButtonText}>أضف للسلة</Text>
@@ -79,15 +89,15 @@ export const OfferCard: React.FC<OfferCardProps> = ({
 };
 
 const styles = StyleSheet.create({
-container: {
-  backgroundColor: colors.white,
-  borderRadius: borderRadius.lg,
-  overflow: 'hidden',
-  ...shadows.sm,
-  marginBottom: spacing.md,
-  width: '100%', // CHANGED: from '48%' to '100%' (parent controls width now)
-  flex: 1, // ADD: allows proper flex sizing
-},
+  container: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    overflow: 'hidden',
+    ...shadows.sm,
+    marginBottom: spacing.md,
+    width: '100%',
+    flex: 1,
+  },
   imageContainer: {
     position: 'relative',
     height: 120,
@@ -123,6 +133,9 @@ container: {
   },
   content: {
     padding: spacing.sm,
+    display: 'flex',
+    flexDirection: 'column',
+    minHeight: 130, // ✅ Fixed minimum height for consistent cards
   },
   name: {
     fontSize: typography.fontSize.md,
@@ -130,38 +143,51 @@ container: {
     color: colors.text,
     marginBottom: spacing.xs,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
+    lineHeight: 18,
   },
   description: {
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
-    marginBottom: spacing.sm,
+    marginBottom: spacing.xs,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
-  priceContainer: {
+  // ✅ Spacer pushes everything below to the bottom
+  spacer: {
+    flex: 1,
+  },
+  // ✅ NEW: Compact price section with 2 rows
+  priceSection: {
+    marginBottom: spacing.xs,
+  },
+  priceRow: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    marginBottom: 2, // Small gap between prices
   },
   offerPrice: {
     fontSize: typography.fontSize.lg,
     fontWeight: 'bold',
     color: colors.primary,
-    marginRight: I18nManager.isRTL ? 0 : spacing.sm,
-    marginLeft: I18nManager.isRTL ? spacing.sm : 0,
+  },
+  originalPriceRow: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
   },
   originalPrice: {
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
     textDecorationLine: 'line-through',
   },
+  // ✅ Button always stays at bottom
   addButton: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.primary,
     borderRadius: borderRadius.md,
-    paddingVertical: spacing.xs,
+    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.sm,
+    marginTop: spacing.xs, // Small gap above button
   },
   addButtonText: {
     color: colors.white,

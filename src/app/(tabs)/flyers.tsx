@@ -85,7 +85,7 @@ export default function FlyersScreen() {
   const [viewMode, setViewMode] = useState<'catalogues' | 'offers'>(
     initialViewModeParam === 'offers' ? 'offers' : 'catalogues'
   );
-  const [statusFilter, setStatusFilter] = useState<FilterType>('all');
+const [statusFilter, setStatusFilter] = useState<FilterType>('active');
   const [offersStatusFilter, setOffersStatusFilter] = useState<FilterType>('active');
   const [refreshing, setRefreshing] = useState(false);
   const [offersData, setOffersData] = useState<OfferWithCatalogue[]>([]);
@@ -992,8 +992,8 @@ return (
             </View>
           )}
 
-          {!cataloguesLoading && (nationalStoreGroups.length > 0 || localStoreGroups.length > 0) ? (
-            <>
+{!cataloguesLoading && (nationalStoreGroups.length > 0 || localStoresByGovernorate.length > 0) ? (
+    <>
               {/* National Stores Section */}
               {nationalStoreGroups.length > 0 && (
                 <View style={styles.section}>
@@ -1471,15 +1471,15 @@ governorateCount: {
     height: '100%',
   },
   statusBadgeThumbnail: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 1.5,
-    borderColor: colors.white,
-  },
+  position: 'absolute',
+  top: 6,
+  right: 6,
+  width: 14,        // Increased from 10
+  height: 14,       // Increased from 10
+  borderRadius: 7,  // Half of width/height
+  borderWidth: 2,   // Increased from 1.5
+  borderColor: colors.white,
+},
   statusDot: {
     width: '100%',
     height: '100%',
