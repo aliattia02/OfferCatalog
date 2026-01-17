@@ -149,7 +149,8 @@ export default function HomeScreen() {
 
   const getCatalogueStatus = (startDate: string, endDate: string): CatalogueStatus => {
     // Use the unified cache service for status calculation
-    return cacheService.getCatalogueStatus('temp', startDate, endDate);
+    // Note: catalogueId not needed for date-based status calculation
+    return cacheService.getCatalogueStatus('status_calc', startDate, endDate);
   };
 
   const categoryGroups: CategoryGroup[] = useMemo(() => {
