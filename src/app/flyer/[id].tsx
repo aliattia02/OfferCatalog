@@ -28,7 +28,7 @@ import { getCatalogueById } from '../../data/catalogueRegistry';
 import { getOffersByCatalogue } from '../../services/offerService';
 import { formatCurrency, calculateDiscount } from '../../utils/helpers';
 import { formatDateRange } from '../../utils/catalogueUtils';
-import { getCatalogueStatusCached } from '../../utils/catalogueStatusCache';
+import { cacheService } from '../../services/cacheService';
 import { logScreenView, logViewItem, logAddToCart } from '../../services/analyticsService';
 import type { OfferWithCatalogue } from '../../services/offerService';
 import type { Catalogue } from '../../types';
@@ -183,7 +183,7 @@ export default function FlyerDetailScreen() {
   // Helper function to get catalogue status (using cached version)
   const getCatalogueStatus = useCallback((startDate: string, endDate: string): CatalogueStatus => {
     if (!catalogue) return 'expired';
-    return getCatalogueStatusCached(catalogue.id, startDate, endDate);
+    return cacheService.getCatalogueStatus(catalogue.id, startDate, endDate);
   }, [catalogue?.id]);
 
   // Find next catalogue logic
