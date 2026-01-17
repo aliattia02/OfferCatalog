@@ -27,7 +27,7 @@ export const CatalogueCard: React.FC<CatalogueCardProps> = ({
       <View style={styles.overlay}>
         <View style={styles.storeInfo}>
           <CachedImage 
-            source={typeof store.logo === 'string' ? store.logo : store.logo} 
+            source={store.logo} 
             style={styles.storeLogo} 
             contentFit="contain" 
           />

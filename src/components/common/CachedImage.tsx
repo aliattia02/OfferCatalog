@@ -35,7 +35,17 @@ export const CachedImage: React.FC<CachedImageProps> = ({
   const imageSource = typeof source === 'string' ? { uri: source } : source;
   
   // Map resizeMode to contentFit if provided (for backwards compatibility)
-  const finalContentFit = resizeMode ? resizeMode as any : contentFit;
+  let finalContentFit: 'cover' | 'contain' | 'fill' | 'none' | 'scale-down' = contentFit;
+  if (resizeMode) {
+    // Map React Native resizeMode to expo-image contentFit
+    const resizeModeMap: Record<string, 'cover' | 'contain' | 'fill' | 'none' | 'scale-down'> = {
+      'cover': 'cover',
+      'contain': 'contain',
+      'stretch': 'fill',
+      'center': 'none',
+    };
+    finalContentFit = resizeModeMap[resizeMode] || contentFit;
+  }
 
   // Default blurhash placeholder if none provided
   const defaultPlaceholder = 'L6Pj0^jE.AyE_3t7t7R**0o#DgR4';
