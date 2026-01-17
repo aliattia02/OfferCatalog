@@ -1,5 +1,5 @@
 // src/app/(tabs)/stores.tsx - FIXED LOCAL STORE FILTERING
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   TouchableOpacity,
   I18nManager,
 } from 'react-native';
-import { useRouter, Stack } from 'expo-router';
+import { useRouter, Stack, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -17,6 +17,7 @@ import { StoreCard } from '../../components/stores';
 import { LocationSelector } from '../../components/common';
 import { useAppSelector } from '../../store/hooks';
 import { useSafeTabBarHeight } from '../../hooks';
+import { logScreenView, logSelectContent } from '../../services/analyticsService';
 import {
   getAllBranches,
   type GovernorateId,
@@ -37,6 +38,12 @@ export default function StoresScreen() {
   const stores = useAppSelector(state => state.stores.stores);
   const userGovernorate = useAppSelector(state => state.settings.userGovernorate) as GovernorateId | null;
   const userCity = useAppSelector(state => state.settings.userCity) as CityId | null;
+
+  useFocusEffect(
+    useCallback(() => {
+      logScreenView('Stores');
+    }, [])
+  );
 
   // Filter stores based on location and filter type
   const filteredStores = useMemo(() => {
@@ -98,6 +105,7 @@ export default function StoresScreen() {
   }, [stores, userGovernorate, userCity, storeFilter]);
 
   const handleStorePress = (storeId: string) => {
+    logSelectContent('store', storeId);
     router.push(`/store/${storeId}`);
   };
 
