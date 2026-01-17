@@ -37,6 +37,7 @@ const { width, height } = Dimensions.get('window');
 const SWIPE_THRESHOLD = 50;
 const SWIPE_VELOCITY_THRESHOLD = 0.3;
 const DOUBLE_TAP_DELAY = 300;
+const PLACEHOLDER_PAGE_IMAGE_URL = 'https://placehold.co/600x800/cccccc/ffffff?text=No+Image';
 
 type CatalogueStatus = 'active' | 'upcoming' | 'expired';
 
@@ -636,7 +637,7 @@ export default function FlyerDetailScreen() {
                 onPress={() => setFullScreenImage(true)}
               >
                 <CachedImage
-                  source={currentPageData?.imageUrl || 'https://placehold.co/600x800/cccccc/ffffff?text=No+Image'}
+                  source={currentPageData?.imageUrl || PLACEHOLDER_PAGE_IMAGE_URL}
                   style={styles.pageImage}
                   contentFit="contain"
                 />
@@ -766,7 +767,7 @@ export default function FlyerDetailScreen() {
                 ]}
               >
                 <CachedImage
-                  source={currentPageData?.imageUrl || 'https://placehold.co/600x800/cccccc/ffffff?text=No+Image'}
+                  source={currentPageData?.imageUrl || PLACEHOLDER_PAGE_IMAGE_URL}
                   style={styles.fullScreenImage}
                   contentFit="contain"
                 />
