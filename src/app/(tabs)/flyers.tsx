@@ -1,5 +1,5 @@
 // app/(tabs)/flyers.tsx - PART 1: IMPORTS & STATE MANAGEMENT - UPDATED FOR LOCAL STORE SPLITTING + LOCATION FILTERING
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -10,16 +10,15 @@ import {
   I18nManager,
   RefreshControl,
   ActivityIndicator,
-  Image,
   Dimensions,
 } from 'react-native';
 
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 import { getTodayString, normalizeDateString } from '../../utils/dateUtils';
 import { getOfferStats } from '../../services/offerService';
-import { CompactLocationSelector } from '../../components/common';
+import { CompactLocationSelector, CachedImage } from '../../components/common';
 import type { GovernorateId } from '../../data/stores';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { OfferCard } from '../../components/flyers';
@@ -36,6 +35,8 @@ import {
   getCategoryById
 } from '../../data/categories';
 import { formatDateRange } from '../../utils/catalogueUtils';
+import { getCatalogueStatusCached } from '../../utils/catalogueStatusCache';
+import { logScreenView, logSelectContent, logViewItemList } from '../../services/analyticsService';
 import { useSafeTabBarHeight } from '../../hooks';
 import { stores, getStoreById, getGovernorateName } from '../../data/stores';
 import type { Catalogue } from '../../types';
@@ -91,6 +92,9 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
   const [offersData, setOffersData] = useState<OfferWithCatalogue[]>([]);
   const [offersLoading, setOffersLoading] = useState(false);
   const [allOffersForStats, setAllOffersForStats] = useState<OfferWithCatalogue[]>([]);
+  
+  // Debounce timer ref for offer loading
+  const loadOffersTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Redux selectors
   const catalogues = useAppSelector(state => state.offers.catalogues);
@@ -100,6 +104,13 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
 
   // 🔥 NEW: Get user location from settings
   const userGovernorate = useAppSelector(state => state.settings.userGovernorate) as GovernorateId | null;
+
+  // Track screen view
+  useFocusEffect(
+    React.useCallback(() => {
+      logScreenView('Flyers', viewMode === 'offers' ? 'FlyersOffers' : 'FlyersCatalogues');
+    }, [viewMode])
+  );
 
   const mainCategories = getMainCategories();
   const mainSubcategories = useMemo(() => {
@@ -215,10 +226,24 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
     loadAllOffersForStats();
   }, []);
 
-  // Load offers when in offers view - 🔥 UPDATED to include userGovernorate
+  // Load offers when in offers view - 🔥 UPDATED to include userGovernorate with DEBOUNCING
   useEffect(() => {
     if (viewMode === 'offers') {
-      loadOffers();
+      // Clear existing timeout
+      if (loadOffersTimeoutRef.current) {
+        clearTimeout(loadOffersTimeoutRef.current);
+      }
+      
+      // Debounce by 300ms
+      loadOffersTimeoutRef.current = setTimeout(() => {
+        loadOffers();
+      }, 300);
+      
+      return () => {
+        if (loadOffersTimeoutRef.current) {
+          clearTimeout(loadOffersTimeoutRef.current);
+        }
+      };
     }
   }, [viewMode, selectedSubcategory, offersStatusFilter, selectedMainCategory, selectedStore, userGovernorate]);
 
@@ -301,20 +326,10 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
     setRefreshing(false);
   };
 
-  const getCatalogueStatus = (startDate: string, endDate: string): CatalogueStatus => {
-    const now = new Date();
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    now.setHours(0, 0, 0, 0);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
+  // Remove inline getCatalogueStatus - use cached version from utils
+  // const getCatalogueStatus = (startDate: string, endDate: string): CatalogueStatus => { ... }
 
-    if (now < start) return 'upcoming';
-    if (now > end) return 'expired';
-    return 'active';
-  };
-
- // 🔥 UPDATED: Apply location filtering to catalogues
+ // 🔥 UPDATED: Apply location filtering to catalogues with CACHED status
  const cataloguesWithStatus: CatalogueWithStatus[] = useMemo(() => {
   let filtered = catalogues;
 
@@ -349,7 +364,7 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
 
   return filtered.map(cat => ({
     ...cat,
-    status: getCatalogueStatus(cat.startDate, cat.endDate),
+    status: getCatalogueStatusCached(cat.id, cat.startDate, cat.endDate),
   }));
 }, [catalogues, selectedMainCategory, selectedStore, userGovernorate]);
 
@@ -843,14 +858,17 @@ const renderCatalogueCard = (catalogue: CatalogueWithStatus) => {
     <View key={catalogue.id} style={styles.catalogueThumbnailWrapper}>
       <TouchableOpacity
         style={styles.catalogueThumbnail}
-        onPress={() => handleCataloguePress(catalogue.id)}
+        onPress={() => {
+          logSelectContent('catalogue', catalogue.id);
+          handleCataloguePress(catalogue.id);
+        }}
         activeOpacity={0.7}
       >
         <View style={styles.thumbnailImageContainer}>
-          <Image
-            source={{ uri: catalogue.coverImage }}
+          <CachedImage
+            source={catalogue.coverImage}
             style={styles.thumbnailImage}
-            resizeMode="cover"
+            contentFit="cover"
           />
           <View style={[styles.statusBadgeThumbnail, getStatusBadgeStyle(catalogue.status)]}>
             <View style={styles.statusDot} />

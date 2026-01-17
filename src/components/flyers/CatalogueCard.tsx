@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { CachedImage } from '../common';
 import { colors, spacing, borderRadius, typography, shadows } from '../../constants/theme';
 import { formatDate } from '../../utils/helpers';
 import { useLocalized } from '../../hooks';
@@ -21,11 +22,15 @@ export const CatalogueCard: React.FC<CatalogueCardProps> = ({
 
   return (
     <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.7}>
-      <Image source={{ uri: catalogue.coverImage }} style={styles.coverImage} resizeMode="cover" />
+      <CachedImage source={catalogue.coverImage} style={styles.coverImage} contentFit="cover" />
       
       <View style={styles.overlay}>
         <View style={styles.storeInfo}>
-          <Image source={{ uri: store.logo }} style={styles.storeLogo} resizeMode="contain" />
+          <CachedImage 
+            source={typeof store.logo === 'string' ? store.logo : store.logo} 
+            style={styles.storeLogo} 
+            contentFit="contain" 
+          />
           <Text style={styles.storeName}>{getName(store)}</Text>
         </View>
         
