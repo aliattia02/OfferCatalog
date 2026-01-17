@@ -636,7 +636,7 @@ export default function FlyerDetailScreen() {
                 onPress={() => setFullScreenImage(true)}
               >
                 <CachedImage
-                  source={currentPageData?.imageUrl || ''}
+                  source={currentPageData?.imageUrl || 'https://placehold.co/600x800/cccccc/ffffff?text=No+Image'}
                   style={styles.pageImage}
                   contentFit="contain"
                 />
@@ -766,7 +766,7 @@ export default function FlyerDetailScreen() {
                 ]}
               >
                 <CachedImage
-                  source={currentPageData?.imageUrl || ''}
+                  source={currentPageData?.imageUrl || 'https://placehold.co/600x800/cccccc/ffffff?text=No+Image'}
                   style={styles.fullScreenImage}
                   contentFit="contain"
                 />
