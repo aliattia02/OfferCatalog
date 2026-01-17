@@ -5,6 +5,7 @@ import { Provider } from 'react-redux';
 import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
+import { initializeAnalytics } from '../services/analyticsService';
 
 import store from '../store';
 import { initI18n } from '../i18n';
@@ -33,6 +34,8 @@ export default function RootLayout() {
         // Initialize Firebase (now async with persistence)
         await initializeFirebase();
         console.log('✅ Firebase initialized with persistence');
+
+
 
         // ✅ CRITICAL: Check if user is already logged in
         console.log('🔍 Checking for existing auth session...');
