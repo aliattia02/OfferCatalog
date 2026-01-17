@@ -1,5 +1,5 @@
 // src/app/(tabs)/basket.tsx - FIXED: Mobile-compatible alerts
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   I18nManager,
   Alert, // ADD THIS
 } from 'react-native';
-import { useRouter, Stack } from 'expo-router';
+import { useRouter, Stack, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -17,6 +17,7 @@ import { colors, spacing, typography, borderRadius } from '../../constants/theme
 import { BasketItemCard, SavedPageCard } from '../../components/basket';
 import { Button } from '../../components/common';
 import { AdBanner } from '../../components/common';
+import { logScreenView, logSelectContent } from '../../services/analyticsService';
 
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import {
@@ -47,6 +48,12 @@ export default function BasketScreen() {
   const basketItems = useAppSelector(state => state.basket.items);
   const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds);
   const favoriteStoreIds = useAppSelector(state => state.favorites.storeIds);
+
+  useFocusEffect(
+    useCallback(() => {
+      logScreenView('Basket');
+    }, [])
+  );
 
   // Get unique stores from basket items
   const availableStores = useMemo(() => {
@@ -209,13 +216,18 @@ export default function BasketScreen() {
 
     const isFavorite = favoriteSubcategoryIds.includes(item.offer.categoryId);
 
+    const handlePress = () => {
+      logSelectContent('basket_offer', item.offer!.id);
+      router.push(`/offer/${item.offer!.id}`);
+    };
+
     return (
       <BasketItemCard
         key={item.id}
         item={item}
         onUpdateQuantity={(quantity) => handleUpdateQuantity(item.id, quantity)}
         onRemove={() => handleRemoveItem(item.id)}
-        onPress={() => router.push(`/offer/${item.offer!.id}`)}
+        onPress={handlePress}
         isExpired={isExpired}
         isFavorite={isFavorite}
         onToggleFavorite={() => dispatch(toggleFavoriteSubcategory(item.offer!.categoryId))}
@@ -229,12 +241,17 @@ export default function BasketScreen() {
     const catalogue = getCatalogueById(item.cataloguePage.catalogueId);
     const isFavorite = catalogue ? favoriteStoreIds.includes(catalogue.storeId) : false;
 
+    const handleViewPage = () => {
+      logSelectContent('basket_page', item.cataloguePage!.catalogueId);
+      router.push(`/flyer/${item.cataloguePage!.catalogueId}?page=${item.cataloguePage!.pageNumber}`);
+    };
+
     return (
       <SavedPageCard
         key={item.id}
         item={item}
         onRemove={() => handleRemoveItem(item.id)}
-        onViewPage={() => router.push(`/flyer/${item.cataloguePage!.catalogueId}?page=${item.cataloguePage!.pageNumber}`)}
+        onViewPage={handleViewPage}
         isFavorite={isFavorite}
         onToggleFavorite={() => {
           if (catalogue) {

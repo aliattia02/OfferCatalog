@@ -15,6 +15,7 @@ import {
   persistentMultipleTabManager,
 } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
+import { getAnalytics, Analytics, isSupported as isAnalyticsSupported } from 'firebase/analytics';
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -36,6 +37,7 @@ let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
 let storage: FirebaseStorage | null = null;
+let analytics: Analytics | null = null;
 let isInitializing = false;
 let initializationPromise: Promise<void> | null = null;
 
@@ -47,17 +49,18 @@ export const initializeFirebase = async (): Promise<{
   auth: Auth;
   db: Firestore;
   storage: FirebaseStorage;
+  analytics: Analytics | null;
 }> => {
   // If already initializing, wait for it to complete
   if (isInitializing && initializationPromise) {
     await initializationPromise;
-    return { app: app!, auth: auth!, db: db!, storage: storage! };
+    return { app: app!, auth: auth!, db: db!, storage: storage!, analytics };
   }
 
   // If already initialized, return existing instances
   if (app && auth && db && storage) {
     console.log('✅ Firebase already initialized, returning existing instances');
-    return { app, auth, db, storage };
+    return { app, auth, db, storage, analytics };
   }
 
   // Start initialization
@@ -133,6 +136,21 @@ export const initializeFirebase = async (): Promise<{
         console.log('✅ Firebase Storage initialized');
       }
 
+      // Initialize Analytics (Web only)
+      if (!analytics && Platform.OS === 'web') {
+        try {
+          const supported = await isAnalyticsSupported();
+          if (supported) {
+            analytics = getAnalytics(app);
+            console.log('✅ Firebase Analytics initialized for web');
+          } else {
+            console.log('ℹ️ Firebase Analytics not supported on this platform');
+          }
+        } catch (error: any) {
+          console.warn('⚠️ Could not initialize Analytics:', error.message);
+        }
+      }
+
       console.log('✅ All Firebase services initialized successfully');
     } catch (error) {
       console.error('❌ Error initializing Firebase:', error);
@@ -141,6 +159,7 @@ export const initializeFirebase = async (): Promise<{
       auth = null;
       db = null;
       storage = null;
+      analytics = null;
       throw error;
     } finally {
       isInitializing = false;
@@ -148,7 +167,7 @@ export const initializeFirebase = async (): Promise<{
   })();
 
   await initializationPromise;
-  return { app: app!, auth: auth!, db: db!, storage: storage! };
+  return { app: app!, auth: auth!, db: db!, storage: storage!, analytics };
 };
 
 /**
@@ -181,5 +200,12 @@ export const getStorageInstance = (): FirebaseStorage => {
   return storage;
 };
 
+/**
+ * Get Firebase Analytics instance (may be null on non-web platforms)
+ */
+export const getAnalyticsInstance = (): Analytics | null => {
+  return analytics;
+};
+
 // Export instances (will be null until initialized)
-export { auth, db, storage, app };
+export { auth, db, storage, analytics, app };

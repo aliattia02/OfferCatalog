@@ -1,7 +1,8 @@
 // src/components/flyers/OfferCard.tsx - COMPACT LAYOUT WITH FIXED BUTTON POSITION
 import React from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { CachedImage } from '../common';
 import { colors, spacing, borderRadius, typography, shadows } from '../../constants/theme';
 import { formatCurrency, calculateDiscount } from '../../utils/helpers';
 import { useLocalized } from '../../hooks';
@@ -30,7 +31,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({
   return (
     <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.7}>
       <View style={styles.imageContainer}>
-        <Image source={{ uri: offer.imageUrl }} style={styles.image} resizeMode="cover" />
+        <CachedImage source={offer.imageUrl} style={styles.image} contentFit="cover" />
         {discount > 0 && (
           <View style={styles.discountBadge}>
             <Text style={styles.discountText}>{discount}%</Text>
