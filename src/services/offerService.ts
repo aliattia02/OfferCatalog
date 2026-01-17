@@ -1,5 +1,5 @@
 // src/services/offerService.ts - OPTIMIZED WITH BATCHING + FAVORITES SUPPORT
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, getDoc, limit, orderBy } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { CatalogueOffer } from './catalogueOfferService';
 import { getTodayString, normalizeDateString } from '../utils/dateUtils';
@@ -28,59 +28,63 @@ const isOfferActive = (startDate: string, endDate: string): boolean => {
 /**
  * Get ALL offers - CACHED (use sparingly!)
  */
-export async function getAllOffers(forceRefresh: boolean = false): Promise<OfferWithCatalogue[]> {
-  if (!forceRefresh) {
-    const cached = await cacheService.get<OfferWithCatalogue[]>(CACHE_KEYS.OFFERS_ALL);
-    if (cached) {
-      console.log(`📦 Using cached ALL offers (${cached.length} items)`);
-      return cached;
-    }
-  }
+export async function getAllOffers(
+  forceRefresh: boolean = false,
+  maxResults: number = 200
+): Promise<OfferWithCatalogue[]> {
+  return cacheService.fetchWithDeduplication(
+    'get_all_offers',
+    async () => {
+      console.log(`🔥 Firebase: Fetching ALL offers (limit: ${maxResults})...`);
+      const q = query(
+        collection(db, 'offers'),
+        orderBy('createdAt', 'desc'),
+        limit(maxResults)
+      );
+      const snapshot = await getDocs(q);
+      const offers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfferWithCatalogue));
 
-  console.log('🔥 Firebase: Fetching ALL offers...');
-  const snapshot = await getDocs(collection(db, 'offers'));
-  const offers = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as OfferWithCatalogue));
-
-  await cacheService.set(CACHE_KEYS.OFFERS_ALL, offers, CACHE_DURATIONS.OFFERS);
-
-  console.log(`✅ Fetched and cached ${offers.length} total offers`);
-  return offers;
+      console.log(`✅ Fetched ${offers.length} total offers`);
+      return offers;
+    },
+    forceRefresh ? undefined : CACHE_KEYS.OFFERS_ALL,
+    CACHE_DURATIONS.OFFERS
+  );
 }
 
 /**
  * Get all active offers - CACHED
  */
 export async function getActiveOffers(forceRefresh: boolean = false): Promise<OfferWithCatalogue[]> {
-  if (!forceRefresh) {
-    const cached = await cacheService.get<OfferWithCatalogue[]>(CACHE_KEYS.OFFERS_ACTIVE);
-    if (cached) {
-      console.log(`📦 Using cached ACTIVE offers (${cached.length} items)`);
-      return cached;
-    }
-  }
+  return cacheService.fetchWithDeduplication(
+    'get_active_offers',
+    async () => {
+      const today = getTodayString();
+      console.log(`🔥 Firebase: Fetching active offers for date: ${today} (limit: 100)`);
 
-  const today = getTodayString();
-  console.log(`🔥 Firebase: Fetching active offers for date: ${today}`);
+      const q = query(
+        collection(db, 'offers'),
+        where('catalogueEndDate', '>=', today),
+        orderBy('catalogueEndDate', 'desc'),
+        limit(100)
+      );
 
-  const q = query(
-    collection(db, 'offers'),
-    where('catalogueEndDate', '>=', today)
+      const snapshot = await getDocs(q);
+      const allOffers = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as OfferWithCatalogue));
+
+      const activeOffers = allOffers.filter(offer =>
+        isOfferActive(offer.catalogueStartDate, offer.catalogueEndDate)
+      );
+
+      console.log(`✅ Fetched ${activeOffers.length} active offers`);
+      return activeOffers;
+    },
+    forceRefresh ? undefined : CACHE_KEYS.OFFERS_ACTIVE,
+    CACHE_DURATIONS.OFFERS
   );
-
-  const snapshot = await getDocs(q);
-  const allOffers = snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  } as OfferWithCatalogue));
-
-  const activeOffers = allOffers.filter(offer =>
-    isOfferActive(offer.catalogueStartDate, offer.catalogueEndDate)
-  );
-
-  await cacheService.set(CACHE_KEYS.OFFERS_ACTIVE, activeOffers, CACHE_DURATIONS.OFFERS);
-
-  console.log(`✅ Fetched and cached ${activeOffers.length} active offers`);
-  return activeOffers;
 }
 
 /**
