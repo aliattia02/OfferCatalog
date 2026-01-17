@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
-import { Button } from '../../components/common';
+import { Button, CachedImage } from '../../components/common';
 import { SavePageButton } from '../../components/flyers';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { useLocalized } from '../../hooks';
@@ -28,6 +28,8 @@ import { getCatalogueById } from '../../data/catalogueRegistry';
 import { getOffersByCatalogue } from '../../services/offerService';
 import { formatCurrency, calculateDiscount } from '../../utils/helpers';
 import { formatDateRange } from '../../utils/catalogueUtils';
+import { getCatalogueStatusCached } from '../../utils/catalogueStatusCache';
+import { logScreenView, logViewItem, logAddToCart } from '../../services/analyticsService';
 import type { OfferWithCatalogue } from '../../services/offerService';
 import type { Catalogue } from '../../types';
 
@@ -83,6 +85,16 @@ export default function FlyerDetailScreen() {
     const dateRange = formatDateRange(catalogue.startDate, catalogue.endDate);
     return `${catalogue.titleAr} • ${dateRange}`;
   }, [catalogue]);
+
+  // Analytics: Log screen view on mount
+  useEffect(() => {
+    if (id) {
+      logScreenView('FlyerDetail', id);
+      if (catalogue) {
+        logViewItem(catalogue.id, catalogue.titleAr, catalogue.categoryId);
+      }
+    }
+  }, [id, catalogue?.id]);
 
   // Set initial page from URL parameter
   useEffect(() => {
@@ -167,19 +179,11 @@ export default function FlyerDetailScreen() {
     lastTranslateY.current = 0;
   }, [scale, translateX, translateY]);
 
-  // Helper function to get catalogue status
-  const getCatalogueStatus = (startDate: string, endDate: string): CatalogueStatus => {
-    const now = new Date();
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    now.setHours(0, 0, 0, 0);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
-
-    if (now < start) return 'upcoming';
-    if (now > end) return 'expired';
-    return 'active';
-  };
+  // Helper function to get catalogue status (using cached version)
+  const getCatalogueStatus = useCallback((startDate: string, endDate: string): CatalogueStatus => {
+    if (!catalogue) return 'expired';
+    return getCatalogueStatusCached(catalogue.id, startDate, endDate);
+  }, [catalogue?.id]);
 
   // Find next catalogue logic
   const nextCatalogue = useMemo(() => {
@@ -418,18 +422,22 @@ export default function FlyerDetailScreen() {
   const currentPageData = hasPages ? catalogue.pages[currentPage] : null;
   const isLastPage = currentPage === totalPages - 1;
 
-  const handleAddToBasket = (offer: OfferWithCatalogue) => {
+  const handleAddToBasket = useCallback((offer: OfferWithCatalogue) => {
     dispatch(addToBasket({
       offer,
       storeName: store.nameAr,
     }));
-  };
+    logAddToCart(offer.id, offer.nameAr, offer.offerPrice, {
+      catalogue_id: catalogue.id,
+      page_number: currentPage + 1,
+    });
+  }, [dispatch, store?.nameAr, catalogue?.id, currentPage]);
 
-  const handleOfferPress = (offer: OfferWithCatalogue) => {
+  const handleOfferPress = useCallback((offer: OfferWithCatalogue) => {
     router.push(`/offer/${offer.id}`);
-  };
+  }, [router]);
 
-  const handleSavePage = () => {
+  const handleSavePage = useCallback(() => {
     if (!currentPageData) {
       Alert.alert('خطأ', 'لا توجد صفحة للحفظ');
       return;
@@ -450,7 +458,7 @@ export default function FlyerDetailScreen() {
     );
 
     Alert.alert('نجح', 'تم حفظ الصفحة في السلة');
-  };
+  }, [currentPageData, isPageSaved, dispatch, catalogue, store?.nameAr, pageOffers]);
 
   const handleNavPress = (direction: 'prev' | 'next') => {
     if (direction === 'prev' && currentPage > 0) {
@@ -477,7 +485,7 @@ export default function FlyerDetailScreen() {
     }
   };
 
-  const renderOfferThumbnail = (offer: OfferWithCatalogue) => {
+  const renderOfferThumbnail = useCallback((offer: OfferWithCatalogue) => {
     const discount = offer.originalPrice
       ? calculateDiscount(offer.originalPrice, offer.offerPrice)
       : 0;
@@ -490,10 +498,10 @@ export default function FlyerDetailScreen() {
         activeOpacity={0.7}
       >
         <View style={styles.thumbnailImageContainer}>
-          <Image
-            source={{ uri: offer.imageUrl }}
+          <CachedImage
+            source={offer.imageUrl}
             style={styles.thumbnailImage}
-            resizeMode="cover"
+            contentFit="cover"
           />
           {discount > 0 && (
             <View style={styles.thumbnailDiscountBadge}>
@@ -527,7 +535,7 @@ export default function FlyerDetailScreen() {
         </View>
       </TouchableOpacity>
     );
-  };
+  }, [handleOfferPress, handleAddToBasket]);
 
   // Render next catalogue button (only on last page)
   const renderNextCatalogueButton = () => {
@@ -548,10 +556,10 @@ export default function FlyerDetailScreen() {
           onPress={handleNextCatalogue}
           activeOpacity={0.8}
         >
-          <Image
-            source={{ uri: nextCatalogue.coverImage }}
+          <CachedImage
+            source={nextCatalogue.coverImage}
             style={styles.nextCatalogueImage}
-            resizeMode="cover"
+            contentFit="cover"
           />
 
           <View style={styles.nextCatalogueInfo}>
@@ -627,10 +635,10 @@ export default function FlyerDetailScreen() {
                 activeOpacity={0.9}
                 onPress={() => setFullScreenImage(true)}
               >
-                <Image
-                  source={{ uri: currentPageData?.imageUrl }}
+                <CachedImage
+                  source={currentPageData?.imageUrl || ''}
                   style={styles.pageImage}
-                  resizeMode="contain"
+                  contentFit="contain"
                 />
               </TouchableOpacity>
 
@@ -757,10 +765,10 @@ export default function FlyerDetailScreen() {
                   },
                 ]}
               >
-                <Image
-                  source={{ uri: currentPageData?.imageUrl }}
+                <CachedImage
+                  source={currentPageData?.imageUrl || ''}
                   style={styles.fullScreenImage}
-                  resizeMode="contain"
+                  contentFit="contain"
                 />
               </Animated.View>
             </TouchableOpacity>
