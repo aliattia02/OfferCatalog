@@ -9,7 +9,6 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   RefreshControl,
-  Image,
   Dimensions,
 } from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -17,7 +16,7 @@ import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
-import { SearchBar, AdBanner } from '../../components/common';
+import { SearchBar, AdBanner, CachedImage } from '../../components/common';
 import { InterstitialAdModal } from '../../components/common/InterstitialAdModal';
 import { CompactLocationSelector } from '../../components/common/CompactLocationSelector';
 import { FeaturedOffers } from '../../components/home';
@@ -36,6 +35,8 @@ import { loadCatalogues } from '../../store/slices/offersSlice';
 import { getMainCategories } from '../../data/categories';
 import { getActiveOffers } from '../../services/offerService';
 import { formatDateRange } from '../../utils/catalogueUtils';
+import { getCatalogueStatusCached } from '../../utils/catalogueStatusCache';
+import { logScreenView, logSelectContent } from '../../services/analyticsService';
 import type { Category, Catalogue, Store } from '../../types';
 import type { OfferWithCatalogue } from '../../services/offerService';
 
@@ -83,6 +84,7 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       console.log('🏠 [Home] Screen focused - refreshing data');
+      logScreenView('Home');
       loadOffers(false);
       checkAndShowAd();
     }, [])
@@ -174,7 +176,7 @@ export default function HomeScreen() {
     console.log(`📚 [Home] Processing ${catalogues.length} catalogues...`);
 
     const cataloguesWithStatus: CatalogueWithStatus[] = catalogues.map(cat => {
-      const status = getCatalogueStatus(cat.startDate, cat.endDate);
+      const status = getCatalogueStatusCached(cat.id, cat.startDate, cat.endDate);
       return {
         ...cat,
         status,
@@ -229,7 +231,7 @@ export default function HomeScreen() {
     console.log('📊 [Home] Calculating top stores by catalogue count...');
 
     const cataloguesWithStatus: CatalogueWithStatus[] = catalogues.map(cat => {
-      const status = getCatalogueStatus(cat.startDate, cat.endDate);
+      const status = getCatalogueStatusCached(cat.id, cat.startDate, cat.endDate);
       return { ...cat, status };
     });
 
@@ -368,14 +370,17 @@ export default function HomeScreen() {
       <View key={catalogue.id} style={styles.catalogueThumbnailWrapper}>
         <TouchableOpacity
           style={styles.catalogueThumbnail}
-          onPress={() => handleCataloguePress(catalogue.id)}
+          onPress={() => {
+            logSelectContent('catalogue', catalogue.id);
+            handleCataloguePress(catalogue.id);
+          }}
           activeOpacity={0.7}
         >
           <View style={styles.thumbnailImageContainer}>
-            <Image
-              source={{ uri: catalogue.coverImage }}
+            <CachedImage
+              source={catalogue.coverImage}
               style={styles.thumbnailImage}
-              resizeMode="cover"
+              contentFit="cover"
             />
             <View style={[styles.statusBadgeThumbnail, getStatusBadgeStyle(catalogue.status)]}>
               <View style={styles.statusDot} />

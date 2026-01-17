@@ -1,7 +1,8 @@
 // components/stores/StoreCard.tsx - COMPLETE UPDATED VERSION
 import React from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { CachedImage } from '../common';
 import { colors, spacing, borderRadius, typography, shadows } from '../../constants/theme';
 import { useLocalized } from '../../hooks';
 import { useAppSelector } from '../../store/hooks';
@@ -168,11 +169,10 @@ export const StoreCard: React.FC<StoreCardProps> = ({
       onPress={onPress}
       activeOpacity={0.7}
     >
-      <Image
+      <CachedImage
         source={getLogoSource()}
         style={styles.logo}
-        resizeMode="contain"
-        defaultSource={require('../../assets/logos/default.png')} // Optional: fallback
+        contentFit="contain"
       />
 
       <View style={styles.content}>
