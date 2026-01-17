@@ -1,5 +1,5 @@
 // src/app/search.tsx - FIXED: Added safe area top padding
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,18 +10,20 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native';
-import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
+import { useRouter, Stack, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing, typography, borderRadius } from '../constants/theme';
 import { SearchBar } from '../components/common';
+import { CachedImage } from '../components/common';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { addToBasket } from '../store/slices/basketSlice';
 import { toggleFavoriteSubcategory, toggleFavoriteStore } from '../store/slices/favoritesSlice';
 import { searchAll, SearchResult } from '../services/searchService';
 import { useSafeTabBarHeight } from '../hooks';
 import { cacheService, CACHE_KEYS, CACHE_DURATIONS } from '../services/cacheService';
+import { logScreenView, logSearch, logSelectContent } from '../services/analyticsService';
 
 type SearchTab = 'all' | 'catalogues' | 'offers' | 'subcategories' | 'stores';
 
@@ -58,6 +60,12 @@ export default function SearchScreen() {
 
   const getCachedSearchKey = (query: string) =>
     `${CACHE_KEYS.SEARCH_RESULTS}_${query.toLowerCase().trim()}`;
+
+  useFocusEffect(
+    useCallback(() => {
+      logScreenView('Search');
+    }, [])
+  );
 
   useEffect(() => {
     if (initialQuery.trim().length >= 3) {
@@ -97,6 +105,9 @@ export default function SearchScreen() {
 
       setSearching(true);
       console.log('🔍 Searching for:', query);
+      
+      logSearch(query);
+      
       const searchResults = await searchAll(catalogues, stores, query);
 
       await cacheService.set(cacheKey, searchResults, CACHE_DURATIONS.SEARCH);
@@ -115,6 +126,8 @@ export default function SearchScreen() {
   }, [results, activeTab]);
 
   const handleResultPress = (result: SearchResult) => {
+    logSelectContent(result.type, result.id);
+    
     switch (result.type) {
       case 'catalogue':
         router.push(`/flyer/${result.id}`);
@@ -286,10 +299,10 @@ export default function SearchScreen() {
       >
         <View style={styles.resultContent}>
           {item.imageUrl ? (
-            <Image
+            <CachedImage
               source={{ uri: item.imageUrl }}
               style={styles.resultImage}
-              resizeMode="cover"
+              contentFit="cover"
             />
           ) : (
             <View style={[styles.resultImage, styles.resultImagePlaceholder]}>
