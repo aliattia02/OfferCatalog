@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import { Analytics } from 'firebase/analytics';
 
 let webAnalytics: Analytics | null = null;
-let nativeAnalytics: any = null;
+let nativeAnalytics:  any = null;
 let isInitialized = false;
 
 /**
@@ -48,10 +48,10 @@ export const logScreenView = async (screenName: string, screenClass?:  string): 
         screen_name: screenName,
         screen_class: screenClass || screenName,
       });
-      console.log(`📊 [Analytics] Screen view:  ${screenName}`);
+      console.log(`📊 [Analytics] Screen view: ${screenName}`);
     }
   } catch (error) {
-    console. warn('⚠️ [Analytics] Failed to log screen view:', error);
+    console.warn('⚠️ [Analytics] Failed to log screen view:', error);
   }
 };
 
@@ -60,7 +60,7 @@ export const logScreenView = async (screenName: string, screenClass?:  string): 
  */
 export const logEvent = async (
   eventName: string,
-  params?: Record<string, any>
+  params?:  Record<string, any>
 ): Promise<void> => {
   try {
     if (Platform.OS === 'web' && webAnalytics) {
@@ -99,10 +99,27 @@ export const logSearch = async (searchTerm: string): Promise<void> => {
 };
 
 /**
+ * Log view item event (for viewing offers, catalogues, etc.)
+ */
+export const logViewItem = async (
+  itemId: string,
+  itemName: string,
+  itemCategory?:  string,
+  additionalParams?: Record<string, any>
+): Promise<void> => {
+  await logEvent('view_item', {
+    item_id: itemId,
+    item_name: itemName,
+    item_category:  itemCategory,
+    ... additionalParams,
+  });
+};
+
+/**
  * Log catalogue view
  */
 export const logCatalogueView = async (
-  catalogueId: string,
+  catalogueId:  string,
   catalogueName: string,
   storeId:  string
 ): Promise<void> => {
@@ -118,7 +135,7 @@ export const logCatalogueView = async (
  */
 export const logOfferView = async (
   offerId: string,
-  offerName:  string,
+  offerName: string,
   price: number
 ): Promise<void> => {
   await logEvent('view_offer', {
@@ -129,20 +146,27 @@ export const logOfferView = async (
 };
 
 /**
- * Log add to basket
+ * Log add to cart/basket
  */
-export const logAddToBasket = async (
-  offerId: string,
-  offerName: string,
-  price: number
+export const logAddToCart = async (
+  itemId: string,
+  itemName: string,
+  price: number,
+  additionalParams?: Record<string, any>
 ): Promise<void> => {
   await logEvent('add_to_cart', {
-    item_id: offerId,
-    item_name: offerName,
-    price:  price,
+    item_id: itemId,
+    item_name:  itemName,
+    price: price,
     currency: 'EGP',
+    ...additionalParams,
   });
 };
+
+/**
+ * Log add to basket (alias for logAddToCart)
+ */
+export const logAddToBasket = logAddToCart;
 
 /**
  * Set user ID for analytics
@@ -173,13 +197,13 @@ export const setUserProperty = async (
     if (Platform.OS === 'web' && webAnalytics) {
       const { setUserProperties } = await import('firebase/analytics');
       setUserProperties(webAnalytics, { [name]: value });
-      console.log(`📊 [Analytics] User property set: ${name}`);
+      console.log(`📊 [Analytics] User property set:  ${name}`);
     } else if (nativeAnalytics) {
       await nativeAnalytics.setUserProperty(name, value);
       console.log(`📊 [Analytics] User property set: ${name}`);
     }
   } catch (error) {
-    console. warn('⚠️ [Analytics] Failed to set user property:', error);
+    console.warn('⚠️ [Analytics] Failed to set user property:', error);
   }
 };
 
@@ -197,8 +221,10 @@ export const analyticsService = {
   logEvent,
   logSelectContent,
   logSearch,
+  logViewItem,
   logCatalogueView,
   logOfferView,
+  logAddToCart,
   logAddToBasket,
   setUserId:  setAnalyticsUserId,
   setUserProperty,
