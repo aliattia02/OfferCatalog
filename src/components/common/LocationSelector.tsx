@@ -1,4 +1,4 @@
-// components/common/LocationSelector.tsx - ✅ WITH EXPLICIT SAVE BUTTON
+// components/common/LocationSelector.tsx - WITH PHONE NUMBER FIELD
 import React, { useState } from 'react';
 import {
   View,
@@ -9,6 +9,7 @@ import {
   ScrollView,
   I18nManager,
   ActivityIndicator,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
@@ -27,11 +28,13 @@ import {
 interface LocationSelectorProps {
   showCitySelection?: boolean;
   onLocationChange?: (governorate: GovernorateId, city?: CityId) => void;
+  onLocationSaved?: (location: { governorate: string; city: string | null; phoneNumber?: string | null }) => void;
 }
 
 export const LocationSelector: React.FC<LocationSelectorProps> = ({
   showCitySelection = true,
   onLocationChange,
+  onLocationSaved,
 }) => {
   const dispatch = useAppDispatch();
   const userGovernorate = useAppSelector(state => state.settings.userGovernorate) as GovernorateId | null;
@@ -43,13 +46,16 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
+  // ✅ NEW: Phone number state
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+
   const governorates = Object.keys(governorateNames) as GovernorateId[];
   const availableCities = userGovernorate ? getCitiesByGovernorate(userGovernorate) : [];
 
   const handleGovernorateSelect = (governorate: GovernorateId) => {
     console.log('📍 [LocationSelector] Governorate selected:', governorate);
 
-    // ✅ Update Redux state immediately (local only)
     dispatch(setUserLocation({ governorate, city: null }));
     setHasUnsavedChanges(true);
 
@@ -61,7 +67,6 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
     if (userGovernorate) {
       console.log('📍 [LocationSelector] City selected:', city);
 
-      // ✅ Update Redux state immediately (local only)
       dispatch(setUserLocation({ governorate: userGovernorate, city }));
       setHasUnsavedChanges(true);
 
@@ -73,17 +78,50 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
   const handleClearLocation = () => {
     console.log('📍 [LocationSelector] Clearing location');
 
-    // ✅ Clear Redux state immediately (local only)
     dispatch(clearUserLocation());
+    setPhoneNumber('');
+    setPhoneError('');
     setHasUnsavedChanges(true);
 
     onLocationChange?.(null as any);
   };
 
-  // ✅ NEW: Explicit save function
+  // ✅ UPDATED: Validate phone number (Egyptian format)
+  const validatePhoneNumber = (phone: string): boolean => {
+    if (!phone || phone.trim() === '') return true; // Optional field
+
+    // Remove spaces and dashes
+    const cleanPhone = phone.replace(/[\s-]/g, '');
+
+    // Egyptian phone formats:
+    // 01xxxxxxxxx (11 digits starting with 01)
+    // +2001xxxxxxxxx (13 digits with country code)
+    // 002001xxxxxxxxx (14 digits with country code)
+    const egyptianPhoneRegex = /^(01[0-9]{9}|(\+20|0020)?01[0-9]{9})$/;
+
+    return egyptianPhoneRegex.test(cleanPhone);
+  };
+
+  // ✅ UPDATED: Save location with phone number
   const handleSaveLocation = async () => {
-    if (!hasUnsavedChanges) {
+    if (!userGovernorate) {
+      console.log('⚠️ No governorate selected');
+      return;
+    }
+
+    // Validate phone if provided
+    if (phoneNumber && !validatePhoneNumber(phoneNumber)) {
+      setPhoneError('رقم الهاتف غير صحيح (مثال: 01012345678)');
+      return;
+    }
+
+    if (!hasUnsavedChanges && isAuthenticated && !phoneNumber) {
       console.log('ℹ️ No changes to save');
+      onLocationSaved?.({
+        governorate: userGovernorate,
+        city: userCity,
+        phoneNumber: null
+      });
       return;
     }
 
@@ -92,20 +130,36 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
     try {
       if (isAuthenticated) {
         console.log('💾 [LocationSelector] Saving location to Firestore...');
+
+        // Clean phone number before saving
+        const cleanPhone = phoneNumber.trim() ? phoneNumber.replace(/[\s-]/g, '') : null;
+
         await dispatch(syncLocation({
           governorate: userGovernorate,
-          city: userCity
+          city: userCity,
+          phoneNumber: cleanPhone
         })).unwrap();
 
         console.log('✅ Location saved to Firebase successfully');
         setHasUnsavedChanges(false);
+
+        onLocationSaved?.({
+          governorate: userGovernorate,
+          city: userCity,
+          phoneNumber: cleanPhone
+        });
       } else {
         console.log('ℹ️ User not logged in, location saved locally only');
         setHasUnsavedChanges(false);
+
+        onLocationSaved?.({
+          governorate: userGovernorate,
+          city: userCity,
+          phoneNumber: phoneNumber.trim() ? phoneNumber.replace(/[\s-]/g, '') : null
+        });
       }
     } catch (error) {
       console.error('❌ Failed to save location:', error);
-      // You could show an error message here
     } finally {
       setIsSaving(false);
     }
@@ -160,7 +214,40 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
         </TouchableOpacity>
       )}
 
-      {/* ✅ NEW: Save Button */}
+      {/* ✅ NEW: Phone Number Input */}
+      {userGovernorate && (
+        <View style={styles.phoneContainer}>
+          <Text style={styles.phoneLabel}>
+            رقم الهاتف (اختياري)
+          </Text>
+          <View style={styles.phoneInputContainer}>
+            <Ionicons name="call-outline" size={20} color={colors.textSecondary} />
+            <TextInput
+              style={styles.phoneInput}
+              placeholder="01012345678"
+              placeholderTextColor={colors.textSecondary}
+              value={phoneNumber}
+              onChangeText={(text) => {
+                setPhoneNumber(text);
+                setPhoneError('');
+                setHasUnsavedChanges(true);
+              }}
+              keyboardType="phone-pad"
+              maxLength={14}
+              textAlign={I18nManager.isRTL ? 'right' : 'left'}
+            />
+          </View>
+          {phoneError ? (
+            <Text style={styles.phoneError}>{phoneError}</Text>
+          ) : (
+            <Text style={styles.phoneHint}>
+              سيساعدنا رقم هاتفك في إرسال تحديثات العروض (اختياري)
+            </Text>
+          )}
+        </View>
+      )}
+
+      {/* Save Button */}
       {userGovernorate && (
         <TouchableOpacity
           style={[
@@ -169,7 +256,7 @@ export const LocationSelector: React.FC<LocationSelectorProps> = ({
             isSaving && styles.saveButtonSaving,
           ]}
           onPress={handleSaveLocation}
-          disabled={!hasUnsavedChanges || isSaving}
+          disabled={isSaving}
         >
           {isSaving ? (
             <>
@@ -391,6 +478,47 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     color: colors.textSecondary,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  // ✅ NEW: Phone number styles
+  phoneContainer: {
+    gap: spacing.xs,
+  },
+  phoneLabel: {
+    fontSize: typography.fontSize.sm,
+    color: colors.text,
+    fontWeight: '500',
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    paddingHorizontal: spacing.xs,
+  },
+  phoneInputContainer: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    backgroundColor: colors.white,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.gray[300],
+    gap: spacing.sm,
+  },
+  phoneInput: {
+    flex: 1,
+    fontSize: typography.fontSize.md,
+    color: colors.text,
+    paddingVertical: spacing.xs,
+  },
+  phoneError: {
+    fontSize: typography.fontSize.xs,
+    color: colors.error,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    paddingHorizontal: spacing.xs,
+  },
+  phoneHint: {
+    fontSize: typography.fontSize.xs,
+    color: colors.textSecondary,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+    paddingHorizontal: spacing.xs,
+    fontStyle: 'italic',
   },
   saveButton: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',

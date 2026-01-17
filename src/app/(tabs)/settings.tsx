@@ -1,4 +1,4 @@
-// src/app/(tabs)/settings.tsx - COMPLETE WITH ALL TRANSLATIONS
+// src/app/(tabs)/settings.tsx - WITH COMPACT LOCATION SELECTOR
 import React from 'react';
 import {
   View,
@@ -18,7 +18,7 @@ import { useRouter } from 'expo-router';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
-import LocationSelector from '../../components/common/LocationSelector';
+import { CompactLocationSelector } from '../../components/common/CompactLocationSelector';
 import { setLanguage, setNotificationsEnabled } from '../../store/slices/settingsSlice';
 import { signOut, clearUser } from '../../store/slices/authSlice';
 import { clearBasket } from '../../store/slices/basketSlice';
@@ -179,8 +179,12 @@ export default function SettingsScreen() {
         <View style={styles.card}>
           {isAuthenticated && user ? (
             <>
-              {/* User Profile */}
-              <View style={styles.profileContainer}>
+              {/* User Profile - Clickable */}
+              <TouchableOpacity
+                style={styles.profileContainer}
+                onPress={() => router.push('/profile')}
+                activeOpacity={0.7}
+              >
                 {user.photoURL ? (
                   <Image source={{ uri: user.photoURL }} style={styles.avatar} />
                 ) : (
@@ -198,8 +202,12 @@ export default function SettingsScreen() {
                     </View>
                   )}
                 </View>
-              </View>
-              <View style={styles.divider} />
+                <Ionicons
+                  name={I18nManager.isRTL ? 'chevron-back' : 'chevron-forward'}
+                  size={24}
+                  color={colors.gray[400]}
+                />
+              </TouchableOpacity>
 
               {/* Admin-only tools */}
               {isAdmin && (
@@ -248,12 +256,12 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      {/* Location Section */}
+      {/* Location Section - COMPACT VERSION */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('settings.location')}</Text>
         <View style={styles.card}>
           <View style={styles.locationContainer}>
-            <LocationSelector showCitySelection={true} />
+            <CompactLocationSelector />
           </View>
           <View style={styles.locationHint}>
             <Ionicons name="information-circle-outline" size={16} color={colors.textSecondary} />
@@ -462,6 +470,7 @@ const styles = StyleSheet.create({
   },
   locationContainer: {
     padding: spacing.md,
+    alignItems: 'center',
   },
   locationHint: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',

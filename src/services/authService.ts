@@ -1,4 +1,4 @@
-// src/services/authService.ts - ✅ FIXED WITH PROPER LOCATION HANDLING
+// src/services/authService.ts - ✅ COMPLETE FILE WITH PHONE NUMBER SUPPORT
 import {
   signInWithCredential,
   GoogleAuthProvider,
@@ -84,7 +84,7 @@ export const signOut = async (): Promise<void> => {
 };
 
 /**
- * ✅ Get or create user profile - UPDATED WITH SAFE LOCATION HANDLING
+ * ✅ Get or create user profile - UPDATED WITH PHONE NUMBER
  */
 export const getOrCreateUserProfile = async (
   user: FirebaseUser
@@ -137,6 +137,7 @@ export const getOrCreateUserProfile = async (
           displayName: user.displayName,
           photoURL: user.photoURL,
           isAdmin: shouldBeAdmin,
+          phoneNumber: userData.phoneNumber || null, // ✅ NEW
           location: location,
           createdAt: userData.createdAt,
           lastLoginAt: serverTimestamp(),
@@ -150,6 +151,7 @@ export const getOrCreateUserProfile = async (
           displayName: user.displayName,
           photoURL: user.photoURL,
           isAdmin: shouldBeAdmin,
+          phoneNumber: null, // ✅ NEW
           location: null,
           createdAt: serverTimestamp(),
           lastLoginAt: serverTimestamp(),
@@ -181,7 +183,7 @@ export const getOrCreateUserProfile = async (
 };
 
 /**
- * ✅ Get user profile - UPDATED WITH SAFE LOCATION HANDLING
+ * ✅ Get user profile - UPDATED WITH PHONE NUMBER
  */
 export const getUserProfile = async (uid: string): Promise<UserProfile | null> => {
   try {
@@ -207,6 +209,7 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
         displayName: userData.displayName,
         photoURL: userData.photoURL,
         isAdmin: shouldBeAdmin,
+        phoneNumber: userData.phoneNumber || null, // ✅ NEW
         location: location,
         createdAt: userData.createdAt,
         lastLoginAt: userData.lastLoginAt,

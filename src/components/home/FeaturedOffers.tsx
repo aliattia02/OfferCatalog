@@ -1,4 +1,4 @@
-// src/components/home/FeaturedOffers.tsx - COMPLETE WITH SUBCATEGORY FAVORITES
+// src/components/home/FeaturedOffers.tsx - WITH UNIFORM PRICE LAYOUT
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Image, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,23 +10,22 @@ interface FeaturedOffersProps {
   offers: OfferWithCatalogue[];
   onOfferPress: (offer: OfferWithCatalogue) => void;
   onAddToBasket: (offer: OfferWithCatalogue) => void;
-  favoriteSubcategoryIds?: string[]; // NEW - Array of favorited subcategory IDs
-  onToggleFavorite?: (subcategoryId: string) => void; // NEW - Handler to toggle favorite
+  favoriteSubcategoryIds?: string[];
+  onToggleFavorite?: (subcategoryId: string) => void;
 }
 
 export const FeaturedOffers: React.FC<FeaturedOffersProps> = ({
   offers,
   onOfferPress,
   onAddToBasket,
-  favoriteSubcategoryIds = [], // NEW - Default to empty array
-  onToggleFavorite, // NEW
+  favoriteSubcategoryIds = [],
+  onToggleFavorite,
 }) => {
   const renderItem = ({ item }: { item: OfferWithCatalogue }) => {
     const discount = item.originalPrice
       ? calculateDiscount(item.originalPrice, item.offerPrice)
       : 0;
 
-    // NEW: Check if this offer's subcategory is favorited
     const isFavorite = favoriteSubcategoryIds.includes(item.categoryId);
 
     return (
@@ -38,14 +37,12 @@ export const FeaturedOffers: React.FC<FeaturedOffersProps> = ({
         <View style={styles.imageContainer}>
           <Image source={{ uri: item.imageUrl }} style={styles.image} resizeMode="cover" />
 
-          {/* Discount Badge */}
           {discount > 0 && (
             <View style={styles.discountBadge}>
               <Text style={styles.discountText}>{discount}%</Text>
             </View>
           )}
 
-          {/* NEW: Favorite Button - Only shown if onToggleFavorite is provided */}
           {onToggleFavorite && (
             <TouchableOpacity
               style={styles.favoriteButton}
@@ -62,21 +59,26 @@ export const FeaturedOffers: React.FC<FeaturedOffersProps> = ({
         </View>
 
         <View style={styles.content}>
-          <Text style={styles.name} numberOfLines={2}>{item.nameAr}</Text>
-
-          <View style={styles.priceContainer}>
-            <Text style={styles.offerPrice}>{formatCurrency(item.offerPrice)}</Text>
-            {item.originalPrice && (
-              <Text style={styles.originalPrice}>{formatCurrency(item.originalPrice)}</Text>
-            )}
+          {/* ✅ Name and Add Button Row */}
+          <View style={styles.nameRow}>
+            <Text style={styles.name} numberOfLines={2}>{item.nameAr}</Text>
+            <TouchableOpacity
+              style={styles.addButton}
+              onPress={() => onAddToBasket(item)}
+            >
+              <Ionicons name="add" size={18} color={colors.white} />
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity
-            style={styles.addButton}
-            onPress={() => onAddToBasket(item)}
-          >
-            <Ionicons name="add" size={18} color={colors.white} />
-          </TouchableOpacity>
+          {/* ✅ FIXED: Uniform price layout with fixed height */}
+          <View style={styles.priceRow}>
+            <View style={styles.priceContainer}>
+              <Text style={styles.offerPrice}>{formatCurrency(item.offerPrice)}</Text>
+              {item.originalPrice && (
+                <Text style={styles.originalPrice}>{formatCurrency(item.originalPrice)}</Text>
+              )}
+            </View>
+          </View>
         </View>
       </TouchableOpacity>
     );
@@ -132,7 +134,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs,
     fontWeight: 'bold',
   },
-  // NEW: Favorite button positioned in top-right corner
   favoriteButton: {
     position: 'absolute',
     top: spacing.xs,
@@ -151,27 +152,38 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   content: {
-    padding: spacing.sm,
+    padding: spacing.xs,
+    paddingTop: spacing.sm,
+    minHeight: 75, // ✅ Reduced from 90 for more compact look
+  },
+  nameRow: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'flex-start',
+    marginBottom: 2, // ✅ Further reduced for minimal gap
+    gap: spacing.xs,
   },
   name: {
-    fontSize: typography.fontSize.sm,
+    flex: 1,
+    fontSize: typography.fontSize.md, // ✅ Increased from sm for better readability
     fontWeight: '600',
     color: colors.text,
-    marginBottom: spacing.xs,
     textAlign: I18nManager.isRTL ? 'right' : 'left',
-    height: 36, // Fixed height for consistent card sizes
+    lineHeight: 17, // ✅ Adjusted to match larger font
+  },
+  // ✅ NEW: Price row with fixed height for alignment
+  priceRow: {
+    height: 32, // ✅ Reduced from 40 for more compact layout
+    justifyContent: 'flex-end', // Pushes prices to bottom
   },
   priceContainer: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
-    marginBottom: spacing.sm,
+    gap: spacing.xs,
   },
   offerPrice: {
     fontSize: typography.fontSize.md,
     fontWeight: 'bold',
     color: colors.primary,
-    marginRight: I18nManager.isRTL ? 0 : spacing.xs,
-    marginLeft: I18nManager.isRTL ? spacing.xs : 0,
   },
   originalPrice: {
     fontSize: typography.fontSize.xs,
@@ -179,17 +191,12 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
   },
   addButton: {
-    position: 'absolute',
-    bottom: spacing.sm,
-    right: I18nManager.isRTL ? undefined : spacing.sm,
-    left: I18nManager.isRTL ? spacing.sm : undefined,
     width: 32,
     height: 32,
     borderRadius: borderRadius.full,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    flexShrink: 0,
   },
 });
-
-export default FeaturedOffers;

@@ -1,22 +1,16 @@
-// src/services/userDataService.ts - ✅ UPDATED WITH LOCATION SYNC
+// src/services/userDataService.ts - FIXED WITH PROPER LOCATION SYNC
 import {
   doc,
   getDoc,
   setDoc,
   updateDoc,
   serverTimestamp,
-  collection,
-  query,
-  where,
-  getDocs,
 } from 'firebase/firestore';
 import { getDbInstance } from '../config/firebase';
 import { BasketItem, FavoritesState } from '../types';
 
 /**
  * Sync user favorites to Firestore
- * @param uid User ID
- * @param favorites Favorites state
  */
 export const syncFavoritesToFirestore = async (
   uid: string,
@@ -27,24 +21,22 @@ export const syncFavoritesToFirestore = async (
     const userRef = doc(db, 'users', uid);
 
     await updateDoc(userRef, {
-      favorites: {
+      favorites:  {
         subcategoryIds: favorites.subcategoryIds,
         storeIds: favorites.storeIds,
       },
       updatedAt: serverTimestamp(),
     });
 
-    console.log('✅ Favorites synced to Firestore');
+    console.log('✅ [userDataService] Favorites synced to Firestore');
   } catch (error) {
-    console.error('❌ Error syncing favorites to Firestore:', error);
+    console. error('❌ [userDataService] Error syncing favorites to Firestore:', error);
     throw error;
   }
 };
 
 /**
  * Get user favorites from Firestore
- * @param uid User ID
- * @returns FavoritesState or null
  */
 export const getFavoritesFromFirestore = async (
   uid: string
@@ -54,8 +46,8 @@ export const getFavoritesFromFirestore = async (
     const userRef = doc(db, 'users', uid);
     const userSnap = await getDoc(userRef);
 
-    if (userSnap.exists() && userSnap.data().favorites) {
-      const data = userSnap.data().favorites;
+    if (userSnap.exists() && userSnap. data().favorites) {
+      const data = userSnap. data().favorites;
       return {
         subcategoryIds: data.subcategoryIds || [],
         storeIds: data.storeIds || [],
@@ -64,15 +56,13 @@ export const getFavoritesFromFirestore = async (
 
     return null;
   } catch (error) {
-    console.error('❌ Error getting favorites from Firestore:', error);
+    console.error('❌ [userDataService] Error getting favorites from Firestore:', error);
     return null;
   }
 };
 
 /**
  * Sync user basket to Firestore
- * @param uid User ID
- * @param basketItems Basket items
  */
 export const syncBasketToFirestore = async (
   uid: string,
@@ -87,17 +77,15 @@ export const syncBasketToFirestore = async (
       updatedAt: serverTimestamp(),
     });
 
-    console.log('✅ Basket synced to Firestore');
+    console.log('✅ [userDataService] Basket synced to Firestore');
   } catch (error) {
-    console.error('❌ Error syncing basket to Firestore:', error);
+    console. error('❌ [userDataService] Error syncing basket to Firestore:', error);
     throw error;
   }
 };
 
 /**
  * Get user basket from Firestore
- * @param uid User ID
- * @returns Array of BasketItems or empty array
  */
 export const getBasketFromFirestore = async (
   uid: string
@@ -113,14 +101,13 @@ export const getBasketFromFirestore = async (
 
     return [];
   } catch (error) {
-    console.error('❌ Error getting basket from Firestore:', error);
+    console.error('❌ [userDataService] Error getting basket from Firestore:', error);
     return [];
   }
 };
 
 /**
  * Clear user basket in Firestore
- * @param uid User ID
  */
 export const clearBasketInFirestore = async (uid: string): Promise<void> => {
   try {
@@ -132,55 +119,73 @@ export const clearBasketInFirestore = async (uid: string): Promise<void> => {
       updatedAt: serverTimestamp(),
     });
 
-    console.log('✅ Basket cleared in Firestore');
+    console.log('✅ [userDataService] Basket cleared in Firestore');
   } catch (error) {
-    console.error('❌ Error clearing basket in Firestore:', error);
+    console.error('❌ [userDataService] Error clearing basket in Firestore:', error);
     throw error;
   }
 };
 
 // ============================================
-// ✅ NEW: LOCATION SYNC FUNCTIONS
+// LOCATION & PHONE SYNC FUNCTIONS
 // ============================================
 
 /**
- * Sync user location to Firestore
- * @param uid User ID
- * @param governorate Governorate ID
- * @param city City ID (optional)
+ * Sync user location WITH phone number to Firestore
+ * FIXED:  Handles null values properly and creates document if needed
  */
 export const syncLocationToFirestore = async (
-  uid: string,
+  uid:  string,
   governorate: string | null,
-  city: string | null = null
+  city: string | null = null,
+  phoneNumber?:  string | null
 ): Promise<void> => {
   try {
     const db = getDbInstance();
     const userRef = doc(db, 'users', uid);
 
-    await updateDoc(userRef, {
-      location: {
-        governorate,
-        city,
-      },
-      updatedAt: serverTimestamp(),
-    });
+    // Check if document exists
+    const userSnap = await getDoc(userRef);
 
-    console.log('✅ Location synced to Firestore:', { governorate, city });
+    const locationData = {
+      governorate:  governorate,
+      city: city,
+    };
+
+    const updateData: any = {
+      location: locationData,
+      updatedAt:  serverTimestamp(),
+    };
+
+    // Only update phone if provided (not undefined)
+    if (phoneNumber !== undefined) {
+      updateData.phoneNumber = phoneNumber;
+    }
+
+    if (userSnap. exists()) {
+      // Update existing document
+      await updateDoc(userRef, updateData);
+      console.log('✅ [userDataService] Location updated in Firestore:', locationData);
+    } else {
+      // Create new document with location
+      await setDoc(userRef, {
+        ... updateData,
+        createdAt: serverTimestamp(),
+      });
+      console.log('✅ [userDataService] Location created in Firestore:', locationData);
+    }
   } catch (error) {
-    console.error('❌ Error syncing location to Firestore:', error);
+    console. error('❌ [userDataService] Error syncing location to Firestore:', error);
     throw error;
   }
 };
 
 /**
  * Get user location from Firestore
- * @param uid User ID
- * @returns Location object or null
  */
 export const getLocationFromFirestore = async (
   uid: string
-): Promise<{ governorate: string | null; city: string | null } | null> => {
+): Promise<{ governorate:  string | null; city: string | null } | null> => {
   try {
     const db = getDbInstance();
     const userRef = doc(db, 'users', uid);
@@ -189,15 +194,41 @@ export const getLocationFromFirestore = async (
     if (userSnap.exists() && userSnap.data().location) {
       const data = userSnap.data().location;
       return {
-        governorate: data.governorate || null,
+        governorate:  data.governorate || null,
         city: data.city || null,
       };
     }
 
     return null;
   } catch (error) {
-    console.error('❌ Error getting location from Firestore:', error);
+    console. error('❌ [userDataService] Error getting location from Firestore:', error);
     return null;
+  }
+};
+
+/**
+ * Update user profile information
+ */
+export const updateUserProfile = async (
+  uid:  string,
+  data: {
+    displayName?:  string | null;
+    phoneNumber?: string | null;
+  }
+): Promise<void> => {
+  try {
+    const db = getDbInstance();
+    const userRef = doc(db, 'users', uid);
+
+    await updateDoc(userRef, {
+      ... data,
+      updatedAt: serverTimestamp(),
+    });
+
+    console.log('✅ [userDataService] User profile updated in Firestore');
+  } catch (error) {
+    console.error('❌ [userDataService] Error updating user profile:', error);
+    throw error;
   }
 };
 
@@ -207,9 +238,6 @@ export const getLocationFromFirestore = async (
 
 /**
  * Sync all user data to Firestore
- * @param uid User ID
- * @param favorites Favorites state
- * @param basketItems Basket items
  */
 export const syncAllUserData = async (
   uid: string,
@@ -222,17 +250,15 @@ export const syncAllUserData = async (
       syncBasketToFirestore(uid, basketItems),
     ]);
 
-    console.log('✅ All user data synced to Firestore');
+    console.log('✅ [userDataService] All user data synced to Firestore');
   } catch (error) {
-    console.error('❌ Error syncing all user data:', error);
+    console. error('❌ [userDataService] Error syncing all user data:', error);
     throw error;
   }
 };
 
 /**
  * Get all user data from Firestore
- * @param uid User ID
- * @returns Object containing favorites and basket
  */
 export const getAllUserData = async (
   uid: string
@@ -245,10 +271,10 @@ export const getAllUserData = async (
 
     return { favorites, basket };
   } catch (error) {
-    console.error('❌ Error getting all user data:', error);
+    console.error('❌ [userDataService] Error getting all user data:', error);
     return {
       favorites: null,
-      basket: [],
+      basket:  [],
     };
   }
 };

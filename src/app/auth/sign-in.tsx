@@ -1,4 +1,4 @@
-// src/app/auth/sign-in.tsx - UPDATED: Wait for loading before redirecting
+// src/app/auth/sign-in.tsx - COMPLETE FILE WITH FIXES
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -25,19 +25,22 @@ import {
   createUserWithEmailAndPassword,
   updateProfile
 } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import Constants from 'expo-constants';
 
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
 import LocationSelector from '../../components/common/LocationSelector';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
-import { signInWithGoogle } from '../../store/slices/authSlice';
-import { getAuthInstance } from '../../config/firebase';
-import { getOrCreateUserProfile } from '../../services/authService';
+import { signInWithGoogle, setUser } from '../../store/slices/authSlice';
+import { hydrateLocation, syncLocation } from '../../store/slices/settingsSlice';
+import { getAuthInstance, getDbInstance } from '../../config/firebase';
+import { getOrCreateUserProfile, getUserProfile } from '../../services/authService';
+import { syncLocationToFirestore } from '../../services/userDataService';
 
 const getGoogleClientIds = () => {
   return {
-    webClientId: Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-    androidClientId: Constants.expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    webClientId: Constants. expoConfig?.extra?. EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+    androidClientId: Constants. expoConfig?.extra?.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || process.env. EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
   };
 };
 
@@ -45,19 +48,28 @@ export default function SignInScreen() {
   const { t } = useTranslation();
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { loading, error, isAuthenticated } = useAppSelector((state) => state.auth);
+  const { loading, error, isAuthenticated, user } = useAppSelector((state) => state.auth);
 
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isConfigured, setIsConfigured] = useState(false);
   const [signInMethod, setSignInMethod] = useState<'google' | 'email'>('google');
   const [showLocationModal, setShowLocationModal] = useState(false);
   const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
+  const [locationSaved, setLocationSaved] = useState(false);
+  const [creatingAccount, setCreatingAccount] = useState(false);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [passwordError, setPasswordError] = useState('');
+
+  // Track the saved location locally to avoid refetch issues
+  const [pendingLocation, setPendingLocation] = useState<{
+    governorate:  string;
+    city: string | null;
+    phoneNumber?:  string | null;
+  } | null>(null);
 
   const clientIds = getGoogleClientIds();
 
@@ -71,7 +83,7 @@ export default function SignInScreen() {
 
   const configureGoogleSignIn = async () => {
     try {
-      console.log('🔧 Configuring Google Sign-In for native...');
+      console.log('🔧 Configuring Google Sign-In for native.. .');
       GoogleSignin.configure({
         webClientId: clientIds.webClientId,
         offlineAccess: true,
@@ -84,29 +96,121 @@ export default function SignInScreen() {
     }
   };
 
-  // ✅ UPDATED: Only redirect if authenticated AND not loading
+  // IMPROVED:  Redirect logic that handles pending location
   useEffect(() => {
-    if (isAuthenticated && !loading) {
-      console.log('✅ User authenticated and loading complete, redirecting...');
+    // Don't redirect while modal is showing or during account creation
+    if (showLocationModal || creatingAccount) {
+      console.log('⏸️ Location modal active, skipping redirect');
+      return;
+    }
+
+    // Don't redirect while loading or signing in
+    if (loading || isSigningIn) {
+      console.log('⏸️ Still loading/signing in, skipping redirect');
+      return;
+    }
+
+    // Only redirect if authenticated and ready
+    if (isAuthenticated && (! isFirstTimeUser || locationSaved)) {
+      console.log('✅ User authenticated and ready, redirecting.. .');
+
+      // If we have a pending location, dispatch it before redirecting
+      if (pendingLocation) {
+        console. log('📍 Dispatching pending location before redirect:', pendingLocation);
+        dispatch(hydrateLocation({
+          governorate:  pendingLocation.governorate,
+          city: pendingLocation. city
+        }));
+        setPendingLocation(null);
+      }
+
       router.replace('/(tabs)');
     }
-  }, [isAuthenticated, loading]);
+  }, [isAuthenticated, loading, isSigningIn, creatingAccount, showLocationModal, isFirstTimeUser, locationSaved, pendingLocation, router, dispatch]);
 
   const showLocationSetup = () => {
     setShowLocationModal(true);
   };
 
-  const handleLocationSetupComplete = () => {
+  // FIXED: Handle location setup completion with Firestore sync
+  const handleLocationSetupComplete = async (savedLocation: { governorate: string; city: string | null; phoneNumber?:  string | null }) => {
+    console.log('✅ Location setup completed with:', savedLocation);
+
+    const auth = getAuthInstance();
+    const currentUser = auth.currentUser;
+
+    // CRITICAL FIX: Sync to Firestore FIRST
+    if (currentUser) {
+      try {
+        console.log('💾 [SignIn] Saving location to Firestore...');
+        await syncLocationToFirestore(
+          currentUser. uid,
+          savedLocation.governorate,
+          savedLocation. city,
+          savedLocation.phoneNumber || null
+        );
+        console.log('✅ [SignIn] Location saved to Firestore successfully');
+      } catch (error) {
+        console.error('❌ [SignIn] Failed to save location to Firestore:', error);
+        // Continue anyway - location is at least in Redux
+      }
+    }
+
+    // Store the location locally to ensure it's available
+    setPendingLocation(savedLocation);
+
+    // Update Redux immediately
+    dispatch(hydrateLocation({
+      governorate:  savedLocation.governorate,
+      city:  savedLocation.city
+    }));
+
+    // Update the user profile in Redux with the new location
+    if (currentUser && user) {
+      const updatedUser = {
+        ...user,
+        location:  {
+          governorate: savedLocation. governorate,
+          city: savedLocation. city
+        },
+        phoneNumber: savedLocation. phoneNumber || null
+      };
+      dispatch(setUser(updatedUser));
+      console.log('✅ User profile updated in Redux with location');
+    }
+
+    setLocationSaved(true);
     setShowLocationModal(false);
+
     setTimeout(() => {
-      router.replace('/(tabs)');
+      setCreatingAccount(false);
+      setIsFirstTimeUser(false);
     }, 300);
   };
 
-  const handleSkipLocationSetup = () => {
+  const handleSkipLocationSetup = async () => {
+    console.log('⏭ Location setup skipped');
+
+    // Even when skipping, we should mark that we've completed the setup
+    const auth = getAuthInstance();
+    const currentUser = auth.currentUser;
+
+    // Optionally set a default or null location in Firestore
+    if (currentUser) {
+      try {
+        await syncLocationToFirestore(currentUser.uid, null, null, null);
+        console.log('✅ [SignIn] Skipped location saved to Firestore');
+      } catch (error) {
+        console.error('⚠️ [SignIn] Failed to save skipped location:', error);
+      }
+    }
+
+    setLocationSaved(true);
     setShowLocationModal(false);
+
     setTimeout(() => {
-      router.replace('/(tabs)');
+      setCreatingAccount(false);
+      setIsFirstTimeUser(false);
     }, 300);
   };
 
@@ -123,7 +227,7 @@ export default function SignInScreen() {
     setEmailError('');
     setPasswordError('');
 
-    if (!email.trim()) {
+    if (!email. trim()) {
       setEmailError(t('auth.email') + ' ' + t('common.error'));
       return;
     }
@@ -133,13 +237,13 @@ export default function SignInScreen() {
       return;
     }
 
-    if (!password) {
+    if (! password) {
       setPasswordError(t('auth.password') + ' ' + t('common.error'));
       return;
     }
 
     if (!validatePassword(password)) {
-      setPasswordError(t('auth.password') + ' ' + t('common.error'));
+      setPasswordError(t('auth. password') + ' ' + t('common. error'));
       return;
     }
 
@@ -147,54 +251,83 @@ export default function SignInScreen() {
       setIsSigningIn(true);
       const auth = getAuthInstance();
 
-      console.log('🔧 Attempting email sign-in...');
+      console.log('🔧 Attempting email sign-in.. .');
 
       try {
-        const userCredential = await signInWithEmailAndPassword(auth, email.trim(), password);
-        console.log('✅ Sign-in successful:', userCredential.user.email);
+        // Try to sign in
+        const userCredential = await signInWithEmailAndPassword(auth, email. trim(), password);
+        console.log('✅ Sign-in successful:', userCredential.user. email);
 
-        await getOrCreateUserProfile(userCredential.user);
+        // Wait for user profile to be created/retrieved
+        const userProfile = await getOrCreateUserProfile(userCredential.user);
+
+        // FIXED:  Restore location from Firestore for existing user
+        if (userProfile.location && userProfile.location.governorate) {
+          console.log('📍 [SignIn] Restoring location for existing user:', userProfile.location);
+          dispatch(hydrateLocation({
+            governorate: userProfile.location.governorate,
+            city: userProfile.location.city || null
+          }));
+        }
 
         if (Platform.OS === 'web') {
           alert(t('settings.welcomeBack') + ' ' + t('settings.signInSuccess'));
         } else {
           Alert.alert(
-            t('settings.welcomeBack'),
+            t('settings. welcomeBack'),
             t('settings.signInSuccess'),
             [{ text: t('settings.ok') }]
           );
         }
 
         setIsSigningIn(false);
-        router.replace('/(tabs)');
+        // Redirect will happen via useEffect
 
-      } catch (signInError: any) {
-        console.log('Sign-in error code:', signInError.code);
+      } catch (signInError:  any) {
+        console.log('Sign-in error code:', signInError. code);
 
-        if (signInError.code === 'auth/user-not-found' || signInError.code === 'auth/invalid-credential') {
+        if (signInError.code === 'auth/user-not-found' || signInError. code === 'auth/invalid-credential') {
           console.log('👤 User not found, creating new account...');
 
-          const newUserCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
+          // Set flag to prevent auth state listener from interfering
+          setCreatingAccount(true);
+
+          // Create new account
+          const newUserCredential = await createUserWithEmailAndPassword(auth, email. trim(), password);
           console.log('✅ Account created:', newUserCredential.user.email);
 
+          // Update display name
           await updateProfile(newUserCredential.user, {
-            displayName: email.split('@')[0],
+            displayName:  email.split('@')[0],
           });
 
-          await getOrCreateUserProfile(newUserCredential.user);
+          // CRITICAL:  Prevent auth listener from interfering
+          await new Promise(resolve => setTimeout(resolve, 1500));
+
+          // Create user profile
+          console.log('⏳ Creating user profile in Firestore...');
+          const userProfile = await getOrCreateUserProfile(newUserCredential.user);
+          console.log('✅ User profile created');
+
+          // Dispatch BEFORE showing modal
+          dispatch(setUser(userProfile));
+
+          // Additional delay to ensure Redux update completes
+          await new Promise(resolve => setTimeout(resolve, 500));
 
           if (Platform.OS === 'web') {
             alert(t('settings.welcome') + ' ' + t('settings.accountCreated'));
           } else {
             Alert.alert(
-              t('settings.welcome'),
+              t('settings. welcome'),
               t('settings.accountCreated'),
               [{ text: t('settings.ok') }]
             );
           }
 
-          setIsSigningIn(false);
           setIsFirstTimeUser(true);
+          setLocationSaved(false);
+          setIsSigningIn(false);
           showLocationSetup();
           return;
 
@@ -217,13 +350,13 @@ export default function SignInScreen() {
 
       console.log('✅ Authentication complete');
 
-    } catch (error: any) {
+    } catch (error:  any) {
       console.error('❌ Error in email authentication:', error);
       setIsSigningIn(false);
 
       let errorMessage = t('common.error');
 
-      if (error.message?.includes('network') || error.code === 'auth/network-request-failed') {
+      if (error. message?. includes('network') || error.code === 'auth/network-request-failed') {
         errorMessage = t('errors.network');
       } else if (error.code === 'auth/too-many-requests') {
         errorMessage = t('common.error');
@@ -252,13 +385,24 @@ export default function SignInScreen() {
       const result = await signInWithPopup(auth, provider);
       console.log('✅ Web sign-in successful:', result.user.email);
 
+      // FIX: Check if user document exists in Firestore to determine if new user
+      const db = getDbInstance();
+      const userRef = doc(db, 'users', result.user.uid);
+      const userSnap = await getDoc(userRef);
+      const isNewUser = ! userSnap.exists();
+
+      console.log('🔍 User status:', isNewUser ?  'NEW USER' : 'EXISTING USER');
+
       const credential = GoogleAuthProvider.credentialFromResult(result);
-      const idToken = credential?.idToken || null;
+      const idToken = credential?. idToken || null;
       const accessToken = credential?.accessToken || null;
 
-      const isNewUser = result.user.metadata.creationTime === result.user.metadata.lastSignInTime;
+      // Set flag to prevent redirect during account creation
+      if (isNewUser) {
+        setCreatingAccount(true);
+      }
 
-      await dispatch(signInWithGoogle({
+      const userProfile = await dispatch(signInWithGoogle({
         idToken,
         accessToken,
       })).unwrap();
@@ -267,10 +411,36 @@ export default function SignInScreen() {
       setIsSigningIn(false);
 
       if (isNewUser) {
+        console.log('🆕 New user detected - showing location setup');
+
+        // Show success message for new user
+        if (Platform.OS === 'web') {
+          alert('تم التسجيل بنجاح\nRegistration Successful');
+        } else {
+          Alert.alert(
+            'تم التسجيل بنجاح',
+            'Registration Successful',
+            [{ text: t('settings.ok') }]
+          );
+        }
+
         setIsFirstTimeUser(true);
+        setLocationSaved(false);
         showLocationSetup();
       } else {
-        router.replace('/(tabs)');
+        console.log('👤 Existing user - no location setup needed');
+
+        // FIXED: Location is already restored in signInWithGoogle thunk
+        // Just show welcome message
+        if (Platform.OS === 'web') {
+          alert('مرحباً بعودتك\nWelcome Back');
+        } else {
+          Alert.alert(
+            'مرحباً بعودتك',
+            'Welcome Back',
+            [{ text: t('settings.ok') }]
+          );
+        }
       }
     } catch (error: any) {
       console.error('❌ Error in web Google sign-in:', error);
@@ -283,7 +453,7 @@ export default function SignInScreen() {
       Alert.alert(
         t('common.error'),
         t('common.error'),
-        [{ text: t('settings.ok') }]
+        [{ text: t('settings. ok') }]
       );
     }
   };
@@ -299,7 +469,7 @@ export default function SignInScreen() {
 
     try {
       setIsSigningIn(true);
-      console.log('📱 Starting Native Google Sign-In...');
+      console.log('📱 Starting Native Google Sign-In.. .');
 
       if (Platform.OS === 'android') {
         await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
@@ -308,7 +478,26 @@ export default function SignInScreen() {
       const userInfo = await GoogleSignin.signIn();
       const tokens = await GoogleSignin.getTokens();
 
-      const isNewUser = true;
+      // FIX: Check if user document exists in Firestore
+      const auth = getAuthInstance();
+      const db = getDbInstance();
+
+      // Get the current user after sign-in
+      await new Promise(resolve => setTimeout(resolve, 500)); // Wait for auth state
+      const currentUser = auth.currentUser;
+
+      let isNewUser = false;
+      if (currentUser) {
+        const userRef = doc(db, 'users', currentUser.uid);
+        const userSnap = await getDoc(userRef);
+        isNewUser = !userSnap.exists();
+        console.log('🔍 User status:', isNewUser ?  'NEW USER' : 'EXISTING USER');
+      }
+
+      // Set flag to prevent redirect during account creation
+      if (isNewUser) {
+        setCreatingAccount(true);
+      }
 
       await dispatch(signInWithGoogle({
         idToken: tokens.idToken || null,
@@ -319,12 +508,29 @@ export default function SignInScreen() {
       setIsSigningIn(false);
 
       if (isNewUser) {
+        console. log('🆕 New user detected - showing location setup');
+
+        // Show success message for new user
+        Alert.alert(
+          'تم التسجيل بنجاح',
+          'Registration Successful',
+          [{ text: t('settings.ok') }]
+        );
+
         setIsFirstTimeUser(true);
+        setLocationSaved(false);
         showLocationSetup();
       } else {
-        router.replace('/(tabs)');
+        console.log('👤 Existing user - no location setup needed');
+
+        // Show welcome back message for existing user
+        Alert.alert(
+          'مرحباً بعودتك',
+          'Welcome Back',
+          [{ text: t('settings.ok') }]
+        );
       }
-    } catch (error: any) {
+    } catch (error:  any) {
       console.error('❌ Error in native Google sign-in:', error);
       setIsSigningIn(false);
 
@@ -364,8 +570,8 @@ export default function SignInScreen() {
         >
           <View style={styles.content}>
             {/* Logo/Icon */}
-            <View style={styles.iconContainer}>
-              <Ionicons name="pricetags" size={80} color={colors.primary} />
+            <View style={styles. iconContainer}>
+              <Ionicons name="pricetags" size={80} color={colors. primary} />
             </View>
 
             {/* Title */}
@@ -375,27 +581,27 @@ export default function SignInScreen() {
 
             {/* Subtitle */}
             <Text style={styles.subtitle}>
-              {t('auth.welcomeMessage')}
+              {t('auth. welcomeMessage')}
             </Text>
 
             {/* Sign-In Method Toggle */}
-            <View style={styles.toggleContainer}>
+            <View style={styles. toggleContainer}>
               <TouchableOpacity
                 style={[
                   styles.toggleButton,
-                  signInMethod === 'google' && styles.toggleButtonActive,
+                  signInMethod === 'google' && styles. toggleButtonActive,
                 ]}
                 onPress={() => setSignInMethod('google')}
               >
                 <Ionicons
                   name="logo-google"
                   size={20}
-                  color={signInMethod === 'google' ? colors.white : colors.textSecondary}
+                  color={signInMethod === 'google' ? colors. white : colors.textSecondary}
                 />
                 <Text
                   style={[
-                    styles.toggleText,
-                    signInMethod === 'google' && styles.toggleTextActive,
+                    styles. toggleText,
+                    signInMethod === 'google' && styles. toggleTextActive,
                   ]}
                 >
                   Google
@@ -404,7 +610,7 @@ export default function SignInScreen() {
 
               <TouchableOpacity
                 style={[
-                  styles.toggleButton,
+                  styles. toggleButton,
                   signInMethod === 'email' && styles.toggleButtonActive,
                 ]}
                 onPress={() => setSignInMethod('email')}
@@ -428,7 +634,7 @@ export default function SignInScreen() {
             {/* Google Sign-In Button */}
             {signInMethod === 'google' && (
               <TouchableOpacity
-                style={[styles.googleButton, (isSigningIn || loading || !isConfigured) && styles.buttonDisabled]}
+                style={[styles.googleButton, (isSigningIn || loading || ! isConfigured) && styles.buttonDisabled]}
                 onPress={handleGoogleSignIn}
                 disabled={isSigningIn || loading || !isConfigured}
               >
@@ -450,10 +656,10 @@ export default function SignInScreen() {
               <View style={styles.formContainer}>
                 {/* Email Input */}
                 <View style={styles.inputContainer}>
-                  <Ionicons name="mail-outline" size={20} color={colors.textSecondary} />
+                  <Ionicons name="mail-outline" size={20} color={colors. textSecondary} />
                   <TextInput
                     style={styles.input}
-                    placeholder={t('auth.email')}
+                    placeholder={t('auth. email')}
                     placeholderTextColor={colors.textSecondary}
                     value={email}
                     onChangeText={(text) => {
@@ -466,21 +672,21 @@ export default function SignInScreen() {
                     textAlign={I18nManager.isRTL ? 'right' : 'left'}
                   />
                 </View>
-                {emailError ? <Text style={styles.errorText}>{emailError}</Text> : null}
+                {emailError ?  <Text style={styles. errorText}>{emailError}</Text> : null}
 
                 {/* Password Input */}
                 <View style={styles.inputContainer}>
-                  <Ionicons name="lock-closed-outline" size={20} color={colors.textSecondary} />
+                  <Ionicons name="lock-closed-outline" size={20} color={colors. textSecondary} />
                   <TextInput
                     style={styles.input}
-                    placeholder={t('auth.password')}
+                    placeholder={t('auth. password')}
                     placeholderTextColor={colors.textSecondary}
                     value={password}
                     onChangeText={(text) => {
                       setPassword(text);
                       setPasswordError('');
                     }}
-                    secureTextEntry={!showPassword}
+                    secureTextEntry={! showPassword}
                     autoCapitalize="none"
                     autoCorrect={false}
                     textAlign={I18nManager.isRTL ? 'right' : 'left'}
@@ -496,18 +702,18 @@ export default function SignInScreen() {
                 {passwordError ? <Text style={styles.errorText}>{passwordError}</Text> : null}
 
                 {/* Info Text */}
-                <Text style={styles.infoText}>
+                <Text style={styles. infoText}>
                   {t('auth.noAccountCreated')}
                 </Text>
 
                 {/* Email Sign-In Button */}
                 <TouchableOpacity
-                  style={[styles.signInButton, (isSigningIn || loading) && styles.buttonDisabled]}
+                  style={[styles. signInButton, (isSigningIn || loading) && styles.buttonDisabled]}
                   onPress={handleEmailSignIn}
                   disabled={isSigningIn || loading}
                 >
                   {isSigningIn || loading ? (
-                    <ActivityIndicator size="small" color={colors.white} />
+                    <ActivityIndicator size="small" color={colors. white} />
                   ) : (
                     <Text style={styles.signInButtonText}>
                       {t('auth.signIn')}
@@ -531,15 +737,15 @@ export default function SignInScreen() {
             {/* Error Message */}
             {error && (
               <View style={styles.errorContainer}>
-                <Ionicons name="alert-circle" size={20} color={colors.error} />
+                <Ionicons name="alert-circle" size={20} color={colors. error} />
                 <Text style={styles.errorMessageText}>{error}</Text>
               </View>
             )}
           </View>
 
           {/* Footer */}
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>
+          <View style={styles. footer}>
+            <Text style={styles. footerText}>
               {t('auth.agreeToTerms')}
             </Text>
           </View>
@@ -554,9 +760,9 @@ export default function SignInScreen() {
         onRequestClose={handleSkipLocationSetup}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={styles. modalContent}>
             <View style={styles.modalHeader}>
-              <Ionicons name="location" size={40} color={colors.primary} />
+              <Ionicons name="location" size={40} color={colors. primary} />
               <Text style={styles.modalTitle}>
                 {t('settings.chooseLocation')}
               </Text>
@@ -566,24 +772,19 @@ export default function SignInScreen() {
             </View>
 
             <View style={styles.modalBody}>
-              <LocationSelector showCitySelection={true} />
+              <LocationSelector
+                showCitySelection={true}
+                onLocationSaved={handleLocationSetupComplete}
+              />
             </View>
 
             <View style={styles.modalFooter}>
               <TouchableOpacity
-                style={styles.modalSkipButton}
+                style={styles. modalSkipButton}
                 onPress={handleSkipLocationSetup}
               >
                 <Text style={styles.modalSkipText}>
                   {t('settings.skip')}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.modalContinueButton}
-                onPress={handleLocationSetupComplete}
-              >
-                <Text style={styles.modalContinueText}>
-                  {t('settings.continue')}
                 </Text>
               </TouchableOpacity>
             </View>
@@ -594,7 +795,7 @@ export default function SignInScreen() {
   );
 }
 
-// Styles remain the same...
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -810,19 +1011,6 @@ const styles = StyleSheet.create({
   modalSkipText: {
     fontSize: typography.fontSize.md,
     color: colors.textSecondary,
-    fontWeight: '600',
-  },
-  modalContinueButton: {
-    flex: 1,
-    paddingVertical: spacing.md,
-    borderRadius: borderRadius.lg,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    ...shadows.sm,
-  },
-  modalContinueText: {
-    fontSize: typography.fontSize.md,
-    color: colors.white,
     fontWeight: '600',
   },
 });
