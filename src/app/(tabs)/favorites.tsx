@@ -31,7 +31,7 @@ import {
   getEmptyFavoriteSubcategories
 } from '../../services/offerService';
 import { formatDateRange } from '../../utils/catalogueUtils';
-import { getCatalogueStatusCached } from '../../utils/catalogueStatusCache';
+import { cacheService } from '../../services/cacheService';
 import { logScreenView, logSelectContent } from '../../services/analyticsService';
 import { useSafeTabBarHeight } from '../../hooks';
 import { getCategoryById, getMainSubcategories } from '../../data/categories';
@@ -162,7 +162,7 @@ export default function FavoritesScreen() {
         const store = stores.find(s => s.id === cat.storeId);
         return {
           ...cat,
-          status: getCatalogueStatusCached(cat.id, cat.startDate, cat.endDate),
+          status: cacheService.getCatalogueStatus(cat.id, cat.startDate, cat.endDate),
           storeName: store?.nameAr || cat.titleAr.replace('عروض ', ''),
         };
       });
