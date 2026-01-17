@@ -15,6 +15,7 @@ import { setCataloguesCache } from '../data/catalogueRegistry';
 export { useAppConfig } from './useAppConfig';
 export { useInterstitialAd } from './useInterstitialAd';
 export { useDebounce } from './useDebounce';
+export { useSmartRefresh } from './useSmartRefresh';
 
 // Export the useSafeTabBarHeight hook
 export * from './useSafeTabBarHeight';

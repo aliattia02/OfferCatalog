@@ -6,9 +6,9 @@ import { getAllCatalogues } from './catalogueService';
 
 // Sync intervals (in milliseconds)
 const SYNC_INTERVALS = {
-  OFFERS: 10 * 60 * 1000,      // 10 minutes for offers
-  CATALOGUES: 15 * 60 * 1000,  // 15 minutes for catalogues
-  STATS: 5 * 60 * 1000,        // 5 minutes for stats
+  OFFERS: 30 * 60 * 1000,      // 30 minutes for offers (was 10)
+  CATALOGUES: 60 * 60 * 1000,  // 1 hour for catalogues (was 15)
+  STATS: 30 * 60 * 1000,       // 30 minutes for stats (was 5)
 };
 
 let offersTimer: NodeJS.Timeout | null = null;
@@ -16,6 +16,7 @@ let cataloguesTimer: NodeJS.Timeout | null = null;
 let statsTimer: NodeJS.Timeout | null = null;
 let appStateSubscription: any = null;
 let isAppActive = true;
+let lastRefreshTime: number = 0;
 
 /**
  * Refresh offers cache in background
@@ -72,6 +73,17 @@ async function refreshStatsCache() {
 }
 
 /**
+ * Refresh all caches (internal helper)
+ */
+async function refreshAllCaches() {
+  await Promise.all([
+    refreshOffersCache(),
+    refreshCataloguesCache(),
+    refreshStatsCache(),
+  ]);
+}
+
+/**
  * Handle app state changes (active/background/inactive)
  */
 function handleAppStateChange(nextAppState: AppStateStatus) {
@@ -79,11 +91,15 @@ function handleAppStateChange(nextAppState: AppStateStatus) {
   isAppActive = nextAppState === 'active';
 
   if (!wasActive && isAppActive) {
-    // App became active - trigger immediate refresh
-    console.log('📱 App became active, triggering cache refresh...');
-    refreshOffersCache();
-    refreshCataloguesCache();
-    refreshStatsCache();
+    // Only refresh if cache is expired or stale (> 30 minutes)
+    const now = Date.now();
+    if (!lastRefreshTime || (now - lastRefreshTime) > 30 * 60 * 1000) {
+      console.log('📱 App became active, cache is stale - refreshing...');
+      refreshAllCaches();
+      lastRefreshTime = now;
+    } else {
+      console.log('📱 App became active, cache is fresh - skipping refresh');
+    }
   } else if (wasActive && !isAppActive) {
     console.log('📱 App went to background');
   }
@@ -108,9 +124,8 @@ export function startBackgroundSync() {
   // Do initial refresh
   if (isAppActive) {
     console.log('📱 App is active, performing initial cache refresh...');
-    refreshOffersCache();
-    refreshCataloguesCache();
-    refreshStatsCache();
+    refreshAllCaches();
+    lastRefreshTime = Date.now();
   }
 
   console.log('✅ Background sync service started');
