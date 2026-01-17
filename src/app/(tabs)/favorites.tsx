@@ -155,19 +155,6 @@ export default function FavoritesScreen() {
     setRefreshing(false);
   };
 
-  const getCatalogueStatus = (startDate: string, endDate: string): CatalogueStatus => {
-    const now = new Date();
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    now.setHours(0, 0, 0, 0);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
-
-    if (now < start) return 'upcoming';
-    if (now > end) return 'expired';
-    return 'active';
-  };
-
   const favoriteCatalogues: CatalogueWithStatus[] = useMemo(() => {
     return catalogues
       .filter(cat => favoriteStoreIds.includes(cat.storeId))
