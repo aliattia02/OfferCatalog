@@ -1,5 +1,5 @@
 // src/app/(tabs)/favorites.tsx - FIXED PRODUCTION ERRORS
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,12 +14,13 @@ import {
   Dimensions,
   Modal,
 } from 'react-native';
-import { useRouter, Stack } from 'expo-router';
+import { useRouter, Stack, useFocusEffect } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { OfferCard } from '../../components/flyers';
+import { CachedImage } from '../../components/common';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { addToBasket } from '../../store/slices/basketSlice';
 import { toggleFavoriteSubcategory, toggleFavoriteStore } from '../../store/slices/favoritesSlice';
@@ -30,6 +31,8 @@ import {
   getEmptyFavoriteSubcategories
 } from '../../services/offerService';
 import { formatDateRange } from '../../utils/catalogueUtils';
+import { getCatalogueStatusCached } from '../../utils/catalogueStatusCache';
+import { logScreenView, logSelectContent } from '../../services/analyticsService';
 import { useSafeTabBarHeight } from '../../hooks';
 import { getCategoryById, getMainSubcategories } from '../../data/categories';
 import { stores as allStores } from '../../data/stores';
@@ -84,6 +87,12 @@ export default function FavoritesScreen() {
   const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds);
 
   const allSubcategories = getMainSubcategories();
+
+  useFocusEffect(
+    useCallback(() => {
+      logScreenView('Favorites');
+    }, [])
+  );
 
   useEffect(() => {
     if (catalogues.length === 0 && !cataloguesLoading) {
@@ -146,19 +155,6 @@ export default function FavoritesScreen() {
     setRefreshing(false);
   };
 
-  const getCatalogueStatus = (startDate: string, endDate: string): CatalogueStatus => {
-    const now = new Date();
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    now.setHours(0, 0, 0, 0);
-    start.setHours(0, 0, 0, 0);
-    end.setHours(23, 59, 59, 999);
-
-    if (now < start) return 'upcoming';
-    if (now > end) return 'expired';
-    return 'active';
-  };
-
   const favoriteCatalogues: CatalogueWithStatus[] = useMemo(() => {
     return catalogues
       .filter(cat => favoriteStoreIds.includes(cat.storeId))
@@ -166,7 +162,7 @@ export default function FavoritesScreen() {
         const store = stores.find(s => s.id === cat.storeId);
         return {
           ...cat,
-          status: getCatalogueStatus(cat.startDate, cat.endDate),
+          status: getCatalogueStatusCached(cat.id, cat.startDate, cat.endDate),
           storeName: store?.nameAr || cat.titleAr.replace('عروض ', ''),
         };
       });
@@ -229,6 +225,7 @@ export default function FavoritesScreen() {
   }, [offersData]);
 
   const handleOfferPress = (offer: OfferWithCatalogue) => {
+    logSelectContent('offer', offer.id);
     router.push(`/offer/${offer.id}`);
   };
 
@@ -260,6 +257,7 @@ export default function FavoritesScreen() {
   };
 
   const handleCataloguePress = (catalogueId: string) => {
+    logSelectContent('catalogue', catalogueId);
     router.push(`/flyer/${catalogueId}`);
   };
 
@@ -308,10 +306,10 @@ export default function FavoritesScreen() {
                   style={[styles.manageItem, isFavorite && styles.manageItemActive]}
                   onPress={() => handleToggleFavoriteStore(store.id)}
                 >
-                  <Image
+                  <CachedImage
                     source={getStoreLogoSource(store.logo)}
                     style={styles.manageStoreLogo}
-                    resizeMode="contain"
+                    contentFit="contain"
                   />
                   <Text style={[styles.manageItemText, isFavorite && styles.manageItemTextActive]}>
                     {store.nameAr}
@@ -429,10 +427,10 @@ export default function FavoritesScreen() {
           activeOpacity={0.7}
         >
           <View style={styles.thumbnailImageContainer}>
-            <Image
+            <CachedImage
               source={{ uri: catalogue.coverImage }}
               style={styles.thumbnailImage}
-              resizeMode="cover"
+              contentFit="cover"
             />
             <View style={[styles.statusBadgeThumbnail, getStatusBadgeStyle(catalogue.status)]}>
               <View style={styles.statusDot} />

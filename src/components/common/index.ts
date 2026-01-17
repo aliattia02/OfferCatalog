@@ -8,4 +8,5 @@ export { ForceUpdateModal } from './ForceUpdateModal'; // 🆕
 export { AdBanner } from './AdBanner'; // 🆕
 export { InterstitialAdModal } from './InterstitialAdModal'; // 🆕
 export { CompactLocationSelector } from './CompactLocationSelector';
+export { CachedImage } from './CachedImage'; // 🆕
 

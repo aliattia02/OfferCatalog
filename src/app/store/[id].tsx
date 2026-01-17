@@ -14,14 +14,16 @@ import {
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
+import { useEffect } from 'react';
 
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
-import { Button } from '../../components/common';
+import { Button, CachedImage } from '../../components/common';
 import { LeafletMap } from '../../components/stores';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { useLocalized } from '../../hooks';
 import { toggleFavoriteStore } from '../../store/slices/favoritesSlice';
 import { getStoreById, getBranchesByStore } from '../../data/stores';
+import { logScreenView, logSelectContent } from '../../services/analyticsService';
 
 export default function StoreDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -35,6 +37,13 @@ export default function StoreDetailScreen() {
   const store = getStoreById(id);
   const branches = store ? getBranchesByStore(store.id) : [];
   const isFavorite = store ? favoriteStoreIds.includes(store.id) : false;
+
+  // Analytics: Log screen view on mount
+  useEffect(() => {
+    if (id && store) {
+      logScreenView('StoreDetail', id);
+    }
+  }, [id, store?.id]);
 
   if (!store) {
     return (
@@ -50,6 +59,7 @@ export default function StoreDetailScreen() {
   };
 
   const handleViewCatalogues = () => {
+    logSelectContent('store_catalogues', store.id, { store_name: getName(store) });
     router.push({
       pathname: '/(tabs)/flyers',
       params: { storeId: store.id }
@@ -113,11 +123,11 @@ export default function StoreDetailScreen() {
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Store Header */}
         <View style={styles.header}>
-          {/* UPDATED: Uses the getLogoSource helper */}
-          <Image
+          {/* UPDATED: Uses the getLogoSource helper with CachedImage */}
+          <CachedImage
             source={getLogoSource()}
             style={styles.storeLogo}
-            resizeMode="contain"
+            contentFit="contain"
           />
           <View style={styles.headerInfo}>
             <Text style={styles.storeName}>{getName(store)}</Text>

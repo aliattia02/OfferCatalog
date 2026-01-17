@@ -1,5 +1,5 @@
 // src/app/offer/[id].tsx - FIXED PRODUCTION ERRORS
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,7 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
-import { Button } from '../../components/common';
+import { Button, CachedImage } from '../../components/common';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { useLocalized } from '../../hooks';
 import { addToBasket } from '../../store/slices/basketSlice';
@@ -24,6 +24,7 @@ import { getOfferById } from '../../services/offerService';
 import type { OfferWithCatalogue } from '../../services/offerService';
 import { getCategoryById } from '../../data/categories';
 import { formatCurrency, calculateDiscount, formatDate, getDaysRemaining } from '../../utils/helpers';
+import { logScreenView, logViewItem, logAddToCart } from '../../services/analyticsService';
 
 export default function OfferDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -60,6 +61,13 @@ export default function OfferDetailScreen() {
 
         setOffer(offerData);
         console.log('✅ Offer loaded:', offerData);
+        
+        // Analytics: Log screen view and view item
+        logScreenView('OfferDetail', id);
+        logViewItem(offerData.id, offerData.nameAr, offerData.categoryId, {
+          catalogue_id: offerData.catalogueId,
+          store_id: offerData.storeId,
+        });
       } catch (error: any) {
         console.error('❌ Error loading offer:', error);
         setError(error?.message || 'Failed to load offer');
@@ -114,13 +122,13 @@ export default function OfferDetailScreen() {
     ? getDaysRemaining(offer.catalogueEndDate)
     : 0;
 
-  const handleToggleFavorite = () => {
+  const handleToggleFavorite = useCallback(() => {
     if (offer.categoryId) {
       dispatch(toggleFavoriteSubcategory(offer.categoryId));
     }
-  };
+  }, [offer?.categoryId, dispatch]);
 
-  const handleAddToBasket = () => {
+  const handleAddToBasket = useCallback(() => {
     try {
       const serializableOffer = {
         id: offer.id,
@@ -147,18 +155,23 @@ export default function OfferDetailScreen() {
         offer: serializableOffer,
         storeName: storeName,
       }));
+      
+      logAddToCart(offer.id, offer.nameAr, offer.offerPrice, {
+        catalogue_id: offer.catalogueId,
+        store_id: offer.storeId,
+      });
     } catch (error) {
       console.error('Error adding to basket:', error);
     }
-  };
+  }, [offer, storeName, dispatch]);
 
-  const handleViewStore = () => {
+  const handleViewStore = useCallback(() => {
     if (store?.id) {
       router.push(`/store/${store.id}`);
     }
-  };
+  }, [store?.id, router]);
 
-  const handleViewCatalogue = () => {
+  const handleViewCatalogue = useCallback(() => {
     try {
       if (offer.catalogueId) {
         if (offer.pageNumber) {
@@ -171,7 +184,7 @@ export default function OfferDetailScreen() {
     } catch (error) {
       console.error('Error navigating to catalogue:', error);
     }
-  };
+  }, [offer?.catalogueId, offer?.pageNumber, router]);
 
   return (
     <>
@@ -194,11 +207,10 @@ export default function OfferDetailScreen() {
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Product Image */}
         <View style={styles.imageContainer}>
-          <Image
-            source={{ uri: offer.imageUrl }}
+          <CachedImage
+            source={offer.imageUrl}
             style={styles.image}
-            resizeMode="contain"
-            onError={(e) => console.error('Image load error:', e.nativeEvent.error)}
+            contentFit="contain"
           />
           {discount > 0 && (
             <View style={styles.discountBadge}>
@@ -317,10 +329,10 @@ export default function OfferDetailScreen() {
           {/* Store Info */}
           {store && (
             <TouchableOpacity style={styles.storeCard} onPress={handleViewStore}>
-              <Image
-                source={typeof storeLogo === 'string' ? { uri: storeLogo } : storeLogo}
+              <CachedImage
+                source={typeof storeLogo === 'string' ? storeLogo : storeLogo}
                 style={styles.storeLogo}
-                resizeMode="contain"
+                contentFit="contain"
               />
               <View style={styles.storeInfo}>
                 <Text style={styles.storeName}>{storeName}</Text>
