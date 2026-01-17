@@ -36,9 +36,9 @@ export async function getAllOffers(
     'get_all_offers',
     async () => {
       console.log(`🔥 Firebase: Fetching ALL offers (limit: ${maxResults})...`);
+      // Note: Without orderBy, Firestore will return documents in natural order
       const q = query(
         collection(db, 'offers'),
-        orderBy('createdAt', 'desc'),
         limit(maxResults)
       );
       const snapshot = await getDocs(q);
