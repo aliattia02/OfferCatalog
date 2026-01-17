@@ -14,6 +14,7 @@ import { setCataloguesCache } from '../data/catalogueRegistry';
 // Export new hooks
 export { useAppConfig } from './useAppConfig';
 export { useInterstitialAd } from './useInterstitialAd';
+export { useDebounce } from './useDebounce';
 
 // Export the useSafeTabBarHeight hook
 export * from './useSafeTabBarHeight';
