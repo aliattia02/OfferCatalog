@@ -29,15 +29,15 @@ import { toggleFavoriteSubcategory, toggleFavoriteStore } from '../../store/slic
 import { loadCatalogues } from '../../store/slices/offersSlice';
 import { setCataloguesCache } from '../../data/catalogueRegistry';
 import { getActiveOffers, getOffersByCategory, getAllOffers } from '../../services/offerService';
+import { cacheService } from '../../services/cacheService';
 import {
   getMainCategories,
   getMainSubcategories,
   getCategoryById
 } from '../../data/categories';
 import { formatDateRange } from '../../utils/catalogueUtils';
-import { getCatalogueStatusCached } from '../../utils/catalogueStatusCache';
 import { logScreenView, logSelectContent, logViewItemList } from '../../services/analyticsService';
-import { useSafeTabBarHeight } from '../../hooks';
+import { useSafeTabBarHeight, useSmartRefresh } from '../../hooks';
 import { stores, getStoreById, getGovernorateName } from '../../data/stores';
 import type { Catalogue } from '../../types';
 import type { OfferWithCatalogue } from '../../services/offerService';
@@ -105,12 +105,14 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
   // 🔥 NEW: Get user location from settings
   const userGovernorate = useAppSelector(state => state.settings.userGovernorate) as GovernorateId | null;
 
-  // Track screen view
-  useFocusEffect(
-    React.useCallback(() => {
+  // Use smart refresh hook with 5-minute cooldown
+  useSmartRefresh({
+    onRefresh: () => {
       logScreenView('Flyers', viewMode === 'offers' ? 'FlyersOffers' : 'FlyersCatalogues');
-    }, [viewMode])
-  );
+    },
+    cooldownMs: 5 * 60 * 1000, // 5 minutes
+    screenName: 'Flyers',
+  });
 
   const mainCategories = getMainCategories();
   const mainSubcategories = useMemo(() => {
@@ -364,7 +366,7 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
 
   return filtered.map(cat => ({
     ...cat,
-    status: getCatalogueStatusCached(cat.id, cat.startDate, cat.endDate),
+    status: cacheService.getCatalogueStatus(cat.id, cat.startDate, cat.endDate),
   }));
 }, [catalogues, selectedMainCategory, selectedStore, userGovernorate]);
 

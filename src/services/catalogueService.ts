@@ -1,6 +1,6 @@
 // src/services/catalogueService.ts - CATALOGUE CACHING SERVICE
 import { cacheService, CACHE_KEYS, CACHE_DURATIONS } from './cacheService';
-import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import type { Catalogue } from '../types';
 
@@ -12,40 +12,30 @@ import type { Catalogue } from '../types';
 export async function getAllCatalogues(
   forceRefresh: boolean = false
 ): Promise<Catalogue[]> {
-  // Try cache first
-  if (!forceRefresh) {
-    const cached = await cacheService.get<Catalogue[]>(CACHE_KEYS.CATALOGUES);
-    if (cached) {
-      console.log(`📦 Using cached catalogues (${cached.length} items)`);
-      return cached;
-    }
-  }
+  return cacheService.fetchWithDeduplication(
+    'get_all_catalogues',
+    async () => {
+      console.log('🔥 Firebase: Fetching all catalogues (limit: 50)...');
+      
+      const cataloguesRef = collection(db, 'catalogues');
+      const q = query(
+        cataloguesRef,
+        orderBy('startDate', 'desc'),
+        limit(50)
+      );
+      const snapshot = await getDocs(q);
+      
+      const catalogues: Catalogue[] = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Catalogue));
 
-  console.log('🔥 Firebase: Fetching all catalogues...');
-  
-  try {
-    const cataloguesRef = collection(db, 'catalogues');
-    const q = query(cataloguesRef, orderBy('startDate', 'desc'));
-    const snapshot = await getDocs(q);
-    
-    const catalogues: Catalogue[] = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    } as Catalogue));
-
-    // Cache the result
-    await cacheService.set(
-      CACHE_KEYS.CATALOGUES,
-      catalogues,
-      CACHE_DURATIONS.CATALOGUES
-    );
-
-    console.log(`✅ Fetched and cached ${catalogues.length} catalogues`);
-    return catalogues;
-  } catch (error) {
-    console.error('❌ Error fetching catalogues:', error);
-    throw error;
-  }
+      console.log(`✅ Fetched ${catalogues.length} catalogues`);
+      return catalogues;
+    },
+    forceRefresh ? undefined : CACHE_KEYS.CATALOGUES,
+    CACHE_DURATIONS.CATALOGUES
+  );
 }
 
 /**

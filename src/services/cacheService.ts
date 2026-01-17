@@ -35,11 +35,17 @@ export const CACHE_KEYS = {
 
 // Cache durations in milliseconds
 export const CACHE_DURATIONS = {
-  OFFERS: 10 * 60 * 1000,        // 10 minutes
-  CATALOGUES: 15 * 60 * 1000,    // 15 minutes
-  STATS: 5 * 60 * 1000,          // 5 minutes
-  USER_DATA: 5 * 60 * 1000,      // 5 minutes
-  SEARCH: 5 * 60 * 1000,         // 5 minutes
+  // Long-lived data (changes infrequently)
+  OFFERS: 30 * 60 * 1000,        // 30 minutes (was 10)
+  CATALOGUES: 60 * 60 * 1000,    // 1 hour (was 15 min)
+  
+  // Medium-lived data
+  STATS: 15 * 60 * 1000,         // 15 minutes (was 5)
+  USER_DATA: 30 * 60 * 1000,     // 30 minutes (was 5)
+  SEARCH: 10 * 60 * 1000,        // 10 minutes (was 5)
+  
+  // Short-lived (in-memory only)
+  STATUS_CALCULATION: 2 * 60 * 1000, // 2 minutes
 } as const;
 
 class CacheService {
@@ -49,6 +55,12 @@ class CacheService {
     invalidations: 0,
     totalReads: 0,
   };
+
+  // In-memory cache for frequently accessed, short-lived data
+  private memoryCache: Map<string, { data: any; expiry: number }> = new Map();
+
+  // In-flight request tracking for deduplication
+  private pendingRequests: Map<string, Promise<any>> = new Map();
 
   /**
    * Set cache with automatic expiration
@@ -139,7 +151,8 @@ class CacheService {
       const keys = Object.values(CACHE_KEYS);
       await Promise.all(keys.map(key => AsyncStorage.removeItem(key)));
       this.stats.invalidations += keys.length;
-      console.log('🗑️ All caches cleared');
+      this.clearMemoryCache();
+      console.log('🗑️ All caches cleared (AsyncStorage + Memory)');
     } catch (error) {
       console.error('❌ Error clearing all caches:', error);
     }
@@ -253,6 +266,163 @@ class CacheService {
     }
 
     return info;
+  }
+
+  /**
+   * Get data from in-memory cache
+   */
+  getFromMemory<T>(key: string): T | null {
+    const cached = this.memoryCache.get(key);
+    if (cached && cached.expiry > Date.now()) {
+      console.log(`💨 Memory cache HIT: ${key}`);
+      return cached.data as T;
+    }
+    if (cached) {
+      this.memoryCache.delete(key);
+      console.log(`💨 Memory cache EXPIRED: ${key}`);
+    }
+    return null;
+  }
+
+  /**
+   * Set data in in-memory cache
+   */
+  setInMemory<T>(key: string, data: T, ttlMs: number = 60 * 1000): void {
+    this.memoryCache.set(key, { data, expiry: Date.now() + ttlMs });
+    console.log(`💨 Memory cache SET: ${key} (expires in ${(ttlMs / 1000).toFixed(0)}s)`);
+  }
+
+  /**
+   * Clear in-memory cache
+   */
+  clearMemoryCache(): void {
+    const size = this.memoryCache.size;
+    this.memoryCache.clear();
+    console.log(`💨 Memory cache cleared (${size} entries)`);
+  }
+
+  /**
+   * Get catalogue status with caching (in-memory)
+   * Caches results for 2 minutes to avoid recalculating on every render
+   */
+  getCatalogueStatus(
+    catalogueId: string,
+    startDate: string,
+    endDate: string
+  ): 'active' | 'upcoming' | 'expired' {
+    const cacheKey = `catalogue_status_${catalogueId}_${startDate}_${endDate}`;
+    
+    // Check memory cache first
+    const cached = this.getFromMemory<'active' | 'upcoming' | 'expired'>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    // Calculate status
+    const status = this.calculateCatalogueStatus(startDate, endDate);
+    
+    // Cache in memory with 2-minute TTL
+    this.setInMemory(cacheKey, status, CACHE_DURATIONS.STATUS_CALCULATION);
+    
+    return status;
+  }
+
+  /**
+   * Calculate catalogue status (internal helper)
+   */
+  private calculateCatalogueStatus(
+    startDate: string,
+    endDate: string
+  ): 'active' | 'upcoming' | 'expired' {
+    try {
+      const now = new Date();
+      const normalizedStart = this.normalizeDate(startDate);
+      const normalizedEnd = this.normalizeDate(endDate);
+
+      const start = new Date(normalizedStart);
+      const end = new Date(normalizedEnd);
+
+      now.setHours(0, 0, 0, 0);
+      start.setHours(0, 0, 0, 0);
+      end.setHours(23, 59, 59, 999);
+
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        console.error('❌ Invalid date format:', { startDate, endDate });
+        return 'expired';
+      }
+
+      if (now < start) return 'upcoming';
+      if (now > end) return 'expired';
+      return 'active';
+    } catch (error) {
+      console.error('❌ Error calculating catalogue status:', error);
+      return 'expired';
+    }
+  }
+
+  /**
+   * Normalize date string to YYYY-MM-DD format
+   */
+  private normalizeDate(dateStr: string): string {
+    try {
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        const year = parts[0];
+        const month = parts[1].padStart(2, '0');
+        const day = parts[2].padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      }
+      return dateStr;
+    } catch {
+      return dateStr;
+    }
+  }
+
+  /**
+   * Execute a fetch function with deduplication
+   * Prevents multiple simultaneous requests for the same data
+   */
+  async fetchWithDeduplication<T>(
+    key: string,
+    fetchFn: () => Promise<T>,
+    cacheKey?: string,
+    cacheDuration?: number
+  ): Promise<T> {
+    // Check if request is already in-flight
+    const pending = this.pendingRequests.get(key);
+    if (pending) {
+      console.log(`🔄 [Dedup] Waiting for in-flight request: ${key}`);
+      return pending;
+    }
+
+    // Check cache first
+    if (cacheKey) {
+      const cached = await this.get<T>(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    // Create and track the request
+    const request = (async () => {
+      try {
+        const result = await fetchFn();
+        
+        // Cache if requested
+        if (cacheKey && cacheDuration) {
+          await this.set(cacheKey, result, cacheDuration);
+        }
+        
+        return result;
+      } finally {
+        this.pendingRequests.delete(key);
+      }
+    })();
+
+    this.pendingRequests.set(key, request);
+    console.log(`🚀 [Dedup] Starting new request: ${key}`);
+    
+    return request;
   }
 
   /**

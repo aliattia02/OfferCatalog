@@ -27,15 +27,16 @@ import {
   usePersistBasket,
   usePersistFavorites,
   useSafeTabBarHeight,
-  useInterstitialAd
+  useInterstitialAd,
+  useSmartRefresh
 } from '../../hooks';
 import { addToBasket } from '../../store/slices/basketSlice';
 import { toggleFavoriteStore, toggleFavoriteSubcategory } from '../../store/slices/favoritesSlice';
 import { loadCatalogues } from '../../store/slices/offersSlice';
 import { getMainCategories } from '../../data/categories';
 import { getActiveOffers } from '../../services/offerService';
+import { cacheService } from '../../services/cacheService';
 import { formatDateRange } from '../../utils/catalogueUtils';
-import { getCatalogueStatusCached } from '../../utils/catalogueStatusCache';
 import { logScreenView, logSelectContent } from '../../services/analyticsService';
 import type { Category, Catalogue, Store } from '../../types';
 import type { OfferWithCatalogue } from '../../services/offerService';
@@ -81,14 +82,15 @@ export default function HomeScreen() {
   const userGovernorate = useAppSelector(state => state.settings.userGovernorate);
   const mainCategories = getMainCategories();
 
-  useFocusEffect(
-    useCallback(() => {
-      console.log('🏠 [Home] Screen focused - refreshing data');
-      logScreenView('Home');
+  // Use smart refresh hook with 5-minute cooldown
+  useSmartRefresh({
+    onRefresh: () => {
       loadOffers(false);
       checkAndShowAd();
-    }, [])
-  );
+    },
+    cooldownMs: 5 * 60 * 1000, // 5 minutes
+    screenName: 'Home',
+  });
 
   useEffect(() => {
     if (catalogues.length === 0 && !cataloguesLoading) {
@@ -146,37 +148,15 @@ export default function HomeScreen() {
   };
 
   const getCatalogueStatus = (startDate: string, endDate: string): CatalogueStatus => {
-    try {
-      const now = new Date();
-      const normalizedStart = normalizeDate(startDate);
-      const normalizedEnd = normalizeDate(endDate);
-
-      const start = new Date(normalizedStart);
-      const end = new Date(normalizedEnd);
-
-      now.setHours(0, 0, 0, 0);
-      start.setHours(0, 0, 0, 0);
-      end.setHours(23, 59, 59, 999);
-
-      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-        console.error('❌ Invalid date format:', { startDate, endDate });
-        return 'expired';
-      }
-
-      if (now < start) return 'upcoming';
-      if (now > end) return 'expired';
-      return 'active';
-    } catch (error) {
-      console.error('❌ Error getting catalogue status:', error);
-      return 'expired';
-    }
+    // Use the unified cache service for status calculation
+    return cacheService.getCatalogueStatus('temp', startDate, endDate);
   };
 
   const categoryGroups: CategoryGroup[] = useMemo(() => {
     console.log(`📚 [Home] Processing ${catalogues.length} catalogues...`);
 
     const cataloguesWithStatus: CatalogueWithStatus[] = catalogues.map(cat => {
-      const status = getCatalogueStatusCached(cat.id, cat.startDate, cat.endDate);
+      const status = cacheService.getCatalogueStatus(cat.id, cat.startDate, cat.endDate);
       return {
         ...cat,
         status,
@@ -231,7 +211,7 @@ export default function HomeScreen() {
     console.log('📊 [Home] Calculating top stores by catalogue count...');
 
     const cataloguesWithStatus: CatalogueWithStatus[] = catalogues.map(cat => {
-      const status = getCatalogueStatusCached(cat.id, cat.startDate, cat.endDate);
+      const status = cacheService.getCatalogueStatus(cat.id, cat.startDate, cat.endDate);
       return { ...cat, status };
     });
 
