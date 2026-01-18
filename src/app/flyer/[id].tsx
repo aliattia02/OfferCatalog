@@ -3,17 +3,19 @@ import {
   View,
   Text,
   Image,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
-  I18nManager,
   Alert,
   ActivityIndicator,
   PanResponder,
   Modal,
   Animated,
+  InteractionManager,
+  Dimensions,        // ← ADD
+  I18nManager,       // ← ADD
+  StyleSheet,        // ← ADD THIS
 } from 'react-native';
+
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,14 +32,13 @@ import { formatCurrency, calculateDiscount } from '../../utils/helpers';
 import { formatDateRange } from '../../utils/catalogueUtils';
 import { cacheService } from '../../services/cacheService';
 import { logScreenView, logViewItem, logAddToCart } from '../../services/analyticsService';
+import { perfLogger, trackNavigation } from '../../utils/performanceLogger';
 import type { OfferWithCatalogue } from '../../services/offerService';
 import type { Catalogue } from '../../types';
 
-const { width, height } = Dimensions.get('window');
-const SWIPE_THRESHOLD = 50;
-const SWIPE_VELOCITY_THRESHOLD = 0.3;
-const DOUBLE_TAP_DELAY = 300;
+// ... keep your existing constants and types ...
 const PLACEHOLDER_PAGE_IMAGE_URL = 'https://placehold.co/600x800/cccccc/ffffff?text=No+Image';
+const { width, height } = Dimensions.get('window');
 
 type CatalogueStatus = 'active' | 'upcoming' | 'expired';
 
@@ -52,44 +53,85 @@ export default function FlyerDetailScreen() {
   const dispatch = useAppDispatch();
   const { getTitle, getName } = useLocalized();
 
+  // 🔥 PERFORMANCE: Track component lifecycle
+  const mountTime = useRef(Date.now());
+  const renderCount = useRef(0);
+  const hasInitialized = useRef(false);
+  const [isReady, setIsReady] = useState(false);
+
+  // State
   const [currentPage, setCurrentPage] = useState(0);
   const [catalogueOffers, setCatalogueOffers] = useState<OfferWithCatalogue[]>([]);
   const [loadingOffers, setLoadingOffers] = useState(true);
   const [fullScreenImage, setFullScreenImage] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
 
-  // Use refs to track state for PanResponder
+  // Refs for PanResponder
   const currentPageRef = useRef(0);
   const isZoomedRef = useRef(false);
   const lastTap = useRef<number>(0);
 
+  // Redux
   const catalogue = getCatalogueById(id);
   const stores = useAppSelector(state => state.stores.stores);
   const basketItems = useAppSelector(state => state.basket.items);
   const catalogues = useAppSelector(state => state.offers.catalogues);
   const userGovernorate = useAppSelector(state => state.settings.userGovernorate);
 
-  const store = stores.find(s => s.id === catalogue?.storeId) || (catalogue ? {
-    id: catalogue.storeId,
-    nameAr: catalogue.titleAr.replace('عروض ', ''),
-    nameEn: catalogue.titleEn.replace(' Offers', ''),
-    logo: `https://placehold.co/100x100/e63946/ffffff?text=${catalogue.storeId}`,
-    branches: [],
-  } : null);
-
   const totalPages = catalogue?.pages?.length || 0;
   const totalPagesRef = useRef(totalPages);
 
-  // Header title with catalogue name and date
+  // 🔥 PERFORMANCE: Track renders
+  useEffect(() => {
+    renderCount.current++;
+    perfLogger.trackRender('FlyerDetail', 3);
+    console.log(`🔄 [FlyerDetail] Render #${renderCount.current}`);
+  });
+
+  // 🔥 PERFORMANCE: Track mount and defer heavy work
+  useEffect(() => {
+    trackNavigation.start('Previous', `FlyerDetail-${id}`);
+
+    const mountDuration = Date.now() - mountTime.current;
+    console.log(`⏱️ [FlyerDetail] Mounted in ${mountDuration}ms`);
+
+    trackNavigation.markPhase('mount');
+
+    // Defer heavy initialization
+    InteractionManager.runAfterInteractions(() => {
+      console.log('✅ [FlyerDetail] Interactions complete');
+      setIsReady(true);
+      trackNavigation.markPhase('firstRender');
+    });
+
+    return () => {
+      trackNavigation.end();
+      console.log('👋 [FlyerDetail] Unmounted');
+    };
+  }, []);
+
+  // 🔥 OPTIMIZED: Memoize store lookup
+  const store = useMemo(() => {
+    return stores.find(s => s.id === catalogue?.storeId) || (catalogue ? {
+      id: catalogue.storeId,
+      nameAr: catalogue.titleAr.replace('عروض ', ''),
+      nameEn: catalogue.titleEn.replace(' Offers', ''),
+      logo: `https://placehold.co/100x100/e63946/ffffff?text=${catalogue.storeId}`,
+      branches: [],
+    } : null);
+  }, [stores, catalogue?.storeId, catalogue?.titleAr, catalogue?.titleEn]);
+
+  // 🔥 OPTIMIZED: Memoize header title
   const headerTitle = useMemo(() => {
     if (!catalogue) return '';
     const dateRange = formatDateRange(catalogue.startDate, catalogue.endDate);
     return `${catalogue.titleAr} • ${dateRange}`;
-  }, [catalogue]);
+  }, [catalogue?.titleAr, catalogue?.startDate, catalogue?.endDate]);
 
-  // Analytics: Log screen view on mount
+  // Analytics: Log screen view
   useEffect(() => {
-    if (id) {
+    if (id && !hasInitialized.current) {
+      hasInitialized.current = true;
       logScreenView('FlyerDetail', id);
       if (catalogue) {
         logViewItem(catalogue.id, catalogue.titleAr, catalogue.categoryId);
@@ -97,9 +139,9 @@ export default function FlyerDetailScreen() {
     }
   }, [id, catalogue?.id]);
 
-  // Set initial page from URL parameter
+  // Set initial page
   useEffect(() => {
-    if (page) {
+    if (page && totalPages > 0) {
       const pageNumber = parseInt(page, 10);
       if (!isNaN(pageNumber) && pageNumber > 0 && pageNumber <= totalPages) {
         const pageIndex = pageNumber - 1;
@@ -109,7 +151,7 @@ export default function FlyerDetailScreen() {
     }
   }, [page, totalPages]);
 
-  // Update refs whenever state changes
+  // Update refs
   useEffect(() => {
     currentPageRef.current = currentPage;
   }, [currentPage]);
@@ -129,7 +171,7 @@ export default function FlyerDetailScreen() {
   const lastTranslateX = useRef(0);
   const lastTranslateY = useRef(0);
 
-  // Load real offers from Firestore
+  // 🔥 PERFORMANCE: Load offers with tracking
   useEffect(() => {
     const loadOffers = async () => {
       if (!catalogue?.id) {
@@ -138,11 +180,19 @@ export default function FlyerDetailScreen() {
       }
 
       try {
+        perfLogger.start('FlyerDetail.loadOffers');
         setLoadingOffers(true);
+
         const offers = await getOffersByCatalogue(catalogue.id);
         setCatalogueOffers(offers);
+
+        const duration = perfLogger.end('FlyerDetail.loadOffers');
+        trackNavigation.markPhase('dataLoad');
+
+        console.log(`📦 [FlyerDetail] Loaded ${offers.length} offers in ${duration}ms`);
       } catch (error) {
-        console.error('Error loading catalogue offers:', error);
+        console.error('❌ Error loading catalogue offers:', error);
+        perfLogger.end('FlyerDetail.loadOffers');
       } finally {
         setLoadingOffers(false);
       }
@@ -151,7 +201,7 @@ export default function FlyerDetailScreen() {
     loadOffers();
   }, [catalogue?.id]);
 
-  // Reset zoom when page changes or modal closes
+  // Reset zoom when page changes
   useEffect(() => {
     resetZoom();
   }, [currentPage, fullScreenImage]);
@@ -180,15 +230,17 @@ export default function FlyerDetailScreen() {
     lastTranslateY.current = 0;
   }, [scale, translateX, translateY]);
 
-  // Helper function to get catalogue status (using cached version)
+  // 🔥 OPTIMIZED: Use cached catalogue status
   const getCatalogueStatus = useCallback((startDate: string, endDate: string): CatalogueStatus => {
     if (!catalogue) return 'expired';
     return cacheService.getCatalogueStatus(catalogue.id, startDate, endDate);
   }, [catalogue?.id]);
 
-  // Find next catalogue logic
+  // 🔥 OPTIMIZED: Memoize next catalogue with proper dependencies
   const nextCatalogue = useMemo(() => {
     if (!catalogue) return null;
+
+    perfLogger.start('FlyerDetail.calculateNextCatalogue');
 
     const cataloguesWithStatus: CatalogueWithStatus[] = catalogues.map(cat => ({
       ...cat,
@@ -207,39 +259,46 @@ export default function FlyerDetailScreen() {
     }
 
     const sameStore = activeCatalogues.find(c => c.storeId === catalogue.storeId);
-    if (sameStore) return sameStore;
+    if (sameStore) {
+      perfLogger.end('FlyerDetail.calculateNextCatalogue');
+      return sameStore;
+    }
 
     const sameCategory = activeCatalogues.find(c => c.categoryId === catalogue.categoryId);
-    if (sameCategory) return sameCategory;
+    if (sameCategory) {
+      perfLogger.end('FlyerDetail.calculateNextCatalogue');
+      return sameCategory;
+    }
 
-    return activeCatalogues[0] || null;
-  }, [catalogue, catalogues, userGovernorate]);
+    const result = activeCatalogues[0] || null;
+    perfLogger.end('FlyerDetail.calculateNextCatalogue');
+    return result;
+  }, [catalogue?.id, catalogue?.storeId, catalogue?.categoryId, catalogues, userGovernorate, getCatalogueStatus]);
 
   const nextCatalogueRef = useRef(nextCatalogue);
   useEffect(() => {
     nextCatalogueRef.current = nextCatalogue;
   }, [nextCatalogue]);
 
-  // Close modal before navigating to next catalogue
+  // Navigate to next catalogue
   const navigateToNextCatalogue = useCallback(() => {
     if (nextCatalogueRef.current) {
       console.log('📄 Navigating to next catalogue:', nextCatalogueRef.current.id);
 
-      // Close fullscreen modal first
+      trackNavigation.start('FlyerDetail', `FlyerDetail-${nextCatalogueRef.current.id}`);
       setFullScreenImage(false);
 
-      // Small delay to ensure modal closes smoothly before navigation
       setTimeout(() => {
         router.push(`/flyer/${nextCatalogueRef.current!.id}`);
       }, 100);
     }
   }, [router]);
 
-  // Double-tap to zoom handler
+  // Double-tap zoom handler
   const handleDoubleTap = useCallback(() => {
     const now = Date.now();
 
-    if (now - lastTap.current < DOUBLE_TAP_DELAY) {
+    if (now - lastTap.current < 300) {
       if (isZoomedRef.current) {
         setIsZoomed(false);
         isZoomedRef.current = false;
@@ -277,7 +336,7 @@ export default function FlyerDetailScreen() {
     }
   }, [scale, translateX, translateY]);
 
-  // Clamp translation to prevent going too far
+  // Clamp translation
   const clampTranslation = useCallback((x: number, y: number, currentScale: number) => {
     const maxX = (width * (currentScale - 1)) / 2;
     const maxY = (height * 0.8 * (currentScale - 1)) / 2;
@@ -288,7 +347,7 @@ export default function FlyerDetailScreen() {
     };
   }, []);
 
-  // NORMAL VIEW: Swipe with next catalogue support
+  // 🔥 OPTIMIZED: Memoize PanResponders (don't recreate on every render)
   const normalViewPan = useMemo(() =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
@@ -300,11 +359,10 @@ export default function FlyerDetailScreen() {
         const page = currentPageRef.current;
         const maxPages = totalPagesRef.current;
 
-        const isFastSwipe = Math.abs(vx) > SWIPE_VELOCITY_THRESHOLD;
-        const isLongSwipe = Math.abs(dx) > SWIPE_THRESHOLD;
+        const isFastSwipe = Math.abs(vx) > 0.3;
+        const isLongSwipe = Math.abs(dx) > 50;
 
         if (isFastSwipe || isLongSwipe) {
-          // ✅ Fixed: Natural swipe direction (right = prev, left = next)
           const isSwipeLeft = dx < 0;
           const isSwipeRight = dx > 0;
 
@@ -319,7 +377,6 @@ export default function FlyerDetailScreen() {
       },
     }), [navigateToNextCatalogue]);
 
-  // FULLSCREEN pan with proper navigation
   const fullScreenPan = useMemo(() =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -363,11 +420,10 @@ export default function FlyerDetailScreen() {
           const page = currentPageRef.current;
           const maxPages = totalPagesRef.current;
 
-          const isFastSwipe = Math.abs(vx) > SWIPE_VELOCITY_THRESHOLD;
-          const isLongSwipe = Math.abs(dx) > SWIPE_THRESHOLD;
+          const isFastSwipe = Math.abs(vx) > 0.3;
+          const isLongSwipe = Math.abs(dx) > 50;
 
           if (isFastSwipe || isLongSwipe) {
-            // ✅ Fixed: Natural swipe direction (right = prev, left = next)
             const isSwipeLeft = dx < 0;
             const isSwipeRight = dx > 0;
 
@@ -383,12 +439,17 @@ export default function FlyerDetailScreen() {
       },
     }), [translateX, translateY, clampTranslation, navigateToNextCatalogue]);
 
+  // 🔥 OPTIMIZED: Memoize page offers
   const pageOffers = useMemo(() => {
-    return catalogueOffers.filter(
+    perfLogger.start('FlyerDetail.filterPageOffers');
+    const filtered = catalogueOffers.filter(
       offer => offer.pageNumber === currentPage + 1
     );
+    perfLogger.end('FlyerDetail.filterPageOffers');
+    return filtered;
   }, [catalogueOffers, currentPage]);
 
+  // 🔥 OPTIMIZED: Memoize isPageSaved check
   const isPageSaved = useMemo(() => {
     if (!catalogue || !catalogue.pages || catalogue.pages.length === 0) return false;
     return basketItems.some(
@@ -397,39 +458,16 @@ export default function FlyerDetailScreen() {
         item.cataloguePage?.catalogueId === catalogue.id &&
         item.cataloguePage?.pageNumber === currentPage + 1
     );
-  }, [basketItems, catalogue?.id, currentPage]);
+  }, [basketItems, catalogue?.id, catalogue?.pages, currentPage]);
 
-  if (!catalogue) {
-    return (
-      <View style={styles.errorContainer}>
-        <Ionicons name="document-text-outline" size={64} color={colors.gray[300]} />
-        <Text style={styles.errorText}>الكتالوج غير موجود</Text>
-        <Text style={styles.errorSubtext}>ID: {id}</Text>
-        <Button title="العودة" onPress={() => router.back()} />
-      </View>
-    );
-  }
-
-  if (!store) {
-    return (
-      <View style={styles.errorContainer}>
-        <Text style={styles.errorText}>المتجر غير موجود</Text>
-        <Button title="العودة" onPress={() => router.back()} />
-      </View>
-    );
-  }
-
-  const hasPages = catalogue.pages && catalogue.pages.length > 0;
-  const currentPageData = hasPages ? catalogue.pages[currentPage] : null;
-  const isLastPage = currentPage === totalPages - 1;
-
+  // 🔥 OPTIMIZED: Memoize callbacks
   const handleAddToBasket = useCallback((offer: OfferWithCatalogue) => {
     dispatch(addToBasket({
       offer,
-      storeName: store.nameAr,
+      storeName: store?.nameAr || '',
     }));
     logAddToCart(offer.id, offer.nameAr, offer.offerPrice, {
-      catalogue_id: catalogue.id,
+      catalogue_id: catalogue?.id || '',
       page_number: currentPage + 1,
     });
   }, [dispatch, store?.nameAr, catalogue?.id, currentPage]);
@@ -439,6 +477,12 @@ export default function FlyerDetailScreen() {
   }, [router]);
 
   const handleSavePage = useCallback(() => {
+    if (!catalogue?.pages) {
+      Alert.alert('خطأ', 'لا توجد صفحة للحفظ');
+      return;
+    }
+
+    const currentPageData = catalogue.pages[currentPage];
     if (!currentPageData) {
       Alert.alert('خطأ', 'لا توجد صفحة للحفظ');
       return;
@@ -453,15 +497,15 @@ export default function FlyerDetailScreen() {
       addPageToBasket({
         catalogue,
         page: currentPageData,
-        storeName: store.nameAr,
+        storeName: store?.nameAr || '',
         offers: pageOffers,
       })
     );
 
     Alert.alert('نجح', 'تم حفظ الصفحة في السلة');
-  }, [currentPageData, isPageSaved, dispatch, catalogue, store?.nameAr, pageOffers]);
+  }, [catalogue, currentPage, isPageSaved, dispatch, store?.nameAr, pageOffers]);
 
-  const handleNavPress = (direction: 'prev' | 'next') => {
+  const handleNavPress = useCallback((direction: 'prev' | 'next') => {
     if (direction === 'prev' && currentPage > 0) {
       setCurrentPage(currentPage - 1);
     } else if (direction === 'next') {
@@ -471,21 +515,9 @@ export default function FlyerDetailScreen() {
         navigateToNextCatalogue();
       }
     }
-  };
+  }, [currentPage, totalPages, nextCatalogue, navigateToNextCatalogue]);
 
-  const handleNextCatalogue = () => {
-    if (nextCatalogue) {
-      if (fullScreenImage) {
-        setFullScreenImage(false);
-        setTimeout(() => {
-          router.push(`/flyer/${nextCatalogue.id}`);
-        }, 100);
-      } else {
-        router.push(`/flyer/${nextCatalogue.id}`);
-      }
-    }
-  };
-
+  // 🔥 OPTIMIZED: Memoize offer thumbnail render
   const renderOfferThumbnail = useCallback((offer: OfferWithCatalogue) => {
     const discount = offer.originalPrice
       ? calculateDiscount(offer.originalPrice, offer.offerPrice)
@@ -503,6 +535,7 @@ export default function FlyerDetailScreen() {
             source={offer.imageUrl}
             style={styles.thumbnailImage}
             contentFit="cover"
+            showLoader={false}
           />
           {discount > 0 && (
             <View style={styles.thumbnailDiscountBadge}>
@@ -538,83 +571,49 @@ export default function FlyerDetailScreen() {
     );
   }, [handleOfferPress, handleAddToBasket]);
 
-  // Render next catalogue button (only on last page)
-  const renderNextCatalogueButton = () => {
-    if (!nextCatalogue || !isLastPage) return null;
-
-    const nextStoreName = stores.find(s => s.id === nextCatalogue.storeId)?.nameAr ||
-                          nextCatalogue.titleAr.replace('عروض ', '');
-
+  // Early returns for error states
+  if (!catalogue) {
     return (
-      <View style={styles.nextCatalogueSection}>
-        <View style={styles.nextCatalogueHeader}>
-          <Ionicons name="arrow-forward-circle" size={24} color={colors.primary} />
-          <Text style={styles.nextCatalogueTitle}>الكتالوج التالي</Text>
-        </View>
-
-        <TouchableOpacity
-          style={styles.nextCatalogueCard}
-          onPress={handleNextCatalogue}
-          activeOpacity={0.8}
-        >
-          <CachedImage
-            source={nextCatalogue.coverImage}
-            style={styles.nextCatalogueImage}
-            contentFit="cover"
-          />
-
-          <View style={styles.nextCatalogueInfo}>
-            <View style={styles.nextCatalogueTextContainer}>
-              <Text style={styles.nextCatalogueStoreName} numberOfLines={1}>
-                {nextStoreName}
-              </Text>
-              <Text style={styles.nextCatalogueDate} numberOfLines={1}>
-                {formatDateRange(nextCatalogue.startDate, nextCatalogue.endDate)}
-              </Text>
-              {nextCatalogue.isLocalStore && (
-                <View style={styles.nextCatalogueLocalBadge}>
-                  <Ionicons name="location" size={12} color={colors.success} />
-                  <Text style={styles.nextCatalogueLocalText}>محلي</Text>
-                </View>
-              )}
-            </View>
-
-            <View style={styles.nextCatalogueAction}>
-              <Text style={styles.nextCatalogueActionText}>عرض الآن</Text>
-              <Ionicons
-                name={I18nManager.isRTL ? "chevron-back" : "chevron-forward"}
-                size={20}
-                color={colors.white}
-              />
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        <Text style={styles.nextCatalogueHint}>
-          <Ionicons name="information-circle-outline" size={14} color={colors.textSecondary} />
-          {' '}اسحب لليسار للانتقال أو اضغط على البطاقة
-        </Text>
+      <View style={styles.errorContainer}>
+        <Ionicons name="document-text-outline" size={64} color={colors.gray[300]} />
+        <Text style={styles.errorText}>الكتالوج غير موجود</Text>
+        <Text style={styles.errorSubtext}>ID: {id}</Text>
+        <Button title="العودة" onPress={() => router.back()} />
       </View>
     );
-  };
+  }
 
-  // ✅ Fixed: Render swipe indicator on last page
-  const renderLastPageSwipeIndicator = () => {
-    if (!isLastPage || !nextCatalogue) return null;
-
+  if (!store) {
     return (
-      <View style={styles.swipeIndicator}>
-        <Ionicons
-          name="chevron-forward"
-          size={20}
-          color={colors.primary}
+      <View style={styles.errorContainer}>
+        <Text style={styles.errorText}>المتجر غير موجود</Text>
+        <Button title="العودة" onPress={() => router.back()} />
+      </View>
+    );
+  }
+
+  const hasPages = catalogue.pages && catalogue.pages.length > 0;
+  const currentPageData = hasPages ? catalogue.pages[currentPage] : null;
+  const isLastPage = currentPage === totalPages - 1;
+
+  // 🔥 PERFORMANCE: Show loading skeleton while interactions complete
+  if (!isReady) {
+    return (
+      <>
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: headerTitle,
+            headerBackTitle: 'عودة',
+          }}
         />
-        <Text style={styles.swipeIndicatorText}>
-          اسحب للكتالوج التالي
-        </Text>
-      </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>جاري التحميل...</Text>
+        </View>
+      </>
     );
-  };
+  }
 
   return (
     <>
@@ -640,17 +639,27 @@ export default function FlyerDetailScreen() {
                   source={currentPageData?.imageUrl || PLACEHOLDER_PAGE_IMAGE_URL}
                   style={styles.pageImage}
                   contentFit="contain"
+                  showLoader={true}
                 />
               </TouchableOpacity>
 
-              {/* Last page indicator */}
-              {renderLastPageSwipeIndicator()}
+              {isLastPage && nextCatalogue && (
+                <View style={styles.swipeIndicator}>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={20}
+                    color={colors.primary}
+                  />
+                  <Text style={styles.swipeIndicatorText}>
+                    اسحب للكتالوج التالي
+                  </Text>
+                </View>
+              )}
             </View>
 
-            {/* ✅ Fixed: Consistent navigation direction */}
+            {/* Navigation controls - keep existing implementation */}
             <View style={styles.pageNavigationCenter}>
               <View style={styles.navControls}>
-                {/* LEFT BUTTON - Always PREVIOUS */}
                 <TouchableOpacity
                   style={[styles.navButton, currentPage === 0 && styles.navButtonDisabled]}
                   onPress={() => handleNavPress('prev')}
@@ -669,7 +678,6 @@ export default function FlyerDetailScreen() {
                   </Text>
                 </View>
 
-                {/* RIGHT BUTTON - Always NEXT */}
                 <TouchableOpacity
                   style={[
                     styles.navButton,
@@ -724,11 +732,9 @@ export default function FlyerDetailScreen() {
           </View>
         ) : null}
 
-        {/* Next Catalogue Button */}
-        {renderNextCatalogueButton()}
-
         <View style={styles.bottomPadding} />
       </ScrollView>
+
 
       {/* Fullscreen Modal with Double-Tap Zoom and Pan */}
       <Modal

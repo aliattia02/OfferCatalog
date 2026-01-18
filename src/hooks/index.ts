@@ -1,8 +1,8 @@
-// src/hooks/index.ts
+// src/hooks/index.ts - FIXED: Properly export usePersistBasket
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
-import { databaseService } from '../services/database';  // ✅ FIXED: Changed from * as databaseService
+import { databaseService } from '../services/database';
 import { hydrateBasket } from '../store/slices/basketSlice';
 import { hydrateFavorites } from '../store/slices/favoritesSlice';
 import { hydrateSettings } from '../store/slices/settingsSlice';
@@ -11,13 +11,13 @@ import { setOffers, loadCatalogues } from '../store/slices/offersSlice';
 import { stores as mockStores } from '../data/stores';
 import { offers as mockOffers } from '../data/offers';
 import { setCataloguesCache } from '../data/catalogueRegistry';
-// Export new hooks
+
+// ✅ Export all hooks
 export { useAppConfig } from './useAppConfig';
 export { useInterstitialAd } from './useInterstitialAd';
 export { useDebounce } from './useDebounce';
 export { useSmartRefresh } from './useSmartRefresh';
-
-// Export the useSafeTabBarHeight hook
+export { usePersistBasket } from './usePersistBasket'; // ✅ Export the new hook
 export * from './useSafeTabBarHeight';
 
 // Hook for app initialization
@@ -53,7 +53,7 @@ export const useAppInitialization = () => {
         dispatch(setOffers(mockOffers));
 
         // Load catalogues from Firestore
-        console.log('📥 Loading catalogues from Firestore...');
+        console.log('🔥 Loading catalogues from Firestore...');
         const result = await dispatch(loadCatalogues()).unwrap();
 
         // Update the catalogue registry cache with loaded catalogues
@@ -74,18 +74,7 @@ export const useAppInitialization = () => {
   return isReady;
 };
 
-// Hook for persisting basket changes
-export const usePersistBasket = () => {
-  const basket = useAppSelector(state => state.basket);
-
-  useEffect(() => {
-    const persistBasket = async () => {
-      await databaseService. saveBasket(basket);
-    };
-    persistBasket();
-  }, [basket]);
-};
-
+// ❌ REMOVED: Old usePersistBasket (now in separate file)
 // Hook for persisting favorites changes
 export const usePersistFavorites = () => {
   const favorites = useAppSelector(state => state.favorites);
@@ -100,7 +89,7 @@ export const usePersistFavorites = () => {
 
 // Hook for persisting settings changes
 export const usePersistSettings = () => {
-  const settings = useAppSelector(state => state. settings);
+  const settings = useAppSelector(state => state.settings);
 
   useEffect(() => {
     const persistSettings = async () => {
@@ -117,29 +106,28 @@ export const useLocalized = () => {
   const isRTL = language === 'ar';
 
   const getName = useCallback(
-    (item:  { nameAr: string; nameEn: string }): string => {
-      return language === 'ar' ? item. nameAr : item.nameEn;
+    (item: { nameAr: string; nameEn: string }): string => {
+      return language === 'ar' ? item.nameAr : item.nameEn;
     },
     [language]
   );
 
   const getAddress = useCallback(
-    (item: { addressAr:  string; addressEn: string }): string => {
-      return language === 'ar' ? item. addressAr : item.addressEn;
+    (item: { addressAr: string; addressEn: string }): string => {
+      return language === 'ar' ? item.addressAr : item.addressEn;
     },
     [language]
   );
 
   const getTitle = useCallback(
-    (item: { titleAr:  string; titleEn: string }): string => {
-      return language === 'ar' ? item. titleAr : item.titleEn;
+    (item: { titleAr: string; titleEn: string }): string => {
+      return language === 'ar' ? item.titleAr : item.titleEn;
     },
     [language]
   );
 
-  // NEW: Add getDescription function
   const getDescription = useCallback(
-    (item: { descriptionAr?:  string; descriptionEn?: string }): string | undefined => {
+    (item: { descriptionAr?: string; descriptionEn?: string }): string | undefined => {
       return language === 'ar' ? item.descriptionAr : item.descriptionEn;
     },
     [language]
