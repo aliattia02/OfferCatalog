@@ -1,3 +1,4 @@
+// Part 1: Updated imports and state management
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -11,9 +12,9 @@ import {
   Modal,
   Animated,
   InteractionManager,
-  Dimensions,        // ← ADD
-  I18nManager,       // ← ADD
-  StyleSheet,        // ← ADD THIS
+  Dimensions,
+  I18nManager,
+  StyleSheet,
 } from 'react-native';
 
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -36,7 +37,6 @@ import { perfLogger, trackNavigation } from '../../utils/performanceLogger';
 import type { OfferWithCatalogue } from '../../services/offerService';
 import type { Catalogue } from '../../types';
 
-// ... keep your existing constants and types ...
 const PLACEHOLDER_PAGE_IMAGE_URL = 'https://placehold.co/600x800/cccccc/ffffff?text=No+Image';
 const { width, height } = Dimensions.get('window');
 
@@ -44,6 +44,13 @@ type CatalogueStatus = 'active' | 'upcoming' | 'expired';
 
 interface CatalogueWithStatus extends Catalogue {
   status: CatalogueStatus;
+}
+
+// 🔥 NEW: Offers cache state
+interface OffersCacheState {
+  hasOffers: boolean;
+  checkedAt: number;
+  totalOffers: number;
 }
 
 export default function FlyerDetailScreen() {
@@ -59,12 +66,36 @@ export default function FlyerDetailScreen() {
   const hasInitialized = useRef(false);
   const [isReady, setIsReady] = useState(false);
 
+  // 🔥 NEW: Image loading tracking
+  const [imageLoadMetrics, setImageLoadMetrics] = useState({
+    totalTime: 0,
+    mountTime: 0,
+    firstRenderTime: 0,
+    dataLoadTime: 0,
+    imageLoadStartTime: 0,
+    imageLoadEndTime: 0,
+    imageRenderTime: 0,
+  });
+  
+  // 🔥 NEW: Toggle for performance overlay
+  const [showPerfOverlay, setShowPerfOverlay] = useState(false);
+  
+  const imageLoadStartRef = useRef(0);
+  const transitionStartRef = useRef(0);
+  const imageHasRenderedRef = useRef(false);
+
   // State
   const [currentPage, setCurrentPage] = useState(0);
   const [catalogueOffers, setCatalogueOffers] = useState<OfferWithCatalogue[]>([]);
   const [loadingOffers, setLoadingOffers] = useState(true);
+  
+  // 🔥 NEW: Offers availability cache
+  const [offersCache, setOffersCache] = useState<OffersCacheState | null>(null);
+  const offersCacheChecked = useRef(false);
+  
   const [fullScreenImage, setFullScreenImage] = useState(false);
   const [isZoomed, setIsZoomed] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   // Refs for PanResponder
   const currentPageRef = useRef(0);
@@ -81,15 +112,123 @@ export default function FlyerDetailScreen() {
   const totalPages = catalogue?.pages?.length || 0;
   const totalPagesRef = useRef(totalPages);
 
+// 🔥 NEW: Performance tracking overlay component with toggle
+const PerformanceOverlay = ({
+  visible,
+  metrics,
+  onToggle,
+}: {
+  visible: boolean;
+  metrics: {
+    totalTime: number;
+    mountTime: number;
+    firstRenderTime: number;
+    dataLoadTime: number;
+    imageLoadStartTime: number;
+    imageLoadEndTime: number;
+    imageRenderTime: number;
+  };
+  onToggle: () => void;
+}) => {
+  const getColor = (time: number) => {
+    if (time < 100) return '#4caf50';
+    if (time < 500) return '#ff9800';
+    return '#f44336';
+  };
+
+  const getTotalColor = () => getColor(metrics.totalTime);
+  const getImageLoadTime = () => metrics.imageLoadEndTime - metrics.imageLoadStartTime;
+
+  return (
+    <>
+      {/* Toggle Button - Always Visible */}
+      <TouchableOpacity
+        style={styles.perfToggleButton}
+        onPress={onToggle}
+        activeOpacity={0.7}
+      >
+        <Ionicons
+          name={visible ? "speedometer" : "speedometer-outline"}
+          size={20}
+          color={colors.white}
+        />
+      </TouchableOpacity>
+
+      {/* Overlay - Only when visible */}
+      {visible && (
+        <View style={styles.perfOverlay}>
+          <View style={styles.perfHeader}>
+            <Text style={styles.perfTitle}>🎯 Transition Metrics</Text>
+            <Text style={[styles.perfTotal, { color: getTotalColor() }]}>
+              {metrics.totalTime}ms
+            </Text>
+          </View>
+
+          <View style={styles.perfMetrics}>
+            <View style={styles.perfRow}>
+              <Text style={styles.perfLabel}>Mount:</Text>
+              <Text style={styles.perfValue}>{metrics.mountTime}ms</Text>
+            </View>
+
+            <View style={styles.perfRow}>
+              <Text style={styles.perfLabel}>First Render:</Text>
+              <Text style={styles.perfValue}>{metrics.firstRenderTime}ms</Text>
+            </View>
+
+            <View style={styles.perfRow}>
+              <Text style={styles.perfLabel}>Data Load:</Text>
+              <Text style={[styles.perfValue, { color: getColor(metrics.dataLoadTime) }]}>
+                {metrics.dataLoadTime}ms
+              </Text>
+            </View>
+
+            <View style={styles.perfRow}>
+              <Text style={styles.perfLabel}>🖼️ Image Start:</Text>
+              <Text style={styles.perfValue}>{metrics.imageLoadStartTime}ms</Text>
+            </View>
+
+            <View style={styles.perfRow}>
+              <Text style={styles.perfLabel}>🖼️ Image Loaded:</Text>
+              <Text style={[styles.perfValue, { color: getColor(getImageLoadTime()) }]}>
+                {getImageLoadTime()}ms
+              </Text>
+            </View>
+
+            <View style={styles.perfRow}>
+              <Text style={styles.perfLabel}>🖼️ Image Rendered:</Text>
+              <Text style={styles.perfValue}>{metrics.imageRenderTime}ms</Text>
+            </View>
+          </View>
+
+          {getImageLoadTime() > 500 && (
+            <View style={styles.perfWarning}>
+              <Ionicons name="warning" size={16} color="#ff9800" />
+              <Text style={styles.perfWarningText}>
+                Image loading is slow! ({getImageLoadTime()}ms)
+              </Text>
+            </View>
+          )}
+        </View>
+      )}
+    </>
+  );
+};
+
+
+// Part 3: Optimized offers loading with initial check
+
   // 🔥 PERFORMANCE: Track renders
   useEffect(() => {
     renderCount.current++;
     perfLogger.trackRender('FlyerDetail', 3);
-    console.log(`🔄 [FlyerDetail] Render #${renderCount.current}`);
+    console.log(`📄 [FlyerDetail] Render #${renderCount.current}`);
   });
 
   // 🔥 PERFORMANCE: Track mount and defer heavy work
   useEffect(() => {
+    const transitionStart = Date.now();
+    transitionStartRef.current = transitionStart;
+
     trackNavigation.start('Previous', `FlyerDetail-${id}`);
 
     const mountDuration = Date.now() - mountTime.current;
@@ -97,18 +236,93 @@ export default function FlyerDetailScreen() {
 
     trackNavigation.markPhase('mount');
 
+    setImageLoadMetrics(prev => ({
+      ...prev,
+      mountTime: mountDuration,
+    }));
+
     // Defer heavy initialization
     InteractionManager.runAfterInteractions(() => {
       console.log('✅ [FlyerDetail] Interactions complete');
+      const firstRenderTime = Date.now() - transitionStart;
+
+      setImageLoadMetrics(prev => ({
+        ...prev,
+        firstRenderTime,
+      }));
+
       setIsReady(true);
       trackNavigation.markPhase('firstRender');
     });
 
     return () => {
+      const totalTime = Date.now() - transitionStart;
+
+      setImageLoadMetrics(prev => ({
+        ...prev,
+        totalTime,
+      }));
+
       trackNavigation.end();
       console.log('👋 [FlyerDetail] Unmounted');
     };
   }, []);
+
+  // 🔥 NEW: OPTIMIZED - Check if catalogue has ANY offers at start
+  // This runs ONCE when component mounts and caches the result
+  useEffect(() => {
+    const checkCatalogueHasOffers = async () => {
+      if (!catalogue?.id || offersCacheChecked.current) {
+        return;
+      }
+
+      offersCacheChecked.current = true;
+
+      try {
+        console.log(`🔍 [Offers Check] Checking if catalogue ${catalogue.id} has offers...`);
+        perfLogger.start('FlyerDetail.checkOffers');
+
+        const offers = await getOffersByCatalogue(catalogue.id);
+
+        const hasOffers = offers.length > 0;
+        const cacheState: OffersCacheState = {
+          hasOffers,
+          checkedAt: Date.now(),
+          totalOffers: offers.length,
+        };
+
+        setOffersCache(cacheState);
+
+        // If we have offers, set them immediately
+        if (hasOffers) {
+          setCatalogueOffers(offers);
+          console.log(`✅ [Offers Check] Found ${offers.length} offers for catalogue`);
+        } else {
+          console.log(`ℹ️ [Offers Check] No offers found for catalogue`);
+        }
+
+        const duration = perfLogger.end('FlyerDetail.checkOffers');
+        setImageLoadMetrics(prev => ({
+          ...prev,
+          dataLoadTime: duration || 0,
+        }));
+
+        trackNavigation.markPhase('dataLoad');
+      } catch (error) {
+        console.error('❌ [Offers Check] Error checking offers:', error);
+        setOffersCache({
+          hasOffers: false,
+          checkedAt: Date.now(),
+          totalOffers: 0,
+        });
+        perfLogger.end('FlyerDetail.checkOffers');
+      } finally {
+        setLoadingOffers(false);
+      }
+    };
+
+    checkCatalogueHasOffers();
+  }, [catalogue?.id]);
 
   // 🔥 OPTIMIZED: Memoize store lookup
   const store = useMemo(() => {
@@ -164,6 +378,8 @@ export default function FlyerDetailScreen() {
     totalPagesRef.current = totalPages;
   }, [totalPages]);
 
+// Part 4: Optimized page offers and callbacks
+
   // Zoom animation values
   const scale = useRef(new Animated.Value(1)).current;
   const translateX = useRef(new Animated.Value(0)).current;
@@ -171,35 +387,86 @@ export default function FlyerDetailScreen() {
   const lastTranslateX = useRef(0);
   const lastTranslateY = useRef(0);
 
-  // 🔥 PERFORMANCE: Load offers with tracking
+  // 🔥 NEW: Track image loading for current page
   useEffect(() => {
-    const loadOffers = async () => {
-      if (!catalogue?.id) {
-        setLoadingOffers(false);
-        return;
-      }
+    if (!catalogue?.pages || !catalogue.pages[currentPage]) {
+      return;
+    }
 
-      try {
-        perfLogger.start('FlyerDetail.loadOffers');
-        setLoadingOffers(true);
+    const currentPageData = catalogue.pages[currentPage];
+    setImageLoaded(false);
+    imageHasRenderedRef.current = false;
 
-        const offers = await getOffersByCatalogue(catalogue.id);
-        setCatalogueOffers(offers);
+    // Mark image load start
+    const imageStartTime = Date.now() - transitionStartRef.current;
+    imageLoadStartRef.current = Date.now();
 
-        const duration = perfLogger.end('FlyerDetail.loadOffers');
-        trackNavigation.markPhase('dataLoad');
+    setImageLoadMetrics(prev => ({
+      ...prev,
+      imageLoadStartTime: imageStartTime,
+    }));
 
-        console.log(`📦 [FlyerDetail] Loaded ${offers.length} offers in ${duration}ms`);
-      } catch (error) {
-        console.error('❌ Error loading catalogue offers:', error);
-        perfLogger.end('FlyerDetail.loadOffers');
-      } finally {
-        setLoadingOffers(false);
-      }
-    };
+    trackNavigation.markPhase('imageLoadStart');
+    console.log(`🖼️ [Image] Load started for page ${currentPage + 1} at ${imageStartTime}ms`);
 
-    loadOffers();
-  }, [catalogue?.id]);
+    // Preload the image
+    if (currentPageData.imageUrl) {
+      Image.prefetch(currentPageData.imageUrl)
+        .then(() => {
+          const imageEndTime = Date.now();
+          const loadDuration = imageEndTime - imageLoadStartRef.current;
+          const totalElapsed = imageEndTime - transitionStartRef.current;
+
+          setImageLoadMetrics(prev => ({
+            ...prev,
+            imageLoadEndTime: totalElapsed,
+          }));
+
+          trackNavigation.markPhase('imageLoadEnd');
+
+          if (loadDuration > 500) {
+            console.error(`🔴 [Image] SLOW LOAD: ${loadDuration}ms for page ${currentPage + 1}`);
+          } else if (loadDuration > 200) {
+            console.warn(`⚠️ [Image] Acceptable load: ${loadDuration}ms for page ${currentPage + 1}`);
+          } else {
+            console.log(`✅ [Image] Fast load: ${loadDuration}ms for page ${currentPage + 1}`);
+          }
+        })
+        .catch((error) => {
+          console.error(`❌ [Image] Prefetch failed:`, error);
+        });
+    }
+  }, [currentPage, catalogue?.id]);
+
+  // 🔥 NEW: Track when image actually renders
+  const handleImageLoad = useCallback(() => {
+    // Prevent multiple calls
+    if (imageHasRenderedRef.current) {
+      console.log('⚠️ [Image] onLoad called multiple times, ignoring...');
+      return;
+    }
+
+    imageHasRenderedRef.current = true;
+    const renderTime = Date.now() - transitionStartRef.current;
+
+    setImageLoadMetrics(prev => ({
+      ...prev,
+      imageRenderTime: renderTime,
+    }));
+
+    setImageLoaded(true);
+    trackNavigation.markPhase('imageRender');
+
+    const loadDuration = Date.now() - imageLoadStartRef.current;
+    console.log(`🖼️ [Image] Rendered in ${loadDuration}ms (total: ${renderTime}ms)`);
+
+    // Mark transition as complete
+    const totalTransitionTime = Date.now() - transitionStartRef.current;
+    setImageLoadMetrics(prev => ({
+      ...prev,
+      totalTime: totalTransitionTime,
+    }));
+  }, []);
 
   // Reset zoom when page changes
   useEffect(() => {
@@ -294,6 +561,13 @@ export default function FlyerDetailScreen() {
     }
   }, [router]);
 
+  // 🔥 NEW: Toggle performance overlay
+  const handleTogglePerfOverlay = useCallback(() => {
+    setShowPerfOverlay(prev => !prev);
+  }, []);
+
+// Part 5: Event handlers and PanResponders
+
   // Double-tap zoom handler
   const handleDoubleTap = useCallback(() => {
     const now = Date.now();
@@ -347,7 +621,7 @@ export default function FlyerDetailScreen() {
     };
   }, []);
 
-  // 🔥 OPTIMIZED: Memoize PanResponders (don't recreate on every render)
+  // 🔥 OPTIMIZED: Memoize PanResponders
   const normalViewPan = useMemo(() =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
@@ -439,15 +713,25 @@ export default function FlyerDetailScreen() {
       },
     }), [translateX, translateY, clampTranslation, navigateToNextCatalogue]);
 
-  // 🔥 OPTIMIZED: Memoize page offers
+  // 🔥 OPTIMIZED: Memoize page offers - only compute if cache says we have offers
   const pageOffers = useMemo(() => {
+    // Skip filtering if we know there are no offers
+    if (offersCache && !offersCache.hasOffers) {
+      return [];
+    }
+
+    // Only filter if we have offers
+    if (catalogueOffers.length === 0) {
+      return [];
+    }
+
     perfLogger.start('FlyerDetail.filterPageOffers');
     const filtered = catalogueOffers.filter(
       offer => offer.pageNumber === currentPage + 1
     );
     perfLogger.end('FlyerDetail.filterPageOffers');
     return filtered;
-  }, [catalogueOffers, currentPage]);
+  }, [catalogueOffers, currentPage, offersCache]);
 
   // 🔥 OPTIMIZED: Memoize isPageSaved check
   const isPageSaved = useMemo(() => {
@@ -516,6 +800,8 @@ export default function FlyerDetailScreen() {
       }
     }
   }, [currentPage, totalPages, nextCatalogue, navigateToNextCatalogue]);
+
+// Part 6: Render functions and early returns
 
   // 🔥 OPTIMIZED: Memoize offer thumbnail render
   const renderOfferThumbnail = useCallback((offer: OfferWithCatalogue) => {
@@ -615,6 +901,12 @@ export default function FlyerDetailScreen() {
     );
   }
 
+  // 🔥 NEW: Show offers status in UI
+  const shouldShowOffersSection = offersCache?.hasOffers && pageOffers.length > 0;
+  const shouldShowNoOffersMessage = offersCache?.hasOffers === false;
+
+// Part 7: Main JSX return - First half
+
   return (
     <>
       <Stack.Screen
@@ -627,6 +919,14 @@ export default function FlyerDetailScreen() {
           },
         }}
       />
+
+      {/* 🔥 NEW: Performance Overlay with Toggle */}
+      <PerformanceOverlay
+        visible={showPerfOverlay}
+        metrics={imageLoadMetrics}
+        onToggle={handleTogglePerfOverlay}
+      />
+
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {hasPages ? (
           <View style={styles.pageContainer}>
@@ -640,7 +940,25 @@ export default function FlyerDetailScreen() {
                   style={styles.pageImage}
                   contentFit="contain"
                   showLoader={true}
+                  cachePriority="high"
+                  onLoadStart={() => {
+                    console.log('🖼️ [CachedImage] onLoadStart called');
+                  }}
+                  onLoad={handleImageLoad}
+                  onError={(error) => {
+                    console.error('❌ [Image] Load error:', error);
+                  }}
                 />
+
+                {/* 🔥 NEW: Loading indicator while image loads */}
+                {!imageLoaded && (
+                  <View style={styles.imageLoadingOverlay}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={styles.imageLoadingText}>
+                      Loading page {currentPage + 1}...
+                    </Text>
+                  </View>
+                )}
               </TouchableOpacity>
 
               {isLastPage && nextCatalogue && (
@@ -657,7 +975,7 @@ export default function FlyerDetailScreen() {
               )}
             </View>
 
-            {/* Navigation controls - keep existing implementation */}
+            {/* Navigation controls */}
             <View style={styles.pageNavigationCenter}>
               <View style={styles.navControls}>
                 <TouchableOpacity
@@ -714,29 +1032,38 @@ export default function FlyerDetailScreen() {
           </View>
         )}
 
+        {/* 🔥 OPTIMIZED: Offers section - only render if we have offers */}
         {loadingOffers ? (
           <View style={styles.loadingSection}>
             <ActivityIndicator size="large" color={colors.primary} />
             <Text style={styles.loadingText}>جاري تحميل العروض...</Text>
           </View>
-        ) : pageOffers.length > 0 ? (
+        ) : shouldShowOffersSection ? (
           <View style={styles.offersSection}>
+            <View style={styles.offersSectionHeader}>
+              <Text style={styles.offersSectionTitle}>
+                العروض في هذه الصفحة ({pageOffers.length})
+              </Text>
+            </View>
             <View style={styles.thumbnailsGrid}>
               {pageOffers.map(renderOfferThumbnail)}
             </View>
           </View>
-        ) : hasPages ? (
+        ) : shouldShowNoOffersMessage && hasPages ? (
           <View style={styles.noOffersContainer}>
             <Ionicons name="pricetags-outline" size={48} color={colors.gray[400]} />
-            <Text style={styles.noOffersText}>يمكنك اضافة الصفحه بكاملها الي السله - لا توجد عروض مسجله</Text>
+            <Text style={styles.noOffersText}>
+              يمكنك اضافة الصفحه بكاملها الي السله - لا توجد عروض مسجله لهذا الكتالوج
+            </Text>
           </View>
         ) : null}
 
         <View style={styles.bottomPadding} />
       </ScrollView>
 
+// Part 8: Fullscreen Modal and beginning of styles
 
-      {/* Fullscreen Modal with Double-Tap Zoom and Pan */}
+      {/* Fullscreen Modal */}
       <Modal
         visible={fullScreenImage}
         transparent={true}
@@ -776,12 +1103,12 @@ export default function FlyerDetailScreen() {
                   source={currentPageData?.imageUrl || PLACEHOLDER_PAGE_IMAGE_URL}
                   style={styles.fullScreenImage}
                   contentFit="contain"
+                  cachePriority="high"
                 />
               </Animated.View>
             </TouchableOpacity>
           </View>
 
-          {/* Zoom hint when not zoomed */}
           {!isZoomed && (
             <View style={styles.zoomHint}>
               <Ionicons name="hand-left-outline" size={20} color={colors.white} />
@@ -789,7 +1116,6 @@ export default function FlyerDetailScreen() {
             </View>
           )}
 
-          {/* Pan hint when zoomed */}
           {isZoomed && (
             <View style={styles.zoomIndicator}>
               <Ionicons name="move" size={20} color={colors.white} />
@@ -797,7 +1123,6 @@ export default function FlyerDetailScreen() {
             </View>
           )}
 
-          {/* ✅ Fixed: Last page indicator in fullscreen */}
           {isLastPage && nextCatalogue && !isZoomed && (
             <View style={styles.fullScreenSwipeHint}>
               <Ionicons
@@ -811,9 +1136,7 @@ export default function FlyerDetailScreen() {
             </View>
           )}
 
-          {/* ✅ Fixed: Fullscreen navigation with consistent direction */}
           <View style={styles.fullScreenNav}>
-            {/* LEFT BUTTON - Always PREVIOUS */}
             <TouchableOpacity
               style={[styles.fullScreenNavButton, currentPage === 0 && styles.navButtonDisabled]}
               onPress={() => handleNavPress('prev')}
@@ -832,7 +1155,6 @@ export default function FlyerDetailScreen() {
               </Text>
             </View>
 
-            {/* RIGHT BUTTON - Always NEXT */}
             <TouchableOpacity
               style={[
                 styles.fullScreenNavButton,
@@ -855,21 +1177,47 @@ export default function FlyerDetailScreen() {
   );
 }
 
+// Part 9: Complete StyleSheet
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.backgroundSecondary,
   },
+
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
-    alignItems:  'center',
-    padding: spacing. lg,
+    alignItems: 'center',
+    padding: spacing.lg,
     backgroundColor: colors.background,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.backgroundSecondary,
+  },
+  imageLoadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  imageLoadingText: {
+    color: colors.white,
+    fontSize: 14,
+    marginTop: 12,
+    fontWeight: '600',
+  },
   errorText: {
-    fontSize: typography.fontSize. lg,
-    color:  colors.text,
+    fontSize: typography.fontSize.lg,
+    color: colors.text,
     marginTop: spacing.md,
     marginBottom: spacing.sm,
   },
@@ -895,20 +1243,20 @@ const styles = StyleSheet.create({
     backgroundColor: colors.gray[200],
   },
   swipeIndicator: {
-  position: 'absolute',
-  bottom: 60,
-  right: spacing.md,  // ✅ Always on right side (where user swipes from)
-  flexDirection: 'row',  // ✅ Always left-to-right
-  alignItems: 'center',
-  backgroundColor: 'rgba(255, 255, 255, 0.9)',
-  paddingHorizontal: spacing.sm,
-  paddingVertical: spacing.xs,
-  borderRadius: borderRadius.full,
-  gap: 4,
-},
-  swipeIndicatorText:  {
-    fontSize:  typography.fontSize.xs,
-    color:  colors.primary,
+    position: 'absolute',
+    bottom: 60,
+    right: spacing.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: borderRadius.full,
+    gap: 4,
+  },
+  swipeIndicatorText: {
+    fontSize: typography.fontSize.xs,
+    color: colors.primary,
     fontWeight: '600',
   },
   pageNavigationCenter: {
@@ -919,7 +1267,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  navControls:  {
+  navControls: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -928,9 +1276,9 @@ const styles = StyleSheet.create({
   },
   navButton: {
     width: 50,
-    height:  50,
+    height: 50,
     borderRadius: borderRadius.full,
-    backgroundColor:  'rgba(230, 57, 70, 0.9)',
+    backgroundColor: 'rgba(230, 57, 70, 0.9)',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -947,18 +1295,18 @@ const styles = StyleSheet.create({
   },
   pageIndicatorBadge: {
     backgroundColor: 'rgba(100, 100, 100, 0.4)',
-    paddingHorizontal:  spacing.md,
-    paddingVertical: spacing. sm,
-    borderRadius: borderRadius. full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
     shadowColor: '#000',
-    shadowOffset:  { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
-    elevation:  5,
+    elevation: 5,
   },
   pageIndicator: {
     color: colors.white,
-    fontSize:  typography.fontSize.md,
+    fontSize: typography.fontSize.md,
     fontWeight: '600',
   },
   noPagesContainer: {
@@ -970,12 +1318,12 @@ const styles = StyleSheet.create({
   },
   noPagesText: {
     fontSize: typography.fontSize.md,
-    color:  colors.textSecondary,
+    color: colors.textSecondary,
     marginTop: spacing.md,
     textAlign: 'center',
   },
-  savePageSection:  {
-    paddingHorizontal:  spacing.md,
+  savePageSection: {
+    paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
   loadingSection: {
@@ -987,11 +1335,20 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: spacing.md,
-    fontSize:  typography.fontSize.md,
-    color:  colors.textSecondary,
+    fontSize: typography.fontSize.md,
+    color: colors.textSecondary,
   },
   offersSection: {
     padding: spacing.md,
+  },
+  offersSectionHeader: {
+    marginBottom: spacing.md,
+  },
+  offersSectionTitle: {
+    fontSize: typography.fontSize.lg,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
   thumbnailsGrid: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
@@ -1005,7 +1362,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset:  { width: 0, height: 1 },
+    shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
@@ -1017,21 +1374,21 @@ const styles = StyleSheet.create({
   },
   thumbnailImage: {
     width: '100%',
-    height:  '100%',
+    height: '100%',
   },
-  thumbnailDiscountBadge:  {
-    position:  'absolute',
+  thumbnailDiscountBadge: {
+    position: 'absolute',
     top: spacing.xs,
     left: I18nManager.isRTL ? undefined : spacing.xs,
-    right:  I18nManager. isRTL ?  spacing.xs : undefined,
+    right: I18nManager.isRTL ? spacing.xs : undefined,
     backgroundColor: colors.primary,
-    paddingHorizontal:  spacing.xs,
+    paddingHorizontal: spacing.xs,
     paddingVertical: 2,
-    borderRadius: borderRadius. xs,
+    borderRadius: borderRadius.xs,
   },
   thumbnailDiscountText: {
     color: colors.white,
-    fontSize:  8,
+    fontSize: 8,
     fontWeight: 'bold',
   },
   thumbnailContent: {
@@ -1040,8 +1397,8 @@ const styles = StyleSheet.create({
     display: 'flex',
     flexDirection: 'column',
   },
-  thumbnailName:  {
-    fontSize:  11,
+  thumbnailName: {
+    fontSize: 11,
     fontWeight: '600',
     color: colors.text,
     marginBottom: 2,
@@ -1063,15 +1420,15 @@ const styles = StyleSheet.create({
   },
   thumbnailOriginalPrice: {
     fontSize: 8,
-    color:  colors.textSecondary,
+    color: colors.textSecondary,
     textDecorationLine: 'line-through',
     lineHeight: 10,
     marginTop: 1,
   },
   thumbnailAddButton: {
     backgroundColor: colors.primary,
-    borderRadius: borderRadius. sm,
-    padding:  4,
+    borderRadius: borderRadius.sm,
+    padding: 4,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 3,
@@ -1081,103 +1438,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: colors.white,
     margin: spacing.md,
-    borderRadius:  borderRadius.lg,
+    borderRadius: borderRadius.lg,
   },
-  noOffersText:  {
+  noOffersText: {
     marginTop: spacing.md,
-    fontSize:  typography.fontSize.md,
-    color:  colors.textSecondary,
-    textAlign: 'center',
-  },
-  nextCatalogueSection: {
-    backgroundColor: colors.white,
-    margin: spacing.md,
-    padding: spacing.lg,
-    borderRadius:  borderRadius.lg,
-    shadowColor:  '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  nextCatalogueHeader: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  nextCatalogueTitle: {
-    fontSize: typography.fontSize.lg,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  nextCatalogueCard: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    backgroundColor: colors.backgroundSecondary,
-    borderRadius: borderRadius.md,
-    overflow: 'hidden',
-    shadowColor:  '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation:  2,
-  },
-  nextCatalogueImage: {
-    width: 100,
-    height: 140,
-    backgroundColor:  colors.gray[200],
-  },
-  nextCatalogueInfo: {
-    flex: 1,
-    padding: spacing.md,
-    justifyContent: 'space-between',
-  },
-  nextCatalogueTextContainer: {
-    flex: 1,
-  },
-  nextCatalogueStoreName: {
-    fontSize: typography.fontSize. md,
-    fontWeight: '600',
-    color: colors.text,
-    marginBottom: spacing. xs,
-  },
-  nextCatalogueDate:  {
-    fontSize:  typography.fontSize.sm,
-    color:  colors.textSecondary,
-    marginBottom: spacing.xs,
-  },
-  nextCatalogueLocalBadge: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    gap: 4,
-    alignSelf: I18nManager.isRTL ? 'flex-end' : 'flex-start',
-  },
-  nextCatalogueLocalText:  {
-    fontSize:  typography.fontSize.xs,
-    color:  colors.success,
-    fontWeight: '600',
-  },
-  nextCatalogueAction: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-    gap: spacing.xs,
-    alignSelf: I18nManager.isRTL ? 'flex-end' :  'flex-start',
-  },
-  nextCatalogueActionText: {
-    fontSize: typography.fontSize.sm,
-    color:  colors.white,
-    fontWeight: '600',
-  },
-  nextCatalogueHint: {
-    fontSize: typography.fontSize. xs,
+    fontSize: typography.fontSize.md,
     color: colors.textSecondary,
     textAlign: 'center',
-    marginTop: spacing.md,
-    fontStyle: 'italic',
   },
   bottomPadding: {
     height: spacing.xl,
@@ -1191,12 +1458,12 @@ const styles = StyleSheet.create({
   closeButton: {
     position: 'absolute',
     top: 50,
-    right:  I18nManager.isRTL ? undefined : 20,
-    left: I18nManager.isRTL ? 20 :  undefined,
+    right: I18nManager.isRTL ? undefined : 20,
+    left: I18nManager.isRTL ? 20 : undefined,
     zIndex: 10,
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
     borderRadius: borderRadius.full,
-    padding:  spacing.sm,
+    padding: spacing.sm,
   },
   fullScreenImageWrapper: {
     flex: 1,
@@ -1204,11 +1471,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  doubleTapArea:  {
+  doubleTapArea: {
     flex: 1,
     width: '100%',
     justifyContent: 'center',
-    alignItems:  'center',
+    alignItems: 'center',
   },
   animatedImageContainer: {
     justifyContent: 'center',
@@ -1222,10 +1489,10 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 100,
     alignSelf: 'center',
-    backgroundColor:  'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: spacing. md,
-    paddingVertical: spacing. sm,
-    borderRadius: borderRadius. full,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: borderRadius.full,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
@@ -1233,7 +1500,7 @@ const styles = StyleSheet.create({
   zoomHintText: {
     color: colors.white,
     fontSize: typography.fontSize.sm,
-    fontWeight:  '500',
+    fontWeight: '500',
   },
   zoomIndicator: {
     position: 'absolute',
@@ -1244,35 +1511,35 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.full,
     flexDirection: 'row',
-    alignItems:  'center',
-    gap: spacing. xs,
+    alignItems: 'center',
+    gap: spacing.xs,
   },
   zoomText: {
     color: colors.white,
     fontSize: typography.fontSize.sm,
-    fontWeight:  '600',
+    fontWeight: '600',
   },
   fullScreenSwipeHint: {
     position: 'absolute',
     top: 150,
     alignSelf: 'center',
-    backgroundColor:  colors.success,
+    backgroundColor: colors.success,
     paddingHorizontal: spacing.md,
-    paddingVertical:  spacing.sm,
+    paddingVertical: spacing.sm,
     borderRadius: borderRadius.full,
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
   },
   fullScreenSwipeHintText: {
-    color: colors. white,
-    fontSize: typography.fontSize. sm,
+    color: colors.white,
+    fontSize: typography.fontSize.sm,
     fontWeight: '600',
   },
   fullScreenNav: {
     position: 'absolute',
     bottom: 40,
-    left:  0,
+    left: 0,
     right: 0,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1281,26 +1548,117 @@ const styles = StyleSheet.create({
   },
   fullScreenNavButton: {
     width: 60,
-    height:  60,
+    height: 60,
     borderRadius: borderRadius.full,
     backgroundColor: 'rgba(230, 57, 70, 0.9)',
-    justifyContent:  'center',
+    justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.5,
     shadowRadius: 6,
-    elevation:  8,
+    elevation: 8,
   },
   fullScreenPageIndicator: {
     backgroundColor: 'rgba(100, 100, 100, 0.6)',
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing. md,
+    paddingVertical: spacing.md,
     borderRadius: borderRadius.full,
   },
   fullScreenPageText: {
     color: colors.white,
     fontSize: typography.fontSize.lg,
     fontWeight: 'bold',
+  },
+  // 🔥 NEW: Performance overlay styles with toggle
+  perfToggleMinimized: {
+    position: 'absolute',
+    top: 100,
+    right: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  perfOverlay: {
+    position: 'absolute',
+    top: 100,
+    right: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    padding: spacing.sm,
+    borderRadius: borderRadius.md,
+    zIndex: 1000,
+    minWidth: 200,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  perfHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.xs,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.2)',
+    paddingBottom: spacing.xs,
+  },
+  perfHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  perfTitle: {
+    color: colors.white,
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  perfTotal: {
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  perfCloseButton: {
+    padding: 2,
+  },
+  perfMetrics: {
+    gap: 4,
+  },
+  perfRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  perfLabel: {
+    color: colors.gray[400],
+    fontSize: 10,
+  },
+  perfValue: {
+    color: colors.white,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  perfWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    marginTop: spacing.xs,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  perfWarningText: {
+    color: '#ff9800',
+    fontSize: 9,
+    fontWeight: '600',
+    flex: 1,
   },
 });
