@@ -1,6 +1,5 @@
-// src/app/(tabs)/index.tsx - FIXED: Search bar redirects on any touch (mobile & web)
-// src/app/(tabs)/index.tsx - OPTIMIZED: Reduced re-renders & memoization
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+// src/app/(tabs)/index.tsx - WITH FIXED SENTRY TEST
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -12,6 +11,7 @@ import {
   Dimensions,
   I18nManager,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
@@ -40,6 +40,7 @@ import { getActiveOffers } from '../../services/offerService';
 import { cacheService } from '../../services/cacheService';
 import { formatDateRange } from '../../utils/catalogueUtils';
 import { logScreenView, logSelectContent } from '../../services/analyticsService';
+import { setScreen, addBreadcrumb, captureError, testSentryError } from '../../config/sentry';
 import type { Category, Catalogue, Store } from '../../types';
 import type { OfferWithCatalogue } from '../../services/offerService';
 
@@ -60,7 +61,6 @@ interface CategoryGroup {
   catalogues: CatalogueWithStatus[];
 }
 
-// ✅ Helper outside component (no re-creation on renders)
 const normalizeDate = (dateStr: string): string => {
   try {
     const parts = dateStr.split('-');
@@ -84,6 +84,7 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [isInteractionComplete, setIsInteractionComplete] = useState(false);
+  const [sentryTestResult, setSentryTestResult] = useState<string>('');
 
   const { showAd, currentAd, checkAndShowAd, dismissAd } = useInterstitialAd();
 
@@ -99,7 +100,12 @@ export default function HomeScreen() {
   const userGovernorate = useAppSelector(state => state.settings.userGovernorate);
   const mainCategories = getMainCategories();
 
-  // ✅ Defer heavy work until after interactions
+  // Track screen view for Sentry
+  useEffect(() => {
+    setScreen('HomeScreen');
+    logScreenView('Home');
+  }, []);
+
   useEffect(() => {
     InteractionManager.runAfterInteractions(() => {
       setIsInteractionComplete(true);
@@ -124,10 +130,19 @@ export default function HomeScreen() {
   const loadOffers = async (forceRefresh: boolean = false) => {
     try {
       setLoading(true);
+      addBreadcrumb('Loading featured offers', 'data', { forceRefresh });
+
       const offers = await getActiveOffers(forceRefresh);
       setFeaturedOffers(offers.slice(0, 6));
+
+      addBreadcrumb('Featured offers loaded', 'data', { count: offers.length });
     } catch (error) {
       console.error('❌ [Home] Error loading offers:', error);
+      captureError(error as Error, {
+        screen: 'HomeScreen',
+        action: 'loadOffers',
+        forceRefresh,
+      });
       setFeaturedOffers([]);
     } finally {
       setLoading(false);
@@ -136,17 +151,22 @@ export default function HomeScreen() {
 
   const handleRefresh = async () => {
     setRefreshing(true);
+    addBreadcrumb('User refreshed home screen', 'user_action');
+
     try {
       await loadOffers(true);
       await dispatch(loadCatalogues(true)).unwrap();
     } catch (error) {
       console.error('❌ [Home] Refresh error:', error);
+      captureError(error as Error, {
+        screen: 'HomeScreen',
+        action: 'handleRefresh',
+      });
     } finally {
       setRefreshing(false);
     }
   };
 
-  // ✅ OPTIMIZED: Depend on array LENGTH, not entire array
   const categoryGroups: CategoryGroup[] = useMemo(() => {
     if (catalogues.length === 0) return [];
 
@@ -202,9 +222,8 @@ export default function HomeScreen() {
     });
 
     return groupArray;
-  }, [catalogues.length, userGovernorate]); // ✅ Only when length or location changes
+  }, [catalogues.length, userGovernorate]);
 
-  // ✅ DEFERRED: Calculate top stores only after interactions complete
   const topStoresByCatalogueCount = useMemo(() => {
     if (!isInteractionComplete || categoryGroups.length === 0) return [];
 
@@ -228,12 +247,17 @@ export default function HomeScreen() {
       .map(item => item.store);
   }, [categoryGroups.length, stores.length, isInteractionComplete]);
 
-  // ✅ All callbacks memoized
   const handleOfferPress = useCallback((offer: OfferWithCatalogue) => {
+    addBreadcrumb('User clicked offer', 'navigation', { offerId: offer.id });
     router.push(`/offer/${offer.id}`);
   }, [router]);
 
   const handleAddToBasket = useCallback((offer: OfferWithCatalogue) => {
+    addBreadcrumb('User added to basket', 'user_action', {
+      offerId: offer.id,
+      offerName: offer.nameAr,
+    });
+
     dispatch(addToBasket({
       offer: {
         ...offer,
@@ -245,10 +269,15 @@ export default function HomeScreen() {
   }, [dispatch]);
 
   const handleToggleFavoriteSubcategory = useCallback((subcategoryId: string) => {
+    addBreadcrumb('User toggled favorite subcategory', 'user_action', { subcategoryId });
     dispatch(toggleFavoriteSubcategory(subcategoryId));
   }, [dispatch]);
 
   const handleCategoryPress = useCallback((category: Category) => {
+    addBreadcrumb('User selected category', 'navigation', {
+      categoryId: category.id,
+      categoryName: category.nameAr,
+    });
     router.push({
       pathname: '/(tabs)/flyers',
       params: { mainCategoryId: category.id },
@@ -256,22 +285,47 @@ export default function HomeScreen() {
   }, [router]);
 
   const handleStorePress = useCallback((storeId: string) => {
+    addBreadcrumb('User opened store', 'navigation', { storeId });
     router.push(`/store/${storeId}`);
   }, [router]);
 
   const handleCataloguePress = useCallback((catalogueId: string) => {
+    addBreadcrumb('User opened catalogue', 'navigation', { catalogueId });
+    logSelectContent('catalogue', catalogueId);
     router.push(`/flyer/${catalogueId}`);
   }, [router]);
 
   const handleToggleFavoriteStore = useCallback((storeId: string) => {
+    addBreadcrumb('User toggled favorite store', 'user_action', { storeId });
     dispatch(toggleFavoriteStore(storeId));
   }, [dispatch]);
 
   const handleSearchPress = useCallback(() => {
+    addBreadcrumb('User opened search', 'navigation');
     router.push('/search');
   }, [router]);
 
-  // ✅ Simple function, no memoization needed
+  // ✅ FIXED: Handle Sentry test button
+  const handleTestSentry = useCallback(() => {
+    try {
+      const result = testSentryError();
+      setSentryTestResult(result);
+
+      // Show alert with result
+      Alert.alert(
+        'Sentry Test',
+        result,
+        [{ text: 'OK' }]
+      );
+
+      // Clear message after 5 seconds
+      setTimeout(() => setSentryTestResult(''), 5000);
+    } catch (error) {
+      console.error('Test error failed:', error);
+      setSentryTestResult('Failed to send test error');
+    }
+  }, []);
+
   const getStatusBadgeStyle = (status: CatalogueStatus) => {
     switch (status) {
       case 'active': return { backgroundColor: colors.success };
@@ -280,7 +334,6 @@ export default function HomeScreen() {
     }
   };
 
-  // ✅ Simple lookup, no memoization needed
   const getStoreName = (catalogue: CatalogueWithStatus): string => {
     if (catalogue.isLocalStore) {
       if (catalogue.localStoreNameAr && catalogue.localStoreNameAr !== 'غير محدد') {
@@ -293,7 +346,6 @@ export default function HomeScreen() {
     return store?.nameAr || catalogue.titleAr.replace('عروض ', '');
   };
 
-  // ✅ Render functions memoized
   const renderHorizontalCategories = useCallback(() => (
     <ScrollView
       horizontal
@@ -334,10 +386,7 @@ export default function HomeScreen() {
       <View key={catalogue.id} style={styles.catalogueThumbnailWrapper}>
         <TouchableOpacity
           style={styles.catalogueThumbnail}
-          onPress={() => {
-            logSelectContent('catalogue', catalogue.id);
-            handleCataloguePress(catalogue.id);
-          }}
+          onPress={() => handleCataloguePress(catalogue.id)}
           activeOpacity={0.7}
         >
           <View style={styles.thumbnailImageContainer}>
@@ -346,7 +395,7 @@ export default function HomeScreen() {
               style={styles.thumbnailImage}
               contentFit="cover"
               showLoader={false}
-              cachePriority="normal" // ✅ Normal priority for browsing
+              cachePriority="normal"
             />
             <View style={[styles.statusBadgeThumbnail, getStatusBadgeStyle(catalogue.status)]}>
               <View style={styles.statusDot} />
@@ -414,6 +463,24 @@ export default function HomeScreen() {
         />
       }
     >
+      {/* ✅ FIXED SENTRY TEST BUTTON */}
+      <View style={styles.testButtonContainer}>
+        <TouchableOpacity
+          style={styles.testButton}
+          onPress={handleTestSentry}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.testButtonText}>
+            🧪 Test Sentry Error
+          </Text>
+          {sentryTestResult && (
+            <Text style={styles.testResultText}>
+              ✅ {sentryTestResult}
+            </Text>
+          )}
+        </TouchableOpacity>
+      </View>
+
       <TouchableOpacity
         style={styles.searchContainer}
         onPress={handleSearchPress}
@@ -521,12 +588,31 @@ export default function HomeScreen() {
   );
 }
 
-// Keep your existing styles...
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.backgroundSecondary,
+  },
+  testButtonContainer: {
+    padding: spacing.md,
+    backgroundColor: colors.primary,
+    margin: spacing.md,
+    borderRadius: borderRadius.md,
+  },
+  testButton: {
+    alignItems: 'center',
+  },
+  testButtonText: {
+    color: colors.white,
+    textAlign: 'center',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  testResultText: {
+    color: colors.white,
+    textAlign: 'center',
+    fontSize: 12,
+    marginTop: 8,
   },
   searchContainer: {
     padding: spacing.md,
@@ -540,12 +626,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: spacing.md,
     marginBottom: spacing.md,
-  },
-  sectionTitleRow: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    flex: 1,
   },
   sectionTitle: {
     fontSize: typography.fontSize.xl,

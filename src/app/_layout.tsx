@@ -1,16 +1,16 @@
-// app/_layout.tsx - FIXED: Prevent auth listener from clearing state during sign-up
+// src/app/_layout.tsx - FIXED SENTRY INTEGRATION
 import React, { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { Provider } from 'react-redux';
 import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import { initializeAnalytics } from '../services/analyticsService';
 
 import store from '../store';
 import { initI18n } from '../i18n';
 import { colors } from '../constants/theme';
 import { initializeFirebase } from '../config/firebase';
+import { initializeSentry, setSentryUser, clearSentryUser } from '../config/sentry';
 import { onAuthChange } from '../services/authService';
 import { setUser, clearUser, checkAuthState } from '../store/slices/authSlice';
 import { startBackgroundSync, stopBackgroundSync } from '../services/backgroundSync';
@@ -18,7 +18,16 @@ import { cacheService } from '../services/cacheService';
 
 import '../i18n';
 
-export default function RootLayout() {
+// ✅ CRITICAL: Initialize Sentry FIRST
+console.log('🚀 Initializing Sentry...');
+try {
+  initializeSentry();
+  console.log('✅ Sentry initialization complete');
+} catch (error) {
+  console.error('❌ Sentry initialization error:', error);
+}
+
+function RootLayout() {
   const [isReady, setIsReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
 
@@ -35,9 +44,7 @@ export default function RootLayout() {
         await initializeFirebase();
         console.log('✅ Firebase initialized with persistence');
 
-
-
-        // ✅ CRITICAL: Check if user is already logged in
+        // Check if user is already logged in
         console.log('🔍 Checking for existing auth session...');
         await store.dispatch(checkAuthState()).unwrap();
         console.log('✅ Auth state check complete');
@@ -48,11 +55,11 @@ export default function RootLayout() {
           console.log(`🧹 Cleaned ${cleaned} expired cache entries on startup`);
         }
 
-        // ✅ FIX: Debounce auth changes to prevent race conditions during sign-up
+        // Debounce auth changes to prevent race conditions during sign-up
         let authChangeTimeout: NodeJS.Timeout | null = null;
         let lastAuthState: any = null;
 
-        // Listen to auth state changes (for future changes)
+        // Listen to auth state changes
         const unsubscribe = onAuthChange((user) => {
           console.log('🔄 Auth state changed:', user ? user.email : 'Not logged in');
 
@@ -61,10 +68,8 @@ export default function RootLayout() {
             clearTimeout(authChangeTimeout);
           }
 
-          // ✅ Debounce: Wait 500ms before processing auth change
-          // This prevents the temporary "not logged in" state during account creation
+          // Debounce: Wait 500ms before processing auth change
           authChangeTimeout = setTimeout(() => {
-            // Only process if state actually changed
             const currentState = user ? user.uid : null;
             if (currentState === lastAuthState) {
               console.log('⏭️ Auth state unchanged, skipping');
@@ -76,9 +81,14 @@ export default function RootLayout() {
             if (user) {
               console.log('✅ User authenticated, updating store');
               store.dispatch(setUser(user));
+
+              // Set Sentry user context
+              setSentryUser({
+                uid: user.uid,
+                email: user.email,
+                isAdmin: user.isAdmin,
+              });
             } else {
-              // ✅ Only clear if we're sure the user signed out
-              // Check Redux state to see if we're in the middle of sign-up
               const state = store.getState();
               const isSigningIn = state.auth.loading;
 
@@ -86,11 +96,14 @@ export default function RootLayout() {
                 console.log('🗑️ User signed out, clearing store');
                 store.dispatch(clearUser());
                 cacheService.clearUserCaches();
+
+                // Clear Sentry user context
+                clearSentryUser();
               } else {
                 console.log('⏸️ Sign-in in progress, ignoring temporary auth state');
               }
             }
-          }, 500); // 500ms debounce
+          }, 500);
         });
 
         // Start background sync service
@@ -112,8 +125,25 @@ export default function RootLayout() {
         };
       } catch (error: any) {
         console.error('❌ Error initializing app:', error);
+
+        // Report initialization errors to Sentry
+        try {
+          const Sentry = require('@sentry/react-native');
+          Sentry.captureException(error, {
+            tags: { initialization: true },
+            contexts: {
+              initialization: {
+                step: 'app_startup',
+                error_message: error.message,
+              },
+            },
+          });
+        } catch (sentryError) {
+          console.error('Failed to report to Sentry:', sentryError);
+        }
+
         setInitError(error.message || 'Failed to initialize app');
-        setIsReady(true); // Still show the app
+        setIsReady(true);
       }
     };
 
@@ -191,6 +221,21 @@ export default function RootLayout() {
     </Provider>
   );
 }
+
+// ✅ Wrap with Sentry for error boundary - with try/catch
+let ExportedComponent = RootLayout;
+
+try {
+  const Sentry = require('@sentry/react-native');
+  if (Sentry && Sentry.wrap) {
+    ExportedComponent = Sentry.wrap(RootLayout);
+    console.log('✅ Root component wrapped with Sentry error boundary');
+  }
+} catch (error) {
+  console.warn('⚠️ Could not wrap component with Sentry:', error);
+}
+
+export default ExportedComponent;
 
 const styles = StyleSheet.create({
   loading: {

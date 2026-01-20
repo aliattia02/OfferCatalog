@@ -1,4 +1,4 @@
-// src/services/adminService.ts
+// src/services/adminService.ts - ✅ COMPLETE WITH SENTRY TRACKING
 import {
   collection,
   addDoc,
@@ -18,6 +18,7 @@ import {
 } from 'firebase/storage';
 import { db, storage } from '../config/firebase';
 import type { Catalogue } from '../types';
+import { addBreadcrumb, captureError } from '../config/sentry'; // ✅ NEW
 
 export interface CatalogueMetadata {
   titleAr: string;
@@ -46,6 +47,16 @@ export const createCatalogue = async (
   pages: Array<{ pageNumber: number; imageUrl: string; offers?: string[] }>
 ): Promise<string> => {
   try {
+    console.log('📝 Creating new catalogue...');
+
+    // ✅ Track catalogue creation
+    addBreadcrumb('Creating new catalogue', 'admin', {
+      storeId: metadata.storeId,
+      titleAr: metadata.titleAr,
+      pageCount: pages.length,
+      hasPdf: !!pdfUrl,
+    });
+
     const catalogueData: any = {
       storeId: metadata.storeId,
       storeName: metadata.storeName,
@@ -69,9 +80,27 @@ export const createCatalogue = async (
     const docRef = await addDoc(collection(db, 'catalogues'), catalogueData);
     console.log('✅ Catalogue created with ID:', docRef.id);
 
+    // ✅ Track successful creation
+    addBreadcrumb('Catalogue created successfully', 'admin', {
+      catalogueId: docRef.id,
+      storeId: metadata.storeId,
+      pageCount: pages.length,
+    });
+
     return docRef.id;
   } catch (error) {
     console.error('❌ Error creating catalogue:', error);
+
+    // ✅ Report catalogue creation errors
+    captureError(error as Error, {
+      context: 'Create catalogue',
+      metadata: {
+        storeId: metadata.storeId,
+        titleAr: metadata.titleAr,
+        pageCount: pages.length,
+      },
+    });
+
     throw error;
   }
 };
@@ -88,6 +117,12 @@ export const deleteCatalogue = async (
     console.log('🗑️ Starting catalogue deletion:', catalogueId);
     console.log('   PDF URL provided:', pdfUrl ? 'Yes' : 'No');
 
+    // ✅ Track deletion start
+    addBreadcrumb('Starting catalogue deletion', 'admin', {
+      catalogueId,
+      hasPdf: !!pdfUrl,
+    });
+
     const deletionResults = {
       firestore: false,
       pdf: false,
@@ -97,7 +132,6 @@ export const deleteCatalogue = async (
     };
 
     // STEP 1: Delete from Firestore
-    // IMPORTANT: We need to find the document by matching the 'id' field, not the document ID
     try {
       console.log('🔍 Searching for catalogue document...');
       const cataloguesRef = collection(db, 'catalogues');
@@ -118,7 +152,6 @@ export const deleteCatalogue = async (
         console.log('✅ [1/7] Firestore document deleted');
       } else {
         console.warn('⚠️ [1/7] Document not found in Firestore');
-        // Still continue to clean up storage files
       }
     } catch (error: any) {
       console.error('❌ Error deleting Firestore document:', error.message);
@@ -221,7 +254,7 @@ export const deleteCatalogue = async (
       console.warn('⚠️ [6/7] Error deleting offers from flat collection:', error.message);
     }
 
-    // STEP 7: Delete all offers from subcollection (need to find parent doc first)
+    // STEP 7: Delete all offers from subcollection
     try {
       const cataloguesRef = collection(db, 'catalogues');
       const querySnapshot = await getDocs(cataloguesRef);
@@ -262,8 +295,23 @@ export const deleteCatalogue = async (
       offerImages: `${deletionResults.offers} deleted`,
     });
 
+    // ✅ Track successful deletion
+    addBreadcrumb('Catalogue deleted successfully', 'admin', {
+      catalogueId,
+      deletionResults,
+    });
+
   } catch (error) {
     console.error('❌ Critical error during catalogue deletion:', error);
+
+    // ✅ Report deletion errors
+    captureError(error as Error, {
+      context: 'Delete catalogue',
+      catalogueId,
+      pdfUrl,
+      operation: 'deleteCatalogue',
+    });
+
     throw error;
   }
 };
@@ -273,6 +321,8 @@ export const deleteCatalogue = async (
  */
 export const getAllCatalogues = async (): Promise<Catalogue[]> => {
   try {
+    addBreadcrumb('Fetching all catalogues (admin)', 'admin');
+
     const querySnapshot = await getDocs(collection(db, 'catalogues'));
 
     const catalogues: Catalogue[] = [];
@@ -284,9 +334,19 @@ export const getAllCatalogues = async (): Promise<Catalogue[]> => {
     });
 
     console.log(`📚 Fetched ${catalogues.length} catalogues from Firestore`);
+
+    addBreadcrumb('All catalogues fetched (admin)', 'admin', {
+      count: catalogues.length,
+    });
+
     return catalogues;
   } catch (error) {
     console.error('❌ Error fetching catalogues:', error);
+
+    captureError(error as Error, {
+      context: 'Get all catalogues (admin)',
+    });
+
     throw error;
   }
 };
@@ -301,6 +361,11 @@ export const uploadFileToStorage = async (
   onProgress?: (progress: UploadProgress) => void
 ): Promise<string> => {
   try {
+    addBreadcrumb('Uploading file to storage', 'admin', {
+      path,
+      fileSize: file.size,
+    });
+
     const storageRef = ref(storage, path);
 
     // Upload file
@@ -309,9 +374,21 @@ export const uploadFileToStorage = async (
     // Get download URL
     const downloadURL = await getDownloadURL(storageRef);
 
+    addBreadcrumb('File uploaded successfully', 'admin', {
+      path,
+      downloadURL,
+    });
+
     return downloadURL;
   } catch (error) {
     console.error('❌ Error uploading file:', error);
+
+    captureError(error as Error, {
+      context: 'Upload file to storage',
+      path,
+      fileSize: file.size,
+    });
+
     throw error;
   }
 };
@@ -321,21 +398,39 @@ export const uploadFileToStorage = async (
  */
 export const getCatalogueById = async (catalogueId: string): Promise<Catalogue | null> => {
   try {
+    addBreadcrumb('Fetching catalogue by ID (admin)', 'admin', {
+      catalogueId,
+    });
+
     const docRef = doc(db, 'catalogues', catalogueId);
     const docSnap = await getDocs(collection(db, 'catalogues'));
 
     const catalogue = docSnap.docs.find(d => d.id === catalogueId);
 
     if (catalogue) {
+      addBreadcrumb('Catalogue found (admin)', 'admin', {
+        catalogueId,
+      });
+
       return {
         id: catalogue.id,
         ...catalogue.data(),
       } as Catalogue;
     }
 
+    addBreadcrumb('Catalogue not found (admin)', 'admin', {
+      catalogueId,
+    });
+
     return null;
   } catch (error) {
     console.error('❌ Error fetching catalogue:', error);
+
+    captureError(error as Error, {
+      context: 'Get catalogue by ID (admin)',
+      catalogueId,
+    });
+
     throw error;
   }
 };

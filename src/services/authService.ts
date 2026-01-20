@@ -1,4 +1,4 @@
-// src/services/authService.ts - ✅ COMPLETE FILE WITH PHONE NUMBER SUPPORT
+// src/services/authService.ts - ✅ COMPLETE WITH SENTRY TRACKING
 import {
   signInWithCredential,
   GoogleAuthProvider,
@@ -10,6 +10,7 @@ import {
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { getAuthInstance, getDbInstance } from '../config/firebase';
 import { UserProfile } from '../types';
+import { captureError, addBreadcrumb } from '../config/sentry'; // ✅ NEW
 
 // ============================================
 // ADMIN CONFIGURATION
@@ -39,6 +40,12 @@ export const signInWithGoogleToken = async (
   accessToken: string | null
 ): Promise<UserProfile | null> => {
   try {
+    // ✅ Track sign-in attempt
+    addBreadcrumb('Starting Google sign-in', 'auth', {
+      hasIdToken: !!idToken,
+      hasAccessToken: !!accessToken,
+    });
+
     const auth = getAuthInstance();
 
     console.log('=== AUTH SERVICE ===');
@@ -65,20 +72,48 @@ export const signInWithGoogleToken = async (
       console.log('👤 Regular user logged in:', user.email);
     }
 
+    // ✅ Track successful sign-in
+    addBreadcrumb('User signed in successfully', 'auth', {
+      email: user.email,
+      isAdmin: userProfile.isAdmin,
+    });
+
     return userProfile;
   } catch (error: any) {
     console.error('❌ Error signing in with Google:', error);
+
+    // ✅ Report authentication errors to Sentry
+    captureError(error, {
+      context: 'Google Sign In',
+      hasIdToken: !!idToken,
+      hasAccessToken: !!accessToken,
+      errorCode: error.code,
+      errorMessage: error.message,
+    });
+
     throw error;
   }
 };
 
 export const signOut = async (): Promise<void> => {
   try {
+    // ✅ Track sign-out
+    addBreadcrumb('User signing out', 'auth');
+
     const auth = getAuthInstance();
     await firebaseSignOut(auth);
+
     console.log('✅ User signed out successfully');
+
+    addBreadcrumb('User signed out successfully', 'auth');
   } catch (error) {
     console.error('❌ Error signing out:', error);
+
+    // ✅ Report sign-out errors
+    captureError(error as Error, {
+      context: 'Sign Out',
+    });
+
     throw error;
   }
 };
@@ -94,7 +129,7 @@ export const getOrCreateUserProfile = async (
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      console.log(`📡 Attempt ${attempt}/${maxRetries}: Getting user profile`);
+      console.log(`🔡 Attempt ${attempt}/${maxRetries}: Getting user profile`);
 
       const db = getDbInstance();
       const userRef = doc(db, 'users', user.uid);
@@ -116,8 +151,18 @@ export const getOrCreateUserProfile = async (
 
           if (shouldBeAdmin) {
             console.log('⭐ User promoted to admin (whitelist match)');
+
+            // ✅ Track admin promotion
+            addBreadcrumb('User promoted to admin', 'auth', {
+              email: user.email,
+            });
           } else {
             console.warn('⚠️ Admin privileges removed (not in whitelist)');
+
+            // ✅ Track admin demotion
+            addBreadcrumb('Admin privileges removed', 'auth', {
+              email: user.email,
+            });
           }
         }
 
@@ -137,7 +182,7 @@ export const getOrCreateUserProfile = async (
           displayName: user.displayName,
           photoURL: user.photoURL,
           isAdmin: shouldBeAdmin,
-          phoneNumber: userData.phoneNumber || null, // ✅ NEW
+          phoneNumber: userData.phoneNumber || null,
           location: location,
           createdAt: userData.createdAt,
           lastLoginAt: serverTimestamp(),
@@ -151,7 +196,7 @@ export const getOrCreateUserProfile = async (
           displayName: user.displayName,
           photoURL: user.photoURL,
           isAdmin: shouldBeAdmin,
-          phoneNumber: null, // ✅ NEW
+          phoneNumber: null,
           location: null,
           createdAt: serverTimestamp(),
           lastLoginAt: serverTimestamp(),
@@ -161,8 +206,18 @@ export const getOrCreateUserProfile = async (
 
         if (shouldBeAdmin) {
           console.log('⭐ New admin user created');
+
+          // ✅ Track new admin account
+          addBreadcrumb('New admin account created', 'auth', {
+            email: user.email,
+          });
         } else {
           console.log('✅ New regular user created');
+
+          // ✅ Track new user registration
+          addBreadcrumb('New user account created', 'auth', {
+            email: user.email,
+          });
         }
 
         return newProfile;
@@ -178,6 +233,14 @@ export const getOrCreateUserProfile = async (
       }
     }
   }
+
+  // ✅ Report profile creation/fetch failure after all retries
+  captureError(lastError || new Error('Failed to get/create user profile'), {
+    context: 'Get/Create User Profile',
+    userEmail: user.email,
+    userId: user.uid,
+    attempts: maxRetries,
+  });
 
   throw lastError || new Error('Failed to get/create user profile');
 };
@@ -209,7 +272,7 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
         displayName: userData.displayName,
         photoURL: userData.photoURL,
         isAdmin: shouldBeAdmin,
-        phoneNumber: userData.phoneNumber || null, // ✅ NEW
+        phoneNumber: userData.phoneNumber || null,
         location: location,
         createdAt: userData.createdAt,
         lastLoginAt: userData.lastLoginAt,
@@ -219,6 +282,13 @@ export const getUserProfile = async (uid: string): Promise<UserProfile | null> =
     return null;
   } catch (error) {
     console.error('❌ Error getting user profile:', error);
+
+    // ✅ Report profile fetch errors
+    captureError(error as Error, {
+      context: 'Get User Profile',
+      userId: uid,
+    });
+
     return null;
   }
 };
@@ -233,6 +303,13 @@ export const onAuthChange = (callback: (user: UserProfile | null) => void) => {
         callback(userProfile);
       } catch (error) {
         console.error('❌ Error in auth change listener:', error);
+
+        // ✅ Report auth listener errors
+        captureError(error as Error, {
+          context: 'Auth State Change Listener',
+          userId: firebaseUser.uid,
+        });
+
         callback(null);
       }
     } else {
