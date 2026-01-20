@@ -1,5 +1,5 @@
-// src/config/sentry.ts - FIXED FOR TESTING
-import * as Sentry from 'sentry-expo';
+// src/config/sentry.ts - FIXED: Using @sentry/react-native directly
+import * as Sentry from '@sentry/react-native';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
@@ -8,6 +8,9 @@ const SENTRY_DSN =
   process.env.EXPO_PUBLIC_SENTRY_DSN ||
   Constants.expoConfig?.extra?.SENTRY_DSN ||
   'https://f5adc24cef5aa1f3347d425833d760ef@o4510741401436160.ingest.de.sentry.io/4510741403926608';
+
+// Track if Sentry was successfully initialized
+let sentryInitialized = false;
 
 /**
  * Initialize Sentry for crash reporting and performance monitoring
@@ -22,8 +25,8 @@ export const initializeSentry = () => {
     Sentry.init({
       dsn: SENTRY_DSN,
 
-      // ✅ CHANGED: Enable in BOTH dev and production for testing
-      enabled: true, // Was: !__DEV__
+      // Enable in BOTH dev and production for testing
+      enabled: true,
 
       // Environment - mark as 'development' when in __DEV__
       environment: __DEV__ ? 'development' : 'production',
@@ -33,11 +36,19 @@ export const initializeSentry = () => {
       dist: Constants.expoConfig?.version,
 
       // Performance monitoring
-      enableInExpoDevelopment: true, // ✅ CHANGED: Was false
-      tracesSampleRate: 1.0,
+      tracesSampleRate: __DEV__ ? 1.0 : 0.2,
 
-      // ✅ Debug mode for testing
-      debug: __DEV__, // Shows Sentry logs in console
+      // Debug mode for testing
+      debug: __DEV__,
+
+      // Enable native crash reporting
+      enableNative: true,
+
+      // Auto session tracking
+      enableAutoSessionTracking: true,
+
+      // Session timeout
+      sessionTrackingIntervalMillis: 30000,
 
       // Additional context
       beforeSend(event, hint) {
@@ -49,10 +60,9 @@ export const initializeSentry = () => {
             appVersion: Constants.expoConfig?.version,
           };
 
-          // ✅ Log in dev mode
+          // Log in dev mode
           if (__DEV__) {
-            console.log('📤 [Sentry] Sending event:', event);
-            console.log('📤 [Sentry] Hint:', hint);
+            console.log('📤 [Sentry] Sending event:', event.event_id);
           }
 
           return event;
@@ -61,13 +71,20 @@ export const initializeSentry = () => {
           return event;
         }
       },
+
+      // Integrations
+      integrations: [
+        Sentry.reactNativeTracingIntegration(),
+      ],
     });
 
+    sentryInitialized = true;
     console.log('✅ Sentry initialized successfully');
     console.log('📍 Environment:', __DEV__ ? 'development' : 'production');
     console.log('📍 DSN:', SENTRY_DSN.substring(0, 50) + '...');
   } catch (error) {
     console.error('❌ Sentry initialization failed:', error);
+    sentryInitialized = false;
     // Don't throw - let app continue without Sentry
   }
 };
@@ -76,7 +93,7 @@ export const initializeSentry = () => {
  * Safe wrapper to check if Sentry is available
  */
 const isSentryAvailable = (): boolean => {
-  return !!Sentry?.Native && !!SENTRY_DSN; // ✅ CHANGED: Removed __DEV__ check
+  return sentryInitialized && !!SENTRY_DSN;
 };
 
 /**
@@ -84,24 +101,21 @@ const isSentryAvailable = (): boolean => {
  */
 export const setScreen = (screenName: string) => {
   try {
+    if (__DEV__) {
+      console.log(`📱 [Sentry] Screen set: ${screenName}`);
+    }
+
     if (!isSentryAvailable()) {
-      if (__DEV__) {
-        console.log(`📱 [Sentry] Screen: ${screenName}`);
-      }
       return;
     }
 
-    Sentry.Native.setContext('screen', {
+    Sentry.setContext('screen', {
       name: screenName,
       timestamp: new Date().toISOString(),
     });
 
-    Sentry.Native.setTag('screen', screenName);
+    Sentry.setTag('screen', screenName);
     addBreadcrumb(`Screen: ${screenName}`, 'navigation', { screen: screenName });
-
-    if (__DEV__) {
-      console.log(`📱 [Sentry] Screen set: ${screenName}`);
-    }
   } catch (error) {
     console.error('Sentry setScreen error:', error);
   }
@@ -112,21 +126,21 @@ export const setScreen = (screenName: string) => {
  */
 export const setSentryUser = (user: { uid: string; email: string | null; isAdmin: boolean }) => {
   try {
+    if (__DEV__) {
+      console.log('✅ [Sentry] User context set:', user.email);
+    }
+
     if (!isSentryAvailable()) {
-      if (__DEV__) {
-        console.log('✅ [Sentry] User context set:', user.email);
-      }
       return;
     }
 
-    Sentry.Native.setUser({
+    Sentry.setUser({
       id: user.uid,
       email: user.email || undefined,
       username: user.email?.split('@')[0] || undefined,
     });
 
-    Sentry.Native.setTag('is_admin', user.isAdmin.toString());
-    console.log('✅ [Sentry] User context set:', user.email);
+    Sentry.setTag('is_admin', user.isAdmin.toString());
   } catch (error) {
     console.error('Sentry setSentryUser error:', error);
   }
@@ -137,15 +151,15 @@ export const setSentryUser = (user: { uid: string; email: string | null; isAdmin
  */
 export const clearSentryUser = () => {
   try {
+    if (__DEV__) {
+      console.log('✅ [Sentry] User context cleared');
+    }
+
     if (!isSentryAvailable()) {
-      if (__DEV__) {
-        console.log('✅ [Sentry] User context cleared');
-      }
       return;
     }
 
-    Sentry.Native.setUser(null);
-    console.log('✅ [Sentry] User context cleared');
+    Sentry.setUser(null);
   } catch (error) {
     console.error('Sentry clearSentryUser error:', error);
   }
@@ -158,15 +172,17 @@ export const captureError = (error: Error, context?: Record<string, any>) => {
   try {
     if (__DEV__) {
       console.error('🔴 [Sentry] Error captured:', error.message);
-      console.error('🔴 [Sentry] Context:', context);
+      if (context) {
+        console.error('🔴 [Sentry] Context:', context);
+      }
     }
 
     if (!isSentryAvailable()) {
-      console.log('⚠️ Sentry not available, error not sent');
+      console.log('⚠️ Sentry not available, error logged locally only');
       return;
     }
 
-    Sentry.Native.captureException(error, {
+    Sentry.captureException(error, {
       contexts: {
         custom: context || {},
       },
@@ -182,6 +198,25 @@ export const captureError = (error: Error, context?: Record<string, any>) => {
 };
 
 /**
+ * Capture a message (not an error)
+ */
+export const captureMessage = (message: string, level: Sentry.SeverityLevel = 'info') => {
+  try {
+    if (__DEV__) {
+      console.log(`📝 [Sentry] Message: ${message}`);
+    }
+
+    if (!isSentryAvailable()) {
+      return;
+    }
+
+    Sentry.captureMessage(message, level);
+  } catch (error) {
+    console.error('Sentry captureMessage error:', error);
+  }
+};
+
+/**
  * Add breadcrumb for debugging
  */
 export const addBreadcrumb = (message: string, category: string = 'custom', data?: Record<string, any>) => {
@@ -192,7 +227,7 @@ export const addBreadcrumb = (message: string, category: string = 'custom', data
 
     if (!isSentryAvailable()) return;
 
-    Sentry.Native.addBreadcrumb({
+    Sentry.addBreadcrumb({
       message,
       category,
       data,
@@ -201,6 +236,30 @@ export const addBreadcrumb = (message: string, category: string = 'custom', data
     });
   } catch (error) {
     // Silent fail - breadcrumbs are not critical
+  }
+};
+
+/**
+ * Set custom tag
+ */
+export const setTag = (key: string, value: string) => {
+  try {
+    if (!isSentryAvailable()) return;
+    Sentry.setTag(key, value);
+  } catch (error) {
+    console.error('Sentry setTag error:', error);
+  }
+};
+
+/**
+ * Set custom context
+ */
+export const setContext = (name: string, context: Record<string, any>) => {
+  try {
+    if (!isSentryAvailable()) return;
+    Sentry.setContext(name, context);
+  } catch (error) {
+    console.error('Sentry setContext error:', error);
   }
 };
 
@@ -230,4 +289,16 @@ export const testSentryError = () => {
     console.error('❌ [Sentry] Failed to send test error:', error);
     return 'Failed to send test error. Check console.';
   }
+};
+
+/**
+ * Wrap component with Sentry error boundary
+ */
+export const wrap = Sentry.wrap;
+
+/**
+ * Log screen view for analytics
+ */
+export const logScreenView = (screenName: string) => {
+  setScreen(screenName);
 };

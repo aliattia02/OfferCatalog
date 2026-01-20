@@ -65,14 +65,7 @@
       "expo-localization",
       "expo-web-browser",
       "@react-native-google-signin/google-signin",
-      "@react-native-community/datetimepicker",
-      [
-        "sentry-expo",
-        {
-          "organization": "o4510741401436160",
-          "project": "daily-deals"
-        }
-      ]
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true
@@ -95,17 +88,6 @@
     },
     "runtimeVersion": {
       "policy": "appVersion"
-    },
-    "hooks": {
-      "postPublish": [
-        {
-          "file": "sentry-expo/upload-sourcemaps",
-          "config": {
-            "organization": "o4510741401436160",
-            "project": "daily-deals"
-          }
-        }
-      ]
     }
   }
 }
