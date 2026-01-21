@@ -154,51 +154,61 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
 // HANDLERS AND UPLOAD LOGIC
 // Add these methods inside the component (after the useEffect hooks from Part 1)
 
-  const handlePickPDF = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
-        copyToCacheDirectory: true,
-      });
-
-      if (!result.canceled && result.assets && result.assets.length > 0) {
-        setSelectedFile(result.assets[0]);
-        setSelectedImages([]);
-        setUploadType('pdf');
-      }
-    } catch (error) {
-      console.error('Error picking PDF:', error);
-      showAlert('خطأ', 'فشل اختيار الملف');
+  const showAlert = (title: string, message: string, onPress?:  () => void) => {
+  if (Platform.OS === 'web') {
+    window.alert(`${title}\n${message}`);
+    if (onPress) {
+      onPress();
     }
-  };
+  } else {
+    Alert.alert(title, message, [
+      { text: 'حسناً', onPress: onPress }
+    ]);
+  }
+};
+
+const handlePickPDF = async () => {
+  try {
+    const result = await DocumentPicker.getDocumentAsync({
+      type:  ['application/pdf'], // Use array format for better compatibility
+      copyToCacheDirectory: true,
+    });
+
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setSelectedFile(result.assets[0]);
+      setSelectedImages([]);
+      setUploadType('pdf');
+    }
+  } catch (error) {
+    console.error('Error picking PDF:', error);
+    showAlert('خطأ', 'فشل اختيار الملف');
+  }
+};
+
 
 const handlePickImages = async () => {
   try {
     console.log('📱 Starting image picker...');
 
-    // Request permissions
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const { status } = await ImagePicker. requestMediaLibraryPermissionsAsync();
 
     if (status !== 'granted') {
       showAlert('تنبيه', 'نحتاج إلى إذن للوصول إلى الصور');
       return;
     }
 
-    // ✅ ANDROID 15 FIX - Use explicit MediaTypeOptions enum
+    // ✅ Use new MediaType API instead of deprecated MediaTypeOptions
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'], // New API format
       allowsMultipleSelection: true,
       quality: 0.9,
-      // Remove orderedSelection for better Android compatibility
-      // orderedSelection: true,
     });
 
-    if (!result.canceled && result.assets && result.assets.length > 0) {
+    if (!result.canceled && result.assets && result.assets. length > 0) {
       console.log(`✅ Selected ${result.assets.length} images`);
 
-      // Validate each image
       const validImages = result.assets.filter((asset, index) => {
-        if (!asset.uri) {
+        if (! asset.uri) {
           console.error(`❌ Image ${index + 1} has no URI`);
           return false;
         }
@@ -210,31 +220,14 @@ const handlePickImages = async () => {
         return;
       }
 
-      if (validImages.length < result.assets.length) {
-        showAlert('تنبيه', `تم اختيار ${validImages.length} من ${result.assets.length} صور`);
-      }
-
       setSelectedImages(validImages);
       setSelectedFile(null);
       setUploadType('images');
-
       console.log('✅ Images set successfully');
-    } else {
-      console.log('📷 Image selection cancelled');
     }
-  } catch (error: any) {
+  } catch (error:  any) {
     console.error('❌ Error picking images:', error);
-    console.error('Error details:', {
-      message: error.message,
-      code: error.code,
-      stack: error.stack,
-    });
-
-    showAlert(
-      'خطأ',
-      'فشل اختيار الصور. يرجى المحاولة مرة أخرى.\n' +
-      (error?.message || 'خطأ غير معروف')
-    );
+    showAlert('خطأ', 'فشل اختيار الصور.  ير��ى المحاولة مرة أخرى.');
   }
 };
 
