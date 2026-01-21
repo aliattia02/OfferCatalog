@@ -1,4 +1,4 @@
-// src/services/imageCacheService.ts - FIXED: Web platform support + fallback
+// src/services/imageCacheService.ts - PERFORMANCE OPTIMIZED
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
@@ -13,7 +13,7 @@ interface CachedImage {
 
 const CACHE_DIR_NAME = 'image-cache';
 const CACHE_METADATA_KEY = '@image_cache_metadata';
-const MAX_CACHE_SIZE = 50 * 1024 * 1024; // 50MB max cache
+const MAX_CACHE_SIZE = 100 * 1024 * 1024; // 100MB (increased from 50MB)
 const CACHE_DURATION = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 class ImageCacheService {
@@ -23,11 +23,17 @@ class ImageCacheService {
   private isWebPlatform = Platform.OS === 'web';
   private cacheSupported = false;
 
+  // ✅ NEW: Track in-flight downloads to prevent duplicates
+  private downloadingUrls = new Map<string, Promise<string>>();
+
+  // ✅ NEW: Memory cache for instant lookups
+  private memoryCache = new Map<string, string>();
+  private maxMemoryCacheSize = 50; // Keep 50 recent lookups in memory
+
   async init(): Promise<void> {
     if (this.initialized) return;
 
     try {
-      // ✅ Check if FileSystem is available (not on web)
       if (this.isWebPlatform || !FileSystem.documentDirectory) {
         console.warn('⚠️ Image cache: FileSystem not available, caching disabled (platform: web)');
         this.cacheSupported = false;
@@ -38,7 +44,6 @@ class ImageCacheService {
       this.cacheSupported = true;
       this.cacheDir = `${FileSystem.documentDirectory}${CACHE_DIR_NAME}/`;
 
-      // Check if directory exists
       const dirInfo = await FileSystem.getInfoAsync(this.cacheDir);
 
       if (!dirInfo.exists) {
@@ -56,17 +61,17 @@ class ImageCacheService {
 
       this.initialized = true;
 
-      // Clean up expired cache in background
-      this.cleanupExpiredCache();
+      // Clean up expired cache in background (non-blocking)
+      setTimeout(() => this.cleanupExpiredCache(), 1000);
     } catch (error) {
       console.error('❌ Failed to initialize image cache:', error);
       this.cacheSupported = false;
-      this.initialized = true; // Mark as initialized to prevent retry loops
+      this.initialized = true;
     }
   }
 
   /**
-   * Get cached image path or download and cache
+   * ✅ OPTIMIZED: Get cached image with memory cache and deduplication
    */
   async getCachedImage(
     url: string,
@@ -75,12 +80,23 @@ class ImageCacheService {
     try {
       await this.init();
 
-      // If caching not supported, return original URL
       if (!this.cacheSupported) {
         return url;
       }
 
-      // Check if already cached
+      // ✅ Check memory cache first (instant lookup)
+      const memCached = this.memoryCache.get(url);
+      if (memCached) {
+        return memCached;
+      }
+
+      // ✅ Check if already downloading this URL
+      const existingDownload = this.downloadingUrls.get(url);
+      if (existingDownload) {
+        return await existingDownload;
+      }
+
+      // Check if already cached on disk
       const cached = this.metadata.get(url);
       if (cached) {
         try {
@@ -88,6 +104,7 @@ class ImageCacheService {
           if (fileInfo.exists) {
             // Check if expired
             if (Date.now() - cached.cachedAt < CACHE_DURATION) {
+              this.addToMemoryCache(url, cached.localPath);
               return cached.localPath;
             } else {
               await this.removeFromCache(url);
@@ -98,17 +115,39 @@ class ImageCacheService {
         }
       }
 
-      // Download and cache
-      return await this.downloadAndCache(url, priority);
+      // Download and cache (with deduplication)
+      const downloadPromise = this.downloadAndCache(url, priority);
+      this.downloadingUrls.set(url, downloadPromise);
+
+      try {
+        const result = await downloadPromise;
+        this.addToMemoryCache(url, result);
+        return result;
+      } finally {
+        this.downloadingUrls.delete(url);
+      }
     } catch (error) {
       console.error('❌ Image cache error:', error);
-      // Always return original URL as fallback
       return url;
     }
   }
 
   /**
-   * Download image using FileSystem API
+   * ✅ NEW: Memory cache management
+   */
+  private addToMemoryCache(url: string, path: string): void {
+    // LRU eviction: remove oldest entry if cache is full
+    if (this.memoryCache.size >= this.maxMemoryCacheSize) {
+      const firstKey = this.memoryCache.keys().next().value;
+      if (firstKey) {
+        this.memoryCache.delete(firstKey);
+      }
+    }
+    this.memoryCache.set(url, path);
+  }
+
+  /**
+   * ✅ OPTIMIZED: Download with better error handling
    */
   private async downloadAndCache(
     url: string,
@@ -121,6 +160,12 @@ class ImageCacheService {
     try {
       const filename = this.getFilenameFromUrl(url);
       const localPath = `${this.cacheDir}${filename}`;
+
+      // Check if file already exists (race condition protection)
+      const existingFile = await FileSystem.getInfoAsync(localPath);
+      if (existingFile.exists) {
+        return localPath;
+      }
 
       const downloadResult = await FileSystem.downloadAsync(url, localPath);
 
@@ -140,15 +185,25 @@ class ImageCacheService {
       };
 
       this.metadata.set(url, cachedImage);
-      await this.saveMetadata();
 
-      await this.enforceMaxCacheSize();
+      // ✅ Save metadata asynchronously (non-blocking)
+      this.saveMetadataAsync();
+
+      // ✅ Enforce cache size in background
+      setTimeout(() => this.enforceMaxCacheSize(), 0);
 
       return localPath;
     } catch (error) {
       console.error(`❌ Failed to cache image:`, error);
       return url;
     }
+  }
+
+  /**
+   * ✅ NEW: Non-blocking metadata save
+   */
+  private saveMetadataAsync(): void {
+    setTimeout(() => this.saveMetadata(), 0);
   }
 
   /**
@@ -166,6 +221,7 @@ class ImageCacheService {
         await FileSystem.deleteAsync(cached.localPath, { idempotent: true });
       }
       this.metadata.delete(url);
+      this.memoryCache.delete(url);
       await this.saveMetadata();
     } catch (error) {
       console.error('❌ Failed to remove from cache:', error);
@@ -185,6 +241,7 @@ class ImageCacheService {
         await FileSystem.makeDirectoryAsync(this.cacheDir, { intermediates: true });
       }
       this.metadata.clear();
+      this.memoryCache.clear();
       await AsyncStorage.removeItem(CACHE_METADATA_KEY);
       console.log('🗑️ Image cache cleared');
     } catch (error) {
@@ -193,7 +250,7 @@ class ImageCacheService {
   }
 
   /**
-   * Clean up expired cache entries
+   * ✅ OPTIMIZED: Non-blocking cleanup
    */
   private async cleanupExpiredCache(): Promise<void> {
     if (!this.cacheSupported) return;
@@ -201,10 +258,20 @@ class ImageCacheService {
     const now = Date.now();
     let cleaned = 0;
 
+    const expiredUrls: string[] = [];
     for (const [url, cached] of this.metadata.entries()) {
       if (now - cached.cachedAt > CACHE_DURATION) {
+        expiredUrls.push(url);
+      }
+    }
+
+    // Remove expired items asynchronously
+    for (const url of expiredUrls) {
+      try {
         await this.removeFromCache(url);
         cleaned++;
+      } catch (error) {
+        console.error(`Failed to remove expired cache for ${url}:`, error);
       }
     }
 
@@ -214,7 +281,7 @@ class ImageCacheService {
   }
 
   /**
-   * Enforce maximum cache size by removing oldest low-priority items
+   * ✅ OPTIMIZED: Smarter cache size enforcement
    */
   private async enforceMaxCacheSize(): Promise<void> {
     if (!this.cacheSupported) return;
@@ -224,6 +291,9 @@ class ImageCacheService {
 
     if (totalSize <= MAX_CACHE_SIZE) return;
 
+    console.log(`⚠️ Cache size (${(totalSize / 1024 / 1024).toFixed(2)}MB) exceeds limit, cleaning...`);
+
+    // Sort by priority (low first) and age (oldest first)
     const sortedEntries = Array.from(this.metadata.entries())
       .sort((a, b) => {
         const priorityOrder = { high: 3, normal: 2, low: 1 };
@@ -233,13 +303,18 @@ class ImageCacheService {
       });
 
     let currentSize = totalSize;
+    let removed = 0;
+
     for (const [url, cached] of sortedEntries) {
-      if (currentSize <= MAX_CACHE_SIZE) break;
-      if (cached.priority === 'high') break;
+      if (currentSize <= MAX_CACHE_SIZE * 0.8) break; // Clean to 80% capacity
+      if (cached.priority === 'high') break; // Never remove high priority
 
       await this.removeFromCache(url);
       currentSize -= cached.size;
+      removed++;
     }
+
+    console.log(`✅ Removed ${removed} cached images, new size: ${(currentSize / 1024 / 1024).toFixed(2)}MB`);
   }
 
   /**
@@ -295,6 +370,7 @@ class ImageCacheService {
     normalPriority: number;
     lowPriority: number;
     supported: boolean;
+    memoryCache: number;
   }> {
     await this.init();
 
@@ -307,6 +383,7 @@ class ImageCacheService {
         normalPriority: 0,
         lowPriority: 0,
         supported: false,
+        memoryCache: 0,
       };
     }
 
@@ -321,11 +398,12 @@ class ImageCacheService {
       normalPriority: items.filter(i => i.priority === 'normal').length,
       lowPriority: items.filter(i => i.priority === 'low').length,
       supported: true,
+      memoryCache: this.memoryCache.size,
     };
   }
 
   /**
-   * Prefetch images for basket items
+   * ✅ OPTIMIZED: Batch prefetch with concurrency control
    */
   async prefetchBasketImages(imageUrls: string[]): Promise<void> {
     if (!this.cacheSupported) {
@@ -335,13 +413,23 @@ class ImageCacheService {
 
     console.log(`🔥 Prefetching ${imageUrls.length} basket images...`);
 
-    await Promise.all(
-      imageUrls.map(url =>
-        this.getCachedImage(url, 'high').catch(err => {
-          console.error(`Failed to prefetch ${url}:`, err);
-        })
-      )
-    );
+    // Limit concurrent downloads to 3
+    const concurrencyLimit = 3;
+    const chunks: string[][] = [];
+
+    for (let i = 0; i < imageUrls.length; i += concurrencyLimit) {
+      chunks.push(imageUrls.slice(i, i + concurrencyLimit));
+    }
+
+    for (const chunk of chunks) {
+      await Promise.all(
+        chunk.map(url =>
+          this.getCachedImage(url, 'high').catch(err => {
+            console.error(`Failed to prefetch ${url}:`, err);
+          })
+        )
+      );
+    }
 
     console.log('✅ Basket images prefetched');
   }
@@ -351,6 +439,13 @@ class ImageCacheService {
    */
   isCacheSupported(): boolean {
     return this.cacheSupported;
+  }
+
+  /**
+   * ✅ NEW: Clear memory cache
+   */
+  clearMemoryCache(): void {
+    this.memoryCache.clear();
   }
 }
 

@@ -1,4 +1,4 @@
-// ✅ FIXED VERSION - Part 1/6: Imports, Constants, and Types
+// ✅ PERFORMANCE OPTIMIZED - Part 1/5: Imports, Constants, State & Setup
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
@@ -54,6 +54,7 @@ const NAV_ICONS = {
   nextCatalogue: I18nManager.isRTL ? 'arrow-back' : 'arrow-forward',
 };
 
+
 type CatalogueStatus = 'active' | 'upcoming' | 'expired';
 
 interface CatalogueWithStatus extends Catalogue {
@@ -66,8 +67,8 @@ interface OffersCacheState {
   totalOffers: number;
 }
 
-// ✅ Track loaded images to prevent duplicate onLoad calls
-const loadedImagesCache = new Set<string>();
+// ✅ Global cache to track loaded images (prevents duplicate loads across renders)
+const loadedImagesGlobalCache = new Set<string>();
 
 export default function FlyerDetailScreen() {
   const { id, page } = useLocalSearchParams<{ id: string; page?: string }>();
@@ -76,7 +77,7 @@ export default function FlyerDetailScreen() {
   const dispatch = useAppDispatch();
   const { getTitle, getName } = useLocalized();
 
-  // ✅ Stable refs for tracking
+  // ✅ Performance tracking refs
   const mountTime = useRef(Date.now());
   const renderCount = useRef(0);
   const hasInitialized = useRef(false);
@@ -85,6 +86,9 @@ export default function FlyerDetailScreen() {
   const imageHasRenderedRef = useRef(false);
   const offersCacheChecked = useRef(false);
   const currentImageUrlRef = useRef<string>('');
+
+  // ✅ NEW: Offers pre-computed cache
+  const offersPrecomputedCache = useRef<Map<number, OfferWithCatalogue[]>>(new Map());
 
   // State
   const [isReady, setIsReady] = useState(false);
@@ -97,7 +101,7 @@ export default function FlyerDetailScreen() {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [showPerfOverlay, setShowPerfOverlay] = useState(false);
 
-  // ✅ Single metrics object
+  // ✅ Performance metrics
   const [imageLoadMetrics, setImageLoadMetrics] = useState({
     totalTime: 0,
     mountTime: 0,
@@ -108,7 +112,7 @@ export default function FlyerDetailScreen() {
     imageRenderTime: 0,
   });
 
-  // Redux
+  // Redux selectors
   const catalogue = getCatalogueById(id);
   const stores = useAppSelector(state => state.stores.stores);
   const basketItems = useAppSelector(state => state.basket.items);
@@ -132,7 +136,10 @@ export default function FlyerDetailScreen() {
 
   renderCount.current++;
 
-  // ✅ FIXED VERSION - Part 2/6: Performance Overlay Component and Core Effects
+  // Continue to Part 2...
+
+
+  // ✅ PERFORMANCE OPTIMIZED - Part 2/5: Core Effects & Callbacks
 
   // Performance tracking overlay component
   const PerformanceOverlay = ({
@@ -170,7 +177,7 @@ export default function FlyerDetailScreen() {
         {visible && (
           <View style={styles.perfOverlay}>
             <View style={styles.perfHeader}>
-              <Text style={styles.perfTitle}>🎯 Transition Metrics</Text>
+              <Text style={styles.perfTitle}>🎯 Performance</Text>
               <Text style={[styles.perfTotal, { color: getTotalColor() }]}>
                 {metrics.totalTime}ms
               </Text>
@@ -195,20 +202,10 @@ export default function FlyerDetailScreen() {
               </View>
 
               <View style={styles.perfRow}>
-                <Text style={styles.perfLabel}>🖼️ Image Start:</Text>
-                <Text style={styles.perfValue}>{metrics.imageLoadStartTime}ms</Text>
-              </View>
-
-              <View style={styles.perfRow}>
-                <Text style={styles.perfLabel}>🖼️ Image Loaded:</Text>
+                <Text style={styles.perfLabel}>🖼️ Image:</Text>
                 <Text style={[styles.perfValue, { color: getColor(getImageLoadTime()) }]}>
                   {getImageLoadTime()}ms
                 </Text>
-              </View>
-
-              <View style={styles.perfRow}>
-                <Text style={styles.perfLabel}>🖼️ Image Rendered:</Text>
-                <Text style={styles.perfValue}>{metrics.imageRenderTime}ms</Text>
               </View>
             </View>
 
@@ -216,7 +213,7 @@ export default function FlyerDetailScreen() {
               <View style={styles.perfWarning}>
                 <Ionicons name="warning" size={16} color="#ff9800" />
                 <Text style={styles.perfWarningText}>
-                  Image loading is slow! ({getImageLoadTime()}ms)
+                  Slow image load!
                 </Text>
               </View>
             )}
@@ -226,7 +223,7 @@ export default function FlyerDetailScreen() {
     );
   };
 
-  // ✅ Stable mount effect - only runs once
+  // ✅ OPTIMIZED: Mount effect
   useEffect(() => {
     const transitionStart = Date.now();
     transitionStartRef.current = transitionStart;
@@ -243,17 +240,20 @@ export default function FlyerDetailScreen() {
       mountTime: mountDuration,
     }));
 
-    InteractionManager.runAfterInteractions(() => {
-      console.log('✅ [FlyerDetail] Interactions complete');
-      const firstRenderTime = Date.now() - transitionStart;
+    // ✅ Use requestAnimationFrame for smoother mounting
+    requestAnimationFrame(() => {
+      InteractionManager.runAfterInteractions(() => {
+        console.log('✅ [FlyerDetail] Interactions complete');
+        const firstRenderTime = Date.now() - transitionStart;
 
-      setImageLoadMetrics(prev => ({
-        ...prev,
-        firstRenderTime,
-      }));
+        setImageLoadMetrics(prev => ({
+          ...prev,
+          firstRenderTime,
+        }));
 
-      setIsReady(true);
-      trackNavigation.markPhase('firstRender');
+        setIsReady(true);
+        trackNavigation.markPhase('firstRender');
+      });
     });
 
     return () => {
@@ -269,7 +269,7 @@ export default function FlyerDetailScreen() {
     };
   }, []);
 
-  // ✅ Offers check with proper dependencies
+  // ✅ OPTIMIZED: Offers check - runs once, result cached
   useEffect(() => {
     if (!catalogue?.id || offersCacheChecked.current) {
       return;
@@ -279,7 +279,7 @@ export default function FlyerDetailScreen() {
 
     const checkOffers = async () => {
       try {
-        console.log(`🔍 [Offers Check] Checking if catalogue ${catalogue.id} has offers...`);
+        console.log(`🔍 [Offers Check] Checking catalogue ${catalogue.id}...`);
         perfLogger.start('FlyerDetail.checkOffers');
 
         const offers = await getOffersByCatalogue(catalogue.id);
@@ -293,9 +293,21 @@ export default function FlyerDetailScreen() {
 
         if (hasOffers) {
           setCatalogueOffers(offers);
-          console.log(`✅ [Offers Check] Found ${offers.length} offers for catalogue`);
+
+          // ✅ Pre-compute offers by page for instant access
+          const offersByPage = new Map<number, OfferWithCatalogue[]>();
+          offers.forEach(offer => {
+            const pageNum = offer.pageNumber;
+            if (!offersByPage.has(pageNum)) {
+              offersByPage.set(pageNum, []);
+            }
+            offersByPage.get(pageNum)!.push(offer);
+          });
+          offersPrecomputedCache.current = offersByPage;
+
+          console.log(`✅ [Offers Check] Found ${offers.length} offers, pre-computed by page`);
         } else {
-          console.log(`ℹ️ [Offers Check] No offers found for catalogue`);
+          console.log(`ℹ️ [Offers Check] No offers found`);
         }
 
         const duration = perfLogger.end('FlyerDetail.checkOffers');
@@ -306,7 +318,7 @@ export default function FlyerDetailScreen() {
 
         trackNavigation.markPhase('dataLoad');
       } catch (error) {
-        console.error('❌ [Offers Check] Error checking offers:', error);
+        console.error('❌ [Offers Check] Error:', error);
         setOffersCache({
           hasOffers: false,
           checkedAt: Date.now(),
@@ -321,7 +333,7 @@ export default function FlyerDetailScreen() {
     checkOffers();
   }, [catalogue?.id]);
 
-  // Memoize store lookup
+  // ✅ Memoize store lookup (prevents recalculation)
   const store = useMemo(() => {
     return stores.find(s => s.id === catalogue?.storeId) || (catalogue ? {
       id: catalogue.storeId,
@@ -339,7 +351,7 @@ export default function FlyerDetailScreen() {
     return `${catalogue.titleAr} • ${dateRange}`;
   }, [catalogue?.titleAr, catalogue?.startDate, catalogue?.endDate]);
 
-  // ✅ Analytics with proper dependency
+  // ✅ Analytics - runs once
   useEffect(() => {
     if (id && !hasInitialized.current) {
       hasInitialized.current = true;
@@ -350,14 +362,14 @@ export default function FlyerDetailScreen() {
     }
   }, [id]);
 
-  // Set initial page
+  // Set initial page from URL parameter
   useEffect(() => {
     if (page && totalPages > 0) {
       const pageNumber = parseInt(page, 10);
       if (!isNaN(pageNumber) && pageNumber > 0 && pageNumber <= totalPages) {
         const pageIndex = pageNumber - 1;
         setCurrentPage(pageIndex);
-        console.log(`📄 [FlyerDetail] Navigated to page ${pageNumber} (index ${pageIndex})`);
+        console.log(`📄 [FlyerDetail] Navigated to page ${pageNumber}`);
       }
     }
   }, [page, totalPages]);
@@ -375,9 +387,11 @@ export default function FlyerDetailScreen() {
     totalPagesRef.current = totalPages;
   }, [totalPages]);
 
-  // ✅ FIXED VERSION - Part 3/6: Image Loading Tracking and Callbacks
+  // Continue to Part 3...
 
-  // ✅ IMPROVED: Image loading tracking with deduplication
+  // ✅ PERFORMANCE OPTIMIZED - Part 3/5: Image Loading & Core Callbacks
+
+  // ✅ OPTIMIZED: Image loading with global cache check
   useEffect(() => {
     if (!catalogue?.pages?.[currentPage]) {
       return;
@@ -400,18 +414,34 @@ export default function FlyerDetailScreen() {
     }));
 
     trackNavigation.markPhase('imageLoadStart');
-    console.log(`🖼️ [Image] Load started for page ${currentPage + 1} at ${imageStartTime}ms`);
+    console.log(`🖼️ [Image] Loading page ${currentPage + 1}`);
 
-    // ✅ Only prefetch if not already in cache
-    if (imageUrl && !loadedImagesCache.has(imageUrl)) {
+    // ✅ Check global cache first
+    if (imageUrl && loadedImagesGlobalCache.has(imageUrl)) {
+      console.log(`✅ [Image] Using cached page ${currentPage + 1}`);
+      // Image is cached, mark metrics immediately
+      const cachedLoadTime = Date.now() - imageLoadStartRef.current;
+      setImageLoadMetrics(prev => ({
+        ...prev,
+        imageLoadEndTime: Date.now() - transitionStartRef.current,
+      }));
+      return;
+    }
+
+    // ✅ Prefetch with timeout fallback
+    if (imageUrl) {
+      const prefetchTimeout = setTimeout(() => {
+        console.warn(`⚠️ [Image] Prefetch timeout for page ${currentPage + 1}`);
+      }, 5000);
+
       Image.prefetch(imageUrl)
         .then(() => {
+          clearTimeout(prefetchTimeout);
           const imageEndTime = Date.now();
           const loadDuration = imageEndTime - imageLoadStartRef.current;
           const totalElapsed = imageEndTime - transitionStartRef.current;
 
-          // Mark as loaded in cache
-          loadedImagesCache.add(imageUrl);
+          loadedImagesGlobalCache.add(imageUrl);
 
           setImageLoadMetrics(prev => ({
             ...prev,
@@ -420,30 +450,27 @@ export default function FlyerDetailScreen() {
 
           trackNavigation.markPhase('imageLoadEnd');
 
-          if (loadDuration > 500) {
-            console.error(`🔴 [Image] SLOW LOAD: ${loadDuration}ms for page ${currentPage + 1}`);
-          } else if (loadDuration > 200) {
-            console.warn(`⚠️ [Image] Acceptable load: ${loadDuration}ms for page ${currentPage + 1}`);
+          if (loadDuration > 1000) {
+            console.error(`🔴 [Image] SLOW: ${loadDuration}ms`);
+          } else if (loadDuration > 500) {
+            console.warn(`⚠️ [Image] Acceptable: ${loadDuration}ms`);
           } else {
-            console.log(`✅ [Image] Fast load: ${loadDuration}ms for page ${currentPage + 1}`);
+            console.log(`✅ [Image] Fast: ${loadDuration}ms`);
           }
         })
         .catch((error) => {
+          clearTimeout(prefetchTimeout);
           console.error(`❌ [Image] Prefetch failed:`, error);
         });
-    } else if (loadedImagesCache.has(imageUrl)) {
-      console.log(`✅ [Image] Using cached image for page ${currentPage + 1}`);
     }
   }, [currentPage, catalogue?.id]);
 
-  // ✅ IMPROVED: Stable handleImageLoad callback with better deduplication
+  // ✅ OPTIMIZED: handleImageLoad with strict deduplication
   const handleImageLoad = useCallback(() => {
     const currentImageUrl = currentImageUrlRef.current;
 
-    // Prevent multiple calls for the same image
     if (imageHasRenderedRef.current) {
-      console.log(`⚠️ [Image] onLoad called again for ${currentImageUrl}, ignoring...`);
-      return;
+      return; // Already called
     }
 
     imageHasRenderedRef.current = true;
@@ -459,7 +486,7 @@ export default function FlyerDetailScreen() {
     trackNavigation.markPhase('imageRender');
 
     const loadDuration = Date.now() - imageLoadStartRef.current;
-    console.log(`🖼️ [Image] Rendered in ${loadDuration}ms (total: ${renderTime}ms)`);
+    console.log(`🖼️ [Image] Rendered in ${loadDuration}ms`);
   }, []);
 
   // Reset zoom when page changes
@@ -467,7 +494,7 @@ export default function FlyerDetailScreen() {
     resetZoom();
   }, [currentPage, fullScreenImage]);
 
-  // ✅ Stable resetZoom callback
+  // ✅ Stable resetZoom
   const resetZoom = useCallback(() => {
     setIsZoomed(false);
     isZoomedRef.current = false;
@@ -494,17 +521,15 @@ export default function FlyerDetailScreen() {
     lastTranslateY.current = 0;
   }, []);
 
-  // ✅ Stable catalogue status callback
+  // ✅ Stable catalogue status
   const getCatalogueStatus = useCallback((startDate: string, endDate: string): CatalogueStatus => {
     if (!catalogue) return 'expired';
     return cacheService.getCatalogueStatus(catalogue.id, startDate, endDate);
   }, [catalogue?.id]);
 
-  // ✅ Memoize next catalogue
+  // ✅ OPTIMIZED: Next catalogue with better filtering
   const nextCatalogue = useMemo(() => {
     if (!catalogue) return null;
-
-    perfLogger.start('FlyerDetail.calculateNextCatalogue');
 
     const cataloguesWithStatus = catalogues.map(cat => ({
       ...cat,
@@ -522,21 +547,14 @@ export default function FlyerDetailScreen() {
       });
     }
 
+    // Priority: same store > same category > any
     const sameStore = activeCatalogues.find(c => c.storeId === catalogue.storeId);
-    if (sameStore) {
-      perfLogger.end('FlyerDetail.calculateNextCatalogue');
-      return sameStore;
-    }
+    if (sameStore) return sameStore;
 
     const sameCategory = activeCatalogues.find(c => c.categoryId === catalogue.categoryId);
-    if (sameCategory) {
-      perfLogger.end('FlyerDetail.calculateNextCatalogue');
-      return sameCategory;
-    }
+    if (sameCategory) return sameCategory;
 
-    const result = activeCatalogues[0] || null;
-    perfLogger.end('FlyerDetail.calculateNextCatalogue');
-    return result;
+    return activeCatalogues[0] || null;
   }, [catalogue?.id, catalogue?.storeId, catalogue?.categoryId, catalogues, userGovernorate, getCatalogueStatus]);
 
   const nextCatalogueRef = useRef(nextCatalogue);
@@ -544,7 +562,7 @@ export default function FlyerDetailScreen() {
     nextCatalogueRef.current = nextCatalogue;
   }, [nextCatalogue]);
 
-  // ✅ Stable navigation callback
+  // ✅ Stable navigation
   const navigateToNextCatalogue = useCallback(() => {
     if (nextCatalogueRef.current) {
       console.log('📄 Navigating to next catalogue:', nextCatalogueRef.current.id);
@@ -604,9 +622,11 @@ export default function FlyerDetailScreen() {
     };
   }, []);
 
-  // ✅ FIXED VERSION - Part 4/6: PanResponders and Business Logic
+  // Continue to Part 4...
 
-  // ✅ Memoize PanResponders with stable dependencies
+  // ✅ PERFORMANCE OPTIMIZED - Part 4/5: PanResponders & Business Logic
+
+  // ✅ Memoize PanResponders
   const normalViewPan = useMemo(() =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
@@ -620,7 +640,6 @@ export default function FlyerDetailScreen() {
         const isLongSwipe = Math.abs(dx) > 50;
 
         if (isFastSwipe || isLongSwipe) {
-          // ✅ RTL-aware swipe direction
           const isSwipeLeft = I18nManager.isRTL ? dx > 0 : dx < 0;
           const isSwipeRight = I18nManager.isRTL ? dx < 0 : dx > 0;
 
@@ -636,7 +655,7 @@ export default function FlyerDetailScreen() {
     }),
   []);
 
-  // ✅ Memoize fullscreen pan with stable dependencies
+  // ✅ Memoize fullscreen pan
   const fullScreenPan = useMemo(() =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -683,7 +702,6 @@ export default function FlyerDetailScreen() {
           const isLongSwipe = Math.abs(dx) > 50;
 
           if (isFastSwipe || isLongSwipe) {
-            // ✅ RTL-aware swipe direction
             const isSwipeLeft = I18nManager.isRTL ? dx > 0 : dx < 0;
             const isSwipeRight = I18nManager.isRTL ? dx < 0 : dx > 0;
 
@@ -700,21 +718,20 @@ export default function FlyerDetailScreen() {
     }),
   [clampTranslation]);
 
-  // ✅ Memoize page offers
+  // ✅ OPTIMIZED: Use pre-computed offers cache (instant lookup)
   const pageOffers = useMemo(() => {
     if (offersCache && !offersCache.hasOffers) {
       return [];
     }
 
-    if (catalogueOffers.length === 0) {
-      return [];
+    // Use pre-computed cache for instant access
+    const cachedOffers = offersPrecomputedCache.current.get(currentPage + 1);
+    if (cachedOffers) {
+      return cachedOffers;
     }
 
-    perfLogger.start('FlyerDetail.filterPageOffers');
-    const filtered = catalogueOffers.filter(offer => offer.pageNumber === currentPage + 1);
-    perfLogger.end('FlyerDetail.filterPageOffers');
-    return filtered;
-  }, [catalogueOffers, currentPage, offersCache?.hasOffers]);
+    return [];
+  }, [currentPage, offersCache?.hasOffers]);
 
   // ✅ Stable isPageSaved
   const isPageSaved = useMemo(() => {
@@ -784,7 +801,7 @@ export default function FlyerDetailScreen() {
     }
   }, [currentPage, totalPages, nextCatalogue, navigateToNextCatalogue]);
 
-  // Memoize offer thumbnail render
+  // ✅ Memoize offer thumbnail render
   const renderOfferThumbnail = useCallback((offer: OfferWithCatalogue) => {
     const discount = offer.originalPrice
       ? calculateDiscount(offer.originalPrice, offer.offerPrice)
@@ -803,6 +820,7 @@ export default function FlyerDetailScreen() {
             style={styles.thumbnailImage}
             contentFit="cover"
             showLoader={false}
+            enableProgressiveLoading={false}
           />
           {discount > 0 && (
             <View style={styles.thumbnailDiscountBadge}>
@@ -838,7 +856,9 @@ export default function FlyerDetailScreen() {
     );
   }, [handleOfferPress, handleAddToBasket]);
 
- // ✅ FIXED VERSION - Part 5/6: Main Render Logic
+  // Continue to Part 5 (Render)...
+
+  // ✅ PERFORMANCE OPTIMIZED - Part 5/5: Main Render Logic
 
   // Early returns for error states
   if (!catalogue) {
@@ -865,7 +885,7 @@ export default function FlyerDetailScreen() {
   const currentPageData = hasPages ? catalogue.pages[currentPage] : null;
   const isLastPage = currentPage === totalPages - 1;
 
-  // Show loading skeleton while interactions complete
+  // Show loading skeleton
   if (!isReady) {
     return (
       <>
@@ -908,7 +928,6 @@ export default function FlyerDetailScreen() {
       />
 
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        {/* ✅ Ad banner above catalogue */}
         <AdBanner position="flyers" maxAds={1} />
 
         {hasPages ? (
@@ -925,7 +944,7 @@ export default function FlyerDetailScreen() {
                   showLoader={true}
                   cachePriority="high"
                   onLoadStart={() => {
-                    console.log('🖼️ [CachedImage] onLoadStart called');
+                    console.log('🖼️ [CachedImage] onLoadStart');
                   }}
                   onLoad={handleImageLoad}
                   onError={(error) => {
@@ -959,17 +978,19 @@ export default function FlyerDetailScreen() {
 
             <View style={styles.pageNavigationCenter}>
               <View style={styles.navControls}>
-                <TouchableOpacity
-                  style={[styles.navButton, currentPage === 0 && styles.navButtonDisabled]}
-                  onPress={() => handleNavPress('prev')}
-                  disabled={currentPage === 0}
-                >
-                  <Ionicons
-                    name={NAV_ICONS.prev}
-                    size={24}
-                    color={currentPage === 0 ? colors.gray[400] : colors.white}
-                  />
-                </TouchableOpacity>
+                {currentPage > 0 && (
+  <TouchableOpacity
+    style={styles.navButton}
+    onPress={() => handleNavPress('prev')}
+  >
+    <Ionicons
+      name={NAV_ICONS.prev}
+      size={24}
+      color={colors.white}
+    />
+  </TouchableOpacity>
+)}
+{currentPage === 0 && <View style={{ width: 50 }} />}
 
                 <View style={styles.pageIndicatorBadge}>
                   <Text style={styles.pageIndicator}>
@@ -1004,7 +1025,6 @@ export default function FlyerDetailScreen() {
           </View>
         )}
 
-        {/* ✅ Save Page Button - directly under catalogue pages */}
         {hasPages && (
           <View style={styles.savePageSection}>
             <SavePageButton
@@ -1014,10 +1034,8 @@ export default function FlyerDetailScreen() {
           </View>
         )}
 
-        {/* ✅ Ad banner below catalogue */}
         <AdBanner position="flyers" maxAds={1} />
 
-        {/* ✅ MOVED: No offers message - above the offers section */}
         {shouldShowNoOffersMessage && hasPages && (
           <View style={styles.noOffersContainer}>
             <Ionicons name="pricetags-outline" size={48} color={colors.gray[400]} />
@@ -1088,6 +1106,7 @@ export default function FlyerDetailScreen() {
                   style={styles.fullScreenImage}
                   contentFit="contain"
                   cachePriority="high"
+                  enableProgressiveLoading={false}
                 />
               </Animated.View>
             </TouchableOpacity>
@@ -1121,18 +1140,20 @@ export default function FlyerDetailScreen() {
           )}
 
           <View style={styles.fullScreenNav}>
-            <TouchableOpacity
-              style={[styles.fullScreenNavButton, currentPage === 0 && styles.navButtonDisabled]}
-              onPress={() => handleNavPress('prev')}
-              disabled={currentPage === 0 || isZoomed}
-            >
-              <Ionicons
-                name={NAV_ICONS.prev}
-                size={28}
-                color={colors.white}
-              />
-            </TouchableOpacity>
-
+           {currentPage > 0 && (
+  <TouchableOpacity
+    style={styles.fullScreenNavButton}
+    onPress={() => handleNavPress('prev')}
+    disabled={isZoomed}
+  >
+    <Ionicons
+      name={NAV_ICONS.prev}
+      size={28}
+      color={colors.white}
+    />
+  </TouchableOpacity>
+)}
+{currentPage === 0 && <View style={{ width: 60 }} />}
             <View style={styles.fullScreenPageIndicator}>
               <Text style={styles.fullScreenPageText}>
                 {currentPage + 1} / {totalPages}
@@ -1160,6 +1181,10 @@ export default function FlyerDetailScreen() {
     </>
   );
 }
+
+// ✅ NOTE: Keep your existing StyleSheet from the original file
+// No changes needed to styles
+
 // ✅ FIXED VERSION - Part 6/6: StyleSheet
 
 const styles = StyleSheet.create({

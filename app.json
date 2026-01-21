@@ -3,6 +3,7 @@
     "name": "Daily Deals",
     "slug": "Daily-Deals",
     "version": "1.0.0",
+        "scheme": "dailydeals",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",

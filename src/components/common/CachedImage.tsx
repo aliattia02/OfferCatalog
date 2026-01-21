@@ -1,5 +1,5 @@
-// src/components/common/CachedImage.tsx - WITH PROGRESSIVE BLUR-UP LOADING
-import React, { useState, useEffect } from 'react';
+// src/components/common/CachedImage.tsx - PERFORMANCE OPTIMIZED
+import React, { useState, useEffect, useRef, memo } from 'react';
 import {
   Image,
   ImageStyle,
@@ -9,6 +9,7 @@ import {
   StyleSheet,
   ImageSourcePropType,
   Animated,
+  Platform,
 } from 'react-native';
 import { colors } from '../../constants/theme';
 import { imageCacheService } from '../../services/imageCacheService';
@@ -21,21 +22,22 @@ interface CachedImageProps {
   placeholder?: React.ReactNode;
   showLoader?: boolean;
   onLoad?: () => void;
-  onError?: () => void;
+  onLoadStart?: () => void;
+  onError?: (error?: any) => void;
   enableCache?: boolean;
   cachePriority?: 'high' | 'normal' | 'low';
-  // NEW: Progressive loading options
   enableProgressiveLoading?: boolean;
-  blurRadius?: number; // Blur amount for placeholder (default: 10)
+  blurRadius?: number;
 }
 
 /**
- * CachedImage with PROGRESSIVE BLUR-UP LOADING
- * - Shows tiny blurred placeholder instantly (1-2KB)
- * - Fades in full image when loaded
- * - No extra data consumption (placeholder generated client-side)
+ * ✅ PERFORMANCE OPTIMIZED CachedImage
+ * - Eliminated duplicate onLoad calls
+ * - Better state management
+ * - Progressive blur-up loading
+ * - Optimized re-renders with memo
  */
-export const CachedImage: React.FC<CachedImageProps> = ({
+const CachedImageComponent: React.FC<CachedImageProps> = ({
   source,
   style,
   resizeMode,
@@ -43,16 +45,22 @@ export const CachedImage: React.FC<CachedImageProps> = ({
   placeholder,
   showLoader = true,
   onLoad,
+  onLoadStart,
   onError,
   enableCache = true,
   cachePriority = 'normal',
   enableProgressiveLoading = true,
-  blurRadius = 10,
+  blurRadius = 8, // Reduced from 10 for better performance
 }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [cachedSource, setCachedSource] = useState<string | ImageSourcePropType | null>(null);
   const [imageOpacity] = useState(new Animated.Value(0));
+
+  // ✅ Track if component is mounted
+  const isMounted = useRef(true);
+  const hasCalledOnLoad = useRef(false);
+  const previousSource = useRef<string>('');
 
   // Map contentFit to resizeMode
   const getResizeMode = (): 'cover' | 'contain' | 'stretch' | 'center' => {
@@ -71,20 +79,49 @@ export const CachedImage: React.FC<CachedImageProps> = ({
   };
 
   useEffect(() => {
+    isMounted.current = true;
+
+    return () => {
+      isMounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const imageUrl = typeof source === 'string' ? source : (source as { uri: string })?.uri;
+
+    // ✅ Only reload if source actually changed
+    if (imageUrl === previousSource.current) {
+      return;
+    }
+
+    previousSource.current = imageUrl;
+    hasCalledOnLoad.current = false;
+
     loadImage();
   }, [source]);
 
   const loadImage = async () => {
     if (!source) {
-      setError(true);
-      setLoading(false);
+      if (isMounted.current) {
+        setError(true);
+        setLoading(false);
+      }
       return;
+    }
+
+    // Reset state for new image
+    if (isMounted.current) {
+      setLoading(true);
+      setError(false);
+      imageOpacity.setValue(0);
     }
 
     // Handle require() imports (local assets)
     if (typeof source !== 'string' && typeof source !== 'object') {
-      setCachedSource(source);
-      setLoading(false);
+      if (isMounted.current) {
+        setCachedSource(source);
+        setLoading(false);
+      }
       return;
     }
 
@@ -92,15 +129,22 @@ export const CachedImage: React.FC<CachedImageProps> = ({
     const imageUrl = typeof source === 'string' ? source : (source as { uri: string }).uri;
 
     if (!imageUrl) {
-      setError(true);
-      setLoading(false);
+      if (isMounted.current) {
+        setError(true);
+        setLoading(false);
+      }
       return;
     }
+
+    // Call onLoadStart callback
+    onLoadStart?.();
 
     // Try to get cached version
     if (enableCache && imageUrl.startsWith('http')) {
       try {
         const cachedPath = await imageCacheService.getCachedImage(imageUrl, cachePriority);
+
+        if (!isMounted.current) return;
 
         if (cachedPath.startsWith('file://')) {
           setCachedSource({ uri: cachedPath });
@@ -109,30 +153,45 @@ export const CachedImage: React.FC<CachedImageProps> = ({
         }
       } catch (err) {
         console.error('❌ Image cache error:', err);
-        setCachedSource({ uri: imageUrl });
+        if (isMounted.current) {
+          setCachedSource({ uri: imageUrl });
+        }
       }
     } else {
-      setCachedSource({ uri: imageUrl });
+      if (isMounted.current) {
+        setCachedSource({ uri: imageUrl });
+      }
     }
   };
 
   const handleLoad = () => {
+    // ✅ CRITICAL: Prevent duplicate onLoad calls
+    if (hasCalledOnLoad.current) {
+      return;
+    }
+
+    hasCalledOnLoad.current = true;
+
+    if (!isMounted.current) return;
+
     setLoading(false);
 
     // Fade in the full image
     Animated.timing(imageOpacity, {
       toValue: 1,
-      duration: 300,
+      duration: 250, // Reduced from 300ms for snappier feel
       useNativeDriver: true,
     }).start();
 
     onLoad?.();
   };
 
-  const handleError = () => {
+  const handleError = (e?: any) => {
+    if (!isMounted.current) return;
+
     setLoading(false);
     setError(true);
-    onError?.();
+    onError?.(e);
   };
 
   // Show placeholder while loading cache
@@ -152,14 +211,16 @@ export const CachedImage: React.FC<CachedImageProps> = ({
     return <>{placeholder}</>;
   }
 
+  const calculatedResizeMode = getResizeMode();
+
   return (
     <View style={[styles.container, style]}>
-      {/* Progressive Loading: Show blurred placeholder while loading */}
-      {enableProgressiveLoading && loading && (
+      {/* ✅ Progressive Loading: Show blurred placeholder while loading */}
+      {enableProgressiveLoading && loading && Platform.OS !== 'web' && (
         <Image
           source={cachedSource}
           style={[styles.image, style, styles.blurredImage]}
-          resizeMode={getResizeMode()}
+          resizeMode={calculatedResizeMode}
           blurRadius={blurRadius}
         />
       )}
@@ -172,9 +233,10 @@ export const CachedImage: React.FC<CachedImageProps> = ({
           style,
           { opacity: enableProgressiveLoading ? imageOpacity : 1 },
         ]}
-        resizeMode={getResizeMode()}
+        resizeMode={calculatedResizeMode}
         onLoad={handleLoad}
         onError={handleError}
+        fadeDuration={0} // Disable default fade to use our own
       />
 
       {/* Loading indicator (shows on top of blur) */}
@@ -186,6 +248,24 @@ export const CachedImage: React.FC<CachedImageProps> = ({
     </View>
   );
 };
+
+// ✅ Memoize to prevent unnecessary re-renders
+export const CachedImage = memo(CachedImageComponent, (prevProps, nextProps) => {
+  // Custom comparison for source prop
+  const prevSource = typeof prevProps.source === 'string'
+    ? prevProps.source
+    : (prevProps.source as { uri: string })?.uri;
+  const nextSource = typeof nextProps.source === 'string'
+    ? nextProps.source
+    : (nextProps.source as { uri: string })?.uri;
+
+  return (
+    prevSource === nextSource &&
+    prevProps.cachePriority === nextProps.cachePriority &&
+    prevProps.enableCache === nextProps.enableCache &&
+    prevProps.showLoader === nextProps.showLoader
+  );
+});
 
 const styles = StyleSheet.create({
   container: {
@@ -207,7 +287,7 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'transparent', // Changed to transparent for blur effect
+    backgroundColor: 'transparent',
   },
   placeholder: {
     backgroundColor: colors.gray[100],
