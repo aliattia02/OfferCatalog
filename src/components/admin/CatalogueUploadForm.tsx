@@ -1,5 +1,7 @@
-// src/components/admin/CatalogueUploadForm.tsx - WITH CATEGORY AND LOCAL STORE NAME SELECTION
-import React, { useState, useEffect } from 'react';
+// src/components/admin/CatalogueUploadForm.tsx - PART 1/4
+// IMPORTS, INTERFACES, STATE, AND REFS FOR KEYBOARD NAVIGATION
+
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -11,6 +13,7 @@ import {
   I18nManager,
   Platform,
   ScrollView,
+  KeyboardAvoidingView,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -18,10 +21,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { ref, uploadBytes, uploadString, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc, serverTimestamp, doc, setDoc, getDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
 import { storage, db } from '../../config/firebase';
 import { pdfConverter } from '../../utils/pdfToImageConverter';
-import { colors, spacing, typography, borderRadius, shadows } from '../../constants/theme';
+import { colors, spacing, typography, borderRadius } from '../../constants/theme';
 import { useAppSelector } from '../../store/hooks';
 import { getMainCategories, getCategoryById } from '../../data/categories';
 import { getSuggestedCategoryForStore } from '../../utils/catalogueUtils';
@@ -37,8 +40,13 @@ import {
   type GovernorateId,
   type CityId,
 } from '../../data/stores';
-import { compressImage, getOptimalSettings } from '../../services/imageCompressionService';
-
+// 🆕 ULTRA-OPTIMIZED COMPRESSION - Target <20KB per page
+import {
+  compressImage,
+  getOptimalSettings,
+  compressDataUrl,
+  type CompressionOptions
+} from '../../services/imageCompressionService';
 
 interface CatalogueUploadFormProps {
   onSuccess: () => void;
@@ -61,6 +69,13 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
   const stores = useAppSelector(state => state.stores.stores);
   const mainCategories = getMainCategories();
 
+  // 🆕 REFS FOR KEYBOARD NAVIGATION
+  const titleArRef = useRef<TextInput>(null);
+  const titleEnRef = useRef<TextInput>(null);
+  const startDateRef = useRef<TextInput>(null);
+  const endDateRef = useRef<TextInput>(null);
+
+  // Form state
   const [titleAr, setTitleAr] = useState('');
   const [titleEn, setTitleEn] = useState('');
   const [selectedStoreId, setSelectedStoreId] = useState('');
@@ -71,10 +86,13 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
   const [localStoreCity, setLocalStoreCity] = useState<CityId | ''>('');
   const [selectedLocalStoreNameId, setSelectedLocalStoreNameId] = useState<string>('');
 
+  // Date state
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [showStartDatePicker, setShowStartDatePicker] = useState(false);
   const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+
+  // Upload state
   const [uploadType, setUploadType] = useState<UploadType>(null);
   const [selectedFile, setSelectedFile] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [selectedImages, setSelectedImages] = useState<ImagePicker.ImagePickerAsset[]>([]);
@@ -137,6 +155,8 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       }
     }
   }, [availableLocalStoreNames]);
+  // src/components/admin/CatalogueUploadForm.tsx - PART 2/4
+// HANDLERS AND VALIDATION (Add these methods inside the component)
 
   const handlePickPDF = async () => {
     try {
@@ -224,10 +244,12 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
   const validateForm = (): boolean => {
     if (!titleAr.trim()) {
       showAlert('خطأ', 'يرجى إدخال العنوان بالعربية');
+      titleArRef.current?.focus();
       return false;
     }
     if (!titleEn.trim()) {
       showAlert('خطأ', 'يرجى إدخال العنوان بالإنجليزية');
+      titleEnRef.current?.focus();
       return false;
     }
     if (!selectedStoreId) {
@@ -239,21 +261,25 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
       return false;
     }
 
-    // Validate local store fields if it's a local store
     if (isLocalStore) {
       if (!localStoreGovernorate) {
         showAlert('خطأ', 'يرجى اختيار المحافظة للمتجر المحلي');
         return false;
       }
-      // Local store name is optional but city selection helps narrow it down
     }
 
     if (!startDate.trim()) {
       showAlert('خطأ', 'يرجى إدخال تاريخ البداية');
+      if (Platform.OS === 'web') {
+        startDateRef.current?.focus();
+      }
       return false;
     }
     if (!endDate.trim()) {
       showAlert('خطأ', 'يرجى إدخال تاريخ النهاية');
+      if (Platform.OS === 'web') {
+        endDateRef.current?.focus();
+      }
       return false;
     }
     if (!uploadType) {
@@ -285,10 +311,9 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
     try {
       setUploading(true);
 
-      console.log('🔤 Starting upload process...');
+      console.log('📤 Starting upload process...');
       console.log('Upload type:', uploadType);
 
-      // Generate ID: storeId-YYYY-MM-DD-HHMM
       setProgress({
         stage: 'جاري إنشاء المعرف...',
         current: 0,
@@ -303,7 +328,6 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
 
       console.log('🆔 Generated catalogue ID:', catalogueId);
 
-      // Check if catalogue ID already exists
       const catalogueRef = doc(db, 'catalogues', catalogueId);
       const existingDoc = await getDoc(catalogueRef);
 
@@ -335,8 +359,11 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
     }
   };
 
+  // src/components/admin/CatalogueUploadForm.tsx - PART 3/4
+// PDF AND IMAGE UPLOAD LOGIC WITH ULTRA COMPRESSION
+
   const handlePDFUpload = async (catalogueId: string, selectedStore: any) => {
-    console.log('📄 Processing PDF upload...');
+    console.log('📄 Processing PDF upload with ULTRA compression...');
 
     setProgress({
       stage: 'جاري رفع ملف PDF...',
@@ -386,52 +413,76 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
     console.log(`✅ Converted ${images.length} pages to images`);
 
     setProgress({
-      stage: 'جاري رفع صور الصفحات...',
+      stage: '🔥 جاري ضغط ورفع صور الصفحات (هدف: <20KB/صفحة)...',
       current: 2,
       total: 4,
       percentage: 50,
     });
 
     const uploadedPages = [];
+    let coverImageUrl = '';
 
     for (let i = 0; i < images.length; i++) {
       const image = images[i];
-      const storageRef = ref(
-        storage,
-        `catalogue-pages/${catalogueId}/page-${image.pageNumber}.jpg`
-      );
+      const isFirstImage = i === 0;
 
       const percentage = 50 + ((i + 1) / images.length) * 25;
       setProgress({
-        stage: `رفع الصفحة ${i + 1} من ${images.length}...`,
+        stage: `${isFirstImage ? 'إنشاء صورة الغلاف و' : ''}ضغط ورفع الصفحة ${i + 1} من ${images.length}...`,
         current: 2,
         total: 4,
         percentage,
       });
 
-      await uploadString(storageRef, image.imageDataUrl, 'data_url');
-      const imageUrl = await getDownloadURL(storageRef);
+      try {
+        // 🔥 ULTRA COMPRESSION - Target <20KB
+        console.log(`🔥 ULTRA compressing page ${i + 1}...`);
+        const compressionSettings = isFirstImage
+          ? getOptimalSettings('cover')
+          : getOptimalSettings('page');
 
-      uploadedPages.push({
-        pageNumber: image.pageNumber,
-        imageUrl,
-      });
+        // Compress data URL with ultra settings
+        const compressedDataUrl = await compressDataUrl(image.imageDataUrl, compressionSettings);
 
-      console.log(`Uploaded page ${i + 1}/${images.length}`);
+        // Log size for monitoring
+        const sizeKB = (compressedDataUrl.length * 0.75) / 1024; // Approximate size
+        console.log(`   📊 Page ${i + 1} size: ~${sizeKB.toFixed(1)}KB ${sizeKB < 20 ? '✅' : '⚠️'}`);
+
+        const storageRef = ref(
+          storage,
+          `catalogue-pages/${catalogueId}/page-${image.pageNumber}.jpg`
+        );
+
+        await uploadString(storageRef, compressedDataUrl, 'data_url');
+        const imageUrl = await getDownloadURL(storageRef);
+
+        uploadedPages.push({
+          pageNumber: image.pageNumber,
+          imageUrl,
+        });
+
+        // Create cover from first page
+        if (isFirstImage) {
+          console.log('📸 Creating cover image from first page...');
+          const coverRef = ref(storage, `catalogue-covers/${catalogueId}.jpg`);
+          await uploadString(coverRef, compressedDataUrl, 'data_url');
+          coverImageUrl = await getDownloadURL(coverRef);
+          console.log('✅ Cover image created');
+        }
+
+        console.log(`✅ Uploaded ultra-compressed page ${i + 1}/${images.length}`);
+      } catch (error) {
+        console.error(`❌ Error processing page ${i + 1}:`, error);
+        throw new Error(`فشل معالجة الصفحة ${i + 1}`);
+      }
     }
 
     setProgress({
-      stage: 'جاري إنشاء صورة الغلاف...',
+      stage: 'جاري حفظ البيانات...',
       current: 3,
       total: 4,
-      percentage: 75,
+      percentage: 95,
     });
-
-    const coverRef = ref(storage, `catalogue-covers/${catalogueId}.jpg`);
-    await uploadString(coverRef, images[0].imageDataUrl, 'data_url');
-    const coverImageUrl = await getDownloadURL(coverRef);
-
-    console.log('✅ Cover image created');
 
     await saveCatalogueToFirestore(
       catalogueId,
@@ -443,758 +494,733 @@ export const CatalogueUploadForm: React.FC<CatalogueUploadFormProps> = ({
   };
 
   const handleImagesUpload = async (catalogueId: string, selectedStore: any) => {
-  console.log('🖼️ Processing images upload with compression...');
+    console.log('🖼️ Processing images upload with ULTRA compression...');
 
-  setProgress({
-    stage: 'جاري ضغط وتحميل الصور...',
-    current: 0,
-    total: selectedImages.length + 1, // +1 for cover
-    percentage: 0,
-  });
-
-  const uploadedPages = [];
-  let coverImageUrl = '';
-
-  // Step 1: Compress and upload all images
-  for (let i = 0; i < selectedImages.length; i++) {
-    const image = selectedImages[i];
-    const pageNumber = i + 1;
-    const isFirstImage = i === 0;
-
-    const percentage = ((i + 1) / (selectedImages.length + 1)) * 90;
     setProgress({
-      stage: `${isFirstImage ? 'إنشاء صورة الغلاف و' : ''}ضغط وتحميل الصورة ${pageNumber} من ${selectedImages.length}...`,
-      current: i + 1,
+      stage: '🔥 جاري ضغط وتحميل الصور (هدف: <20KB/صفحة)...',
+      current: 0,
       total: selectedImages.length + 1,
-      percentage,
+      percentage: 0,
     });
 
-    try {
-      // Compress image based on type
-      const compressionSettings = isFirstImage
-        ? getOptimalSettings('cover')
-        : getOptimalSettings('page');
+    const uploadedPages = [];
+    let coverImageUrl = '';
 
-      console.log(`📦 Compressing image ${pageNumber} with settings:`, compressionSettings);
+    for (let i = 0; i < selectedImages.length; i++) {
+      const image = selectedImages[i];
+      const pageNumber = i + 1;
+      const isFirstImage = i === 0;
 
-      const compressedResult = await compressImage(image.uri, compressionSettings);
-
-      // Log compression results
-      if (compressedResult.originalSize && compressedResult.compressedSize) {
-        console.log(`✅ Image ${pageNumber} compressed: ${(compressedResult.originalSize / 1024).toFixed(1)}KB → ${(compressedResult.compressedSize / 1024).toFixed(1)}KB (${compressedResult.compressionRatio?.toFixed(1)}% reduction)`);
-      }
-
-      // Upload compressed image
-      const response = await fetch(compressedResult.uri);
-      const blob = await response.blob();
-
-      const storageRef = ref(
-        storage,
-        `catalogue-pages/${catalogueId}/page-${pageNumber}.jpg`
-      );
-      await uploadBytes(storageRef, blob);
-      const imageUrl = await getDownloadURL(storageRef);
-
-      uploadedPages.push({
-        pageNumber,
-        imageUrl,
+      const percentage = ((i + 1) / (selectedImages.length + 1)) * 90;
+      setProgress({
+        stage: `${isFirstImage ? 'إنشاء صورة الغلاف و' : ''}ضغط وتحميل الصورة ${pageNumber} من ${selectedImages.length}...`,
+        current: i + 1,
+        total: selectedImages.length + 1,
+        percentage,
       });
 
-      // If this is the first image, also create the cover image
-      if (isFirstImage) {
-        console.log('📸 Creating cover image from first page...');
+      try {
+        // 🔥 ULTRA COMPRESSION - Target <20KB per page
+        const compressionSettings = isFirstImage
+          ? getOptimalSettings('cover')
+          : getOptimalSettings('page');
 
-        setProgress({
-          stage: 'إنشاء صورة الغلاف...',
-          current: i + 1,
-          total: selectedImages.length + 1,
-          percentage: percentage + 2,
+        console.log(`🔥 ULTRA compressing image ${pageNumber} with settings:`, compressionSettings);
+
+        const compressedResult = await compressImage(image.uri, compressionSettings);
+
+        // Log compression results
+        if (compressedResult.originalSize && compressedResult.compressedSize) {
+          const compressedKB = compressedResult.compressedSize / 1024;
+          console.log(`✅ Image ${pageNumber}: ${(compressedResult.originalSize / 1024).toFixed(1)}KB → ${compressedKB.toFixed(1)}KB (${compressedResult.compressionRatio?.toFixed(1)}%) ${compressedKB < 20 ? '✅ TARGET MET' : '⚠️ Above 20KB'}`);
+        }
+
+        // Upload compressed image
+        const response = await fetch(compressedResult.uri);
+        const blob = await response.blob();
+
+        const storageRef = ref(
+          storage,
+          `catalogue-pages/${catalogueId}/page-${pageNumber}.jpg`
+        );
+        await uploadBytes(storageRef, blob);
+        const imageUrl = await getDownloadURL(storageRef);
+
+        uploadedPages.push({
+          pageNumber,
+          imageUrl,
         });
 
-        const coverRef = ref(storage, `catalogue-covers/${catalogueId}.jpg`);
-        await uploadBytes(coverRef, blob);
-        coverImageUrl = await getDownloadURL(coverRef);
+        // Create cover from first image
+        if (isFirstImage) {
+          console.log('📸 Creating cover image from first page...');
 
-        console.log('✅ Cover image created:', coverImageUrl);
+          setProgress({
+            stage: 'إنشاء صورة الغلاف...',
+            current: i + 1,
+            total: selectedImages.length + 1,
+            percentage: percentage + 2,
+          });
+
+          const coverRef = ref(storage, `catalogue-covers/${catalogueId}.jpg`);
+          await uploadBytes(coverRef, blob);
+          coverImageUrl = await getDownloadURL(coverRef);
+
+          console.log('✅ Cover image created:', coverImageUrl);
+        }
+
+        console.log(`✅ Uploaded ultra-compressed image ${pageNumber}/${selectedImages.length}`);
+      } catch (error) {
+        console.error(`❌ Error processing image ${pageNumber}:`, error);
+        throw new Error(`فشل معالجة الصورة ${pageNumber}`);
       }
-
-      console.log(`✅ Uploaded compressed image ${pageNumber}/${selectedImages.length}`);
-    } catch (error) {
-      console.error(`❌ Error processing image ${pageNumber}:`, error);
-      throw new Error(`فشل معالجة الصورة ${pageNumber}`);
     }
-  }
 
-  setProgress({
-    stage: 'جاري حفظ البيانات...',
-    current: selectedImages.length + 1,
-    total: selectedImages.length + 1,
-    percentage: 95,
-  });
+    setProgress({
+      stage: 'جاري حفظ البيانات...',
+      current: selectedImages.length + 1,
+      total: selectedImages.length + 1,
+      percentage: 95,
+    });
 
-  console.log('✅ All images compressed and uploaded successfully');
+    console.log('✅ All images ultra-compressed and uploaded successfully');
 
-  await saveCatalogueToFirestore(
-    catalogueId,
-    selectedStore,
-    uploadedPages,
-    null,
-    coverImageUrl
-  );
-};
-
-  const saveCatalogueToFirestore = async (
-  catalogueId: string,
-  selectedStore: any,
-  uploadedPages: any[],
-  pdfUrl: string | null,
-  coverImageUrl: string
-) => {
-  setProgress({
-    stage: 'جاري حفظ البيانات...',
-    current: 4,
-    total: 4,
-    percentage: 95,
-  });
-
-  const catalogueData: any = {
-    id: catalogueId,
-    storeId: selectedStore.id,
-    storeName: selectedStore.nameAr,
-    titleAr: titleAr.trim(),
-    titleEn: titleEn.trim(),
-    startDate: startDate.trim(),
-    endDate: endDate.trim(),
-    coverImage: coverImageUrl,
-    pages: uploadedPages,
-    totalPages: uploadedPages.length,
-    pdfProcessed: true,
-    categoryId: selectedCategoryId,
-    uploadMode: uploadType,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    await saveCatalogueToFirestore(
+      catalogueId,
+      selectedStore,
+      uploadedPages,
+      null,
+      coverImageUrl
+    );
   };
 
-  // ✅ FIXED: Add local store identification if it's a local store
-  if (isLocalStore) {
-    console.log('🏪 Processing local store data...');
-    console.log('   - isLocalStore:', isLocalStore);
-    console.log('   - localStoreGovernorate:', localStoreGovernorate);
-    console.log('   - localStoreCity:', localStoreCity);
-    console.log('   - selectedLocalStoreNameId:', selectedLocalStoreNameId);
+  // src/components/admin/CatalogueUploadForm.tsx - PART 4A/5
+// SAVE TO FIRESTORE AND START OF RENDER
 
-    catalogueData.isLocalStore = true;
+  const saveCatalogueToFirestore = async (
+    catalogueId: string,
+    selectedStore: any,
+    uploadedPages: any[],
+    pdfUrl: string | null,
+    coverImageUrl: string
+  ) => {
+    setProgress({
+      stage: 'جاري حفظ البيانات...',
+      current: 4,
+      total: 4,
+      percentage: 95,
+    });
 
-    // REQUIRED: Governorate must be set for local stores
-    if (localStoreGovernorate) {
-      catalogueData.localStoreGovernorate = localStoreGovernorate;
-      console.log('   ✅ Added localStoreGovernorate:', localStoreGovernorate);
-    } else {
-      console.error('   ❌ Missing localStoreGovernorate!');
-      throw new Error('Local store must have a governorate');
-    }
+    const catalogueData: any = {
+      id: catalogueId,
+      storeId: selectedStore.id,
+      storeName: selectedStore.nameAr,
+      titleAr: titleAr.trim(),
+      titleEn: titleEn.trim(),
+      startDate: startDate.trim(),
+      endDate: endDate.trim(),
+      coverImage: coverImageUrl,
+      pages: uploadedPages,
+      totalPages: uploadedPages.length,
+      pdfProcessed: true,
+      categoryId: selectedCategoryId,
+      uploadMode: uploadType,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
 
-    // OPTIONAL: City (only if selected)
-    if (localStoreCity) {
-      catalogueData.localStoreCity = localStoreCity;
-      console.log('   ✅ Added localStoreCity:', localStoreCity);
-    }
+    // Add local store identification if applicable
+    if (isLocalStore) {
+      console.log('🏪 Processing local store data...');
+      catalogueData.isLocalStore = true;
 
-    // ✅ CRITICAL FIX: ALWAYS add local store name fields
-    // This was the bug - the else block wasn't always executing
-    if (selectedLocalStoreNameId && selectedLocalStoreNameId !== 'unidentified') {
-      // User selected a specific local store from the dropdown
-      const localStoreName = getLocalStoreNameById(
-        selectedLocalStoreNameId,
-        localStoreGovernorate as GovernorateId
-      );
-
-      if (localStoreName) {
-        catalogueData.localStoreNameId = selectedLocalStoreNameId;
-        catalogueData.localStoreNameAr = localStoreName.nameAr;
-        catalogueData.localStoreNameEn = localStoreName.nameEn;
-        console.log('   ✅ Added identified local store:', localStoreName.nameAr);
+      if (localStoreGovernorate) {
+        catalogueData.localStoreGovernorate = localStoreGovernorate;
       } else {
-        // Store ID provided but not found in database - fallback to unidentified
-        console.warn('   ⚠️ Local store ID not found, using unidentified');
+        throw new Error('Local store must have a governorate');
+      }
+
+      if (localStoreCity) {
+        catalogueData.localStoreCity = localStoreCity;
+      }
+
+      if (selectedLocalStoreNameId && selectedLocalStoreNameId !== 'unidentified') {
+        const localStoreName = getLocalStoreNameById(
+          selectedLocalStoreNameId,
+          localStoreGovernorate as GovernorateId
+        );
+
+        if (localStoreName) {
+          catalogueData.localStoreNameId = selectedLocalStoreNameId;
+          catalogueData.localStoreNameAr = localStoreName.nameAr;
+          catalogueData.localStoreNameEn = localStoreName.nameEn;
+        } else {
+          catalogueData.localStoreNameId = 'unidentified';
+          catalogueData.localStoreNameAr = 'غير محدد';
+          catalogueData.localStoreNameEn = 'Unidentified';
+        }
+      } else {
         catalogueData.localStoreNameId = 'unidentified';
         catalogueData.localStoreNameAr = 'غير محدد';
         catalogueData.localStoreNameEn = 'Unidentified';
       }
-    } else {
-      // ✅ THIS IS THE FIX: Always set unidentified fields when no store selected
-      // Or when user explicitly selected "unidentified"
-      console.log('   ℹ️ No specific store selected, using unidentified');
-      catalogueData.localStoreNameId = 'unidentified';
-      catalogueData.localStoreNameAr = 'غير محدد';
-      catalogueData.localStoreNameEn = 'Unidentified';
-      console.log('   ✅ Added unidentified local store fields');
     }
 
-    // ✅ VALIDATION: Ensure all required local store fields are present
-    const requiredFields = ['localStoreGovernorate', 'localStoreNameId', 'localStoreNameAr', 'localStoreNameEn'];
-    const missingFields = requiredFields.filter(field => !catalogueData[field]);
-
-    if (missingFields.length > 0) {
-      console.error('   ❌ Missing required local store fields:', missingFields);
-      throw new Error(`Missing local store fields: ${missingFields.join(', ')}`);
+    if (pdfUrl) {
+      catalogueData.pdfUrl = pdfUrl;
     }
 
-    console.log('   ✅ All local store fields validated');
-    console.log('   📋 Final local store data:', {
-      localStoreGovernorate: catalogueData.localStoreGovernorate,
-      localStoreCity: catalogueData.localStoreCity || 'N/A',
-      localStoreNameId: catalogueData.localStoreNameId,
-      localStoreNameAr: catalogueData.localStoreNameAr,
-      localStoreNameEn: catalogueData.localStoreNameEn,
+    const catalogueRef = doc(db, 'catalogues', catalogueId);
+    await setDoc(catalogueRef, catalogueData);
+
+    console.log('✅ Catalogue saved to Firestore');
+
+    setProgress({
+      stage: 'تمت العملية بنجاح!',
+      current: 4,
+      total: 4,
+      percentage: 100,
     });
-  }
 
-  if (pdfUrl) {
-    catalogueData.pdfUrl = pdfUrl;
-  }
+    const selectedCategory = getCategoryById(selectedCategoryId);
+    let successMessage = `تم رفع الكتالوج بنجاح!\n${uploadedPages.length} صفحة تم رفعها\nمعرف الكتالوج: ${catalogueId}\nالفئة: ${selectedCategory?.nameAr || 'غير محدد'}`;
 
-  // Save to Firestore
-  const catalogueRef = doc(db, 'catalogues', catalogueId);
-  await setDoc(catalogueRef, catalogueData);
+    if (isLocalStore) {
+      const govName = getGovernorateName(localStoreGovernorate as GovernorateId);
+      successMessage += `\nالمحافظة: ${govName}`;
 
-  console.log('✅ Catalogue saved to Firestore with custom ID');
-  console.log('📊 Complete catalogue data:', JSON.stringify(catalogueData, null, 2));
-
-  setProgress({
-    stage: 'تمت العملية بنجاح!',
-    current: 4,
-    total: 4,
-    percentage: 100,
-  });
-
-  // Build success message
-  const selectedCategory = getCategoryById(selectedCategoryId);
-  let successMessage = `تم رفع الكتالوج بنجاح!\n${uploadedPages.length} صفحة تم رفعها\nمعرف الكتالوج: ${catalogueId}\nالفئة: ${selectedCategory?.nameAr || 'غير محدد'}`;
-
-  if (isLocalStore) {
-    const govName = getGovernorateName(localStoreGovernorate as GovernorateId);
-    successMessage += `\nالمحافظة: ${govName}`;
-
-    if (localStoreCity) {
-      const cityName = getCityName(localStoreCity);
-      successMessage += `\nالمدينة: ${cityName}`;
-    }
-
-    if (selectedLocalStoreNameId && selectedLocalStoreNameId !== 'unidentified') {
-      const localStoreName = getLocalStoreNameById(
-        selectedLocalStoreNameId,
-        localStoreGovernorate as GovernorateId
-      );
-      if (localStoreName) {
-        successMessage += `\nاسم المتجر المحلي: ${localStoreName.nameAr}`;
+      if (localStoreCity) {
+        const cityName = getCityName(localStoreCity);
+        successMessage += `\nالمدينة: ${cityName}`;
       }
-    } else {
-      successMessage += `\nاسم المتجر المحلي: غير محدد`;
+
+      if (selectedLocalStoreNameId && selectedLocalStoreNameId !== 'unidentified') {
+        const localStoreName = getLocalStoreNameById(
+          selectedLocalStoreNameId,
+          localStoreGovernorate as GovernorateId
+        );
+        if (localStoreName) {
+          successMessage += `\nاسم المتجر المحلي: ${localStoreName.nameAr}`;
+        }
+      } else {
+        successMessage += `\nاسم المتجر المحلي: غير محدد`;
+      }
     }
-  }
 
-  showAlert('✅ نجح', successMessage, onSuccess);
-};
+    showAlert('✅ نجح', successMessage, onSuccess);
+  };
 
+  // Get selected values for display
   const selectedCategory = getCategoryById(selectedCategoryId);
   const selectedLocalStoreName = selectedLocalStoreNameId && localStoreGovernorate
     ? getLocalStoreNameById(selectedLocalStoreNameId, localStoreGovernorate as GovernorateId)
     : null;
 
+  // ==================== RENDER METHOD ====================
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>إضافة كتالوج جديد</Text>
-        <TouchableOpacity onPress={onCancel} disabled={uploading}>
-          <Ionicons name="close" size={28} color={colors.text} />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.noticeBox}>
-        <Ionicons name="information-circle" size={24} color={colors.primary} />
-        <View style={styles.noticeTextContainer}>
-          <Text style={styles.noticeTitle}>خيارات الرفع</Text>
-          <Text style={styles.noticeText}>
-            • رفع PDF: سيتم تحويله تلقائياً إلى صور{'\n'}
-            • رفع صور: ستبقى كما هي بدون تحويل
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.form}>
-        {/* Title (Arabic) */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>العنوان (عربي) *</Text>
-          <TextInput
-            style={styles.input}
-            value={titleAr}
-            onChangeText={setTitleAr}
-            placeholder="كتالوج كازيون 23-29 ديسمبر"
-            placeholderTextColor={colors.gray[400]}
-            editable={!uploading}
-          />
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <ScrollView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.title}>إضافة كتالوج جديد</Text>
+          <TouchableOpacity onPress={onCancel} disabled={uploading}>
+            <Ionicons name="close" size={28} color={colors.text} />
+          </TouchableOpacity>
         </View>
 
-        {/* Title (English) */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>العنوان (إنجليزي) *</Text>
-          <TextInput
-            style={styles.input}
-            value={titleEn}
-            onChangeText={setTitleEn}
-            placeholder="Kazyon Catalogue Dec 23-29"
-            placeholderTextColor={colors.gray[400]}
-            editable={!uploading}
-          />
-        </View>
-
-        {/* Store Dropdown */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>المتجر *</Text>
-          {Platform.OS === 'web' ? (
-            <select
-              value={selectedStoreId}
-              onChange={(e) => setSelectedStoreId(e.target.value)}
-              style={{
-                backgroundColor: colors.gray[100],
-                borderRadius: borderRadius.md,
-                padding: spacing.md,
-                fontSize: typography.fontSize.md,
-                color: colors.text,
-                border: `1px solid ${colors.gray[200]}`,
-                width: '100%',
-              }}
-              disabled={uploading}
-            >
-              <option value="">اختر المتجر</option>
-              {stores.map(store => (
-                <option key={store.id} value={store.id}>
-                  {store.nameAr} ({store.nameEn}) {store.isLocal ? '- محلي' : ''}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <View style={styles.pickerContainer}>
-              <Picker
-                selectedValue={selectedStoreId}
-                onValueChange={(itemValue) => setSelectedStoreId(itemValue)}
-                enabled={!uploading}
-                style={styles.picker}
-              >
-                <Picker.Item label="اختر المتجر" value="" />
-                {stores.map(store => (
-                  <Picker.Item
-                    key={store.id}
-                    label={`${store.nameAr} (${store.nameEn})${store.isLocal ? ' - محلي' : ''}`}
-                    value={store.id}
-                  />
-                ))}
-              </Picker>
-            </View>
-          )}
-          {selectedStore && (
-            <Text style={styles.helperText}>
-              المتجر المحدد: {selectedStore.nameAr} {isLocalStore && '(متجر محلي)'}
+        <View style={styles.noticeBox}>
+          <Ionicons name="information-circle" size={24} color={colors.primary} />
+          <View style={styles.noticeTextContainer}>
+            <Text style={styles.noticeText}>
+              • هدف: أقل من 20KB لكل صفحة
             </Text>
-          )}
+          </View>
         </View>
 
-        {/* LOCAL STORE IDENTIFICATION SECTION */}
-        {isLocalStore && (
-          <View style={styles.localStoreSection}>
-            <View style={styles.localStoreSectionHeader}>
-              <Ionicons name="location" size={20} color={colors.primary} />
-              <Text style={styles.localStoreSectionTitle}>تحديد المتجر المحلي</Text>
-            </View>
+        <View style={styles.form}>
+          {/* Title (Arabic) - WITH KEYBOARD NAVIGATION */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>العنوان (عربي) *</Text>
+            <TextInput
+              ref={titleArRef}
+              style={styles.input}
+              value={titleAr}
+              onChangeText={setTitleAr}
+              placeholder="كتالوج كازيون 23-29 ديسمبر"
+              placeholderTextColor={colors.gray[400]}
+              editable={!uploading}
+              returnKeyType="next"
+              onSubmitEditing={() => titleEnRef.current?.focus()}
+              blurOnSubmit={false}
+            />
+          </View>
 
-            {/* Governorate (auto-filled for local stores) */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>المحافظة *</Text>
-              <TextInput
-                style={[styles.input, styles.inputDisabled]}
-                value={localStoreGovernorate ? governorateNames[localStoreGovernorate as GovernorateId]?.ar || '' : ''}
-                editable={false}
-              />
-              <Text style={styles.helperText}>
-                تم تحديد المحافظة تلقائياً من المتجر المحلي
-              </Text>
-            </View>
+          {/* Title (English) - WITH KEYBOARD NAVIGATION */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>العنوان (إنجليزي) *</Text>
+            <TextInput
+              ref={titleEnRef}
+              style={styles.input}
+              value={titleEn}
+              onChangeText={setTitleEn}
+              placeholder="Kazyon Catalogue Dec 23-29"
+              placeholderTextColor={colors.gray[400]}
+              editable={!uploading}
+              returnKeyType="next"
+              onSubmitEditing={() => {
+                // Focus on date field after store/category selection
+                if (Platform.OS === 'web') {
+                  startDateRef.current?.focus();
+                }
+              }}
+              blurOnSubmit={false}
+            />
+          </View>
 
-            {/* City Dropdown (optional) */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>المدينة (اختياري)</Text>
-              {Platform.OS === 'web' ? (
-                <select
-                  value={localStoreCity}
-                  onChange={(e) => setLocalStoreCity(e.target.value as CityId)}
-                  style={{
-                    backgroundColor: colors.gray[100],
-                    borderRadius: borderRadius.md,
-                    padding: spacing.md,
-                    fontSize: typography.fontSize.md,
-                    color: colors.text,
-                    border: `1px solid ${colors.gray[200]}`,
-                    width: '100%',
-                  }}
-                  disabled={uploading || !localStoreGovernorate}
+          {/* Store Dropdown */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>المتجر *</Text>
+            {Platform.OS === 'web' ? (
+              <select
+                value={selectedStoreId}
+                onChange={(e) => setSelectedStoreId(e.target.value)}
+                style={{
+                  backgroundColor: colors.gray[100],
+                  borderRadius: borderRadius.md,
+                  padding: spacing.md,
+                  fontSize: typography.fontSize.md,
+                  color: colors.text,
+                  border: `1px solid ${colors.gray[200]}`,
+                  width: '100%',
+                }}
+                disabled={uploading}
+              >
+                <option value="">اختر المتجر</option>
+                {stores.map(store => (
+                  <option key={store.id} value={store.id}>
+                    {store.nameAr} ({store.nameEn}) {store.isLocal ? '- محلي' : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={selectedStoreId}
+                  onValueChange={(itemValue) => setSelectedStoreId(itemValue)}
+                  enabled={!uploading}
+                  style={styles.picker}
                 >
-                  <option value="">اختر المدينة (اختياري)</option>
-                  {availableCities.map(cityId => {
-                    const cityInfo = cityNames[cityId];
-                    return (
-                      <option key={cityId} value={cityId}>
-                        {cityInfo.ar}
-                      </option>
-                    );
-                  })}
-                </select>
-              ) : (
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={localStoreCity}
-                    onValueChange={(itemValue) => setLocalStoreCity(itemValue as CityId)}
-                    enabled={!uploading && !!localStoreGovernorate}
-                    style={styles.picker}
+                  <Picker.Item label="اختر المتجر" value="" />
+                  {stores.map(store => (
+                    <Picker.Item
+                      key={store.id}
+                      label={`${store.nameAr} (${store.nameEn})${store.isLocal ? ' - محلي' : ''}`}
+                      value={store.id}
+                    />
+                  ))}
+                </Picker>
+              </View>
+            )}
+            {selectedStore && (
+              <Text style={styles.helperText}>
+                المتجر المحدد: {selectedStore.nameAr} {isLocalStore && '(متجر محلي)'}
+              </Text>
+            )}
+          </View>
+
+          {/* LOCAL STORE IDENTIFICATION SECTION */}
+          {isLocalStore && (
+            <View style={styles.localStoreSection}>
+              <View style={styles.localStoreSectionHeader}>
+                <Ionicons name="location" size={20} color={colors.primary} />
+                <Text style={styles.localStoreSectionTitle}>تحديد المتجر المحلي</Text>
+              </View>
+
+              {/* Governorate (auto-filled) */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>المحافظة *</Text>
+                <TextInput
+                  style={[styles.input, styles.inputDisabled]}
+                  value={localStoreGovernorate ? governorateNames[localStoreGovernorate as GovernorateId]?.ar || '' : ''}
+                  editable={false}
+                />
+                <Text style={styles.helperText}>
+                  تم تحديد المحافظة تلقائياً من المتجر المحلي
+                </Text>
+              </View>
+
+              {/* City Dropdown */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>المدينة (اختياري)</Text>
+                {Platform.OS === 'web' ? (
+                  <select
+                    value={localStoreCity}
+                    onChange={(e) => setLocalStoreCity(e.target.value as CityId)}
+                    style={{
+                      backgroundColor: colors.gray[100],
+                      borderRadius: borderRadius.md,
+                      padding: spacing.md,
+                      fontSize: typography.fontSize.md,
+                      color: colors.text,
+                      border: `1px solid ${colors.gray[200]}`,
+                      width: '100%',
+                    }}
+                    disabled={uploading || !localStoreGovernorate}
                   >
-                    <Picker.Item label="اختر المدينة (اختياري)" value="" />
+                    <option value="">اختر المدينة (اختياري)</option>
                     {availableCities.map(cityId => {
                       const cityInfo = cityNames[cityId];
                       return (
-                        <Picker.Item
-                          key={cityId}
-                          label={cityInfo.ar}
-                          value={cityId}
-                        />
+                        <option key={cityId} value={cityId}>
+                          {cityInfo.ar}
+                        </option>
                       );
                     })}
-                  </Picker>
-                </View>
-              )}
-              <Text style={styles.helperText}>
-                اختر المدينة لتضييق خيارات المتاجر المحلية
-              </Text>
-            </View>
+                  </select>
+                ) : (
+                  <View style={styles.pickerContainer}>
+                    <Picker
+                      selectedValue={localStoreCity}
+                      onValueChange={(itemValue) => setLocalStoreCity(itemValue as CityId)}
+                      enabled={!uploading && !!localStoreGovernorate}
+                      style={styles.picker}
+                    >
+                      <Picker.Item label="اختر المدينة (اختياري)" value="" />
+                      {availableCities.map(cityId => {
+                        const cityInfo = cityNames[cityId];
+                        return (
+                          <Picker.Item
+                            key={cityId}
+                            label={cityInfo.ar}
+                            value={cityId}
+                          />
+                        );
+                      })}
+                    </Picker>
+                  </View>
+                )}
+              </View>
 
-          {/* Local Store Name Dropdown */}
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>اسم المتجر المحلي (اختياري)</Text>
-              {Platform.OS === 'web' ? (
-                <select
-                  value={selectedLocalStoreNameId}
-                  onChange={(e) => setSelectedLocalStoreNameId(e.target.value)}
-                  style={{
-                    backgroundColor: colors.gray[100],
-                    borderRadius: borderRadius.md,
-                    padding: spacing.md,
-                    fontSize: typography.fontSize.md,
-                    color: colors.text,
-                    border: `1px solid ${colors.gray[200]}`,
-                    width: '100%',
-                  }}
-                  disabled={uploading || !localStoreGovernorate}
-                >
-                  <option value="">اختر اسم المتجر (اختياري)</option>
-                  <option value="unidentified">غير محدد</option>
-                  {availableLocalStoreNames.map(store => (
-                    <option key={store.id} value={store.id}>
-                      {store.nameAr} - {store.nameEn}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <View style={styles.pickerContainer}>
-                  <Picker
-                    selectedValue={selectedLocalStoreNameId}
-                    onValueChange={(itemValue) => setSelectedLocalStoreNameId(itemValue)}
-                    enabled={!uploading && !!localStoreGovernorate}
-                    style={styles.picker}
+              {/* Local Store Name Dropdown */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>اسم المتجر المحلي (اختياري)</Text>
+                {Platform.OS === 'web' ? (
+                  <select
+                    value={selectedLocalStoreNameId}
+                    onChange={(e) => setSelectedLocalStoreNameId(e.target.value)}
+                    style={{
+                      backgroundColor: colors.gray[100],
+                      borderRadius: borderRadius.md,
+                      padding: spacing.md,
+                      fontSize: typography.fontSize.md,
+                      color: colors.text,
+                      border: `1px solid ${colors.gray[200]}`,
+                      width: '100%',
+                    }}
+                    disabled={uploading || !localStoreGovernorate}
                   >
-                    <Picker.Item label="اختر اسم المتجر (اختياري)" value="" />
-                    <Picker.Item label="غير محدد" value="unidentified" />
+                    <option value="">اختر اسم المتجر (اختياري)</option>
+                    <option value="unidentified">غير محدد</option>
                     {availableLocalStoreNames.map(store => (
-                      <Picker.Item
-                        key={store.id}
-                        label={`${store.nameAr} - ${store.nameEn}`}
-                        value={store.id}
-                      />
+                      <option key={store.id} value={store.id}>
+                        {store.nameAr} - {store.nameEn}
+                      </option>
                     ))}
-                  </Picker>
-                </View>
-              )}
-              {selectedLocalStoreName && (
-                <View style={styles.categoryPreview}>
-                  <Ionicons name="storefront" size={20} color={colors.primary} />
-                  <Text style={styles.helperText}>
-                    المتجر المحدد: {selectedLocalStoreName.nameAr}
-                  </Text>
-                </View>
-              )}
-              {selectedLocalStoreNameId === 'unidentified' && (
-                <View style={styles.warningBox}>
-                  <Ionicons name="alert-circle" size={16} color={colors.warning} />
-                  <Text style={styles.warningText}>
-                    سيتم تعليم هذا الكتالوج كـ "غير محدد"
-                  </Text>
-                </View>
-              )}
-              <Text style={styles.helperText}>
-                {availableLocalStoreNames.length > 0
-                  ? `${availableLocalStoreNames.length} متجر متاح في الموقع المحدد`
-                  : 'لا توجد متاجر محلية محددة في هذا الموقع'}
-              </Text>
+                  </select>
+                ) : (
+                  <View style={styles.pickerContainer}>
+                    <Picker
+                      selectedValue={selectedLocalStoreNameId}
+                      onValueChange={(itemValue) => setSelectedLocalStoreNameId(itemValue)}
+                      enabled={!uploading && !!localStoreGovernorate}
+                      style={styles.picker}
+                    >
+                      <Picker.Item label="اختر اسم المتجر (اختياري)" value="" />
+                      <Picker.Item label="غير محدد" value="unidentified" />
+                      {availableLocalStoreNames.map(store => (
+                        <Picker.Item
+                          key={store.id}
+                          label={`${store.nameAr} - ${store.nameEn}`}
+                          value={store.id}
+                        />
+                      ))}
+                    </Picker>
+                  </View>
+                )}
+                {selectedLocalStoreName && (
+                  <View style={styles.categoryPreview}>
+                    <Ionicons name="storefront" size={20} color={colors.primary} />
+                    <Text style={styles.helperText}>
+                      المتجر المحدد: {selectedLocalStoreName.nameAr}
+                    </Text>
+                  </View>
+                )}
+              </View>
             </View>
-          </View>
-        )}
+          )}
 
-        {/* Category Dropdown */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>الفئة الرئيسية *</Text>
-          {Platform.OS === 'web' ? (
-            <select
-              value={selectedCategoryId}
-              onChange={(e) => setSelectedCategoryId(e.target.value)}
-              style={{
-                backgroundColor: colors.gray[100],
-                borderRadius: borderRadius.md,
-                padding: spacing.md,
-                fontSize: typography.fontSize.md,
-                color: colors.text,
-                border: `1px solid ${colors.gray[200]}`,
-                width: '100%',
-              }}
-              disabled={uploading}
-            >
-              <option value="">اختر الفئة</option>
-              {mainCategories.map(category => (
-                <option key={category.id} value={category.id}>
-                  {category.nameAr} - {category.nameEn}
-                </option>
-              ))}
-            </select>
-          ) : (
-            <View style={styles.pickerContainer}>
-              <Picker
-                selectedValue={selectedCategoryId}
-                onValueChange={(itemValue) => setSelectedCategoryId(itemValue)}
-                enabled={!uploading}
-                style={styles.picker}
+          {/* Category Dropdown */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>الفئة الرئيسية *</Text>
+            {Platform.OS === 'web' ? (
+              <select
+                value={selectedCategoryId}
+                onChange={(e) => setSelectedCategoryId(e.target.value)}
+                style={{
+                  backgroundColor: colors.gray[100],
+                  borderRadius: borderRadius.md,
+                  padding: spacing.md,
+                  fontSize: typography.fontSize.md,
+                  color: colors.text,
+                  border: `1px solid ${colors.gray[200]}`,
+                  width: '100%',
+                }}
+                disabled={uploading}
               >
-                <Picker.Item label="اختر الفئة" value="" />
+                <option value="">اختر الفئة</option>
                 {mainCategories.map(category => (
-                  <Picker.Item
-                    key={category.id}
-                    label={`${category.nameAr} - ${category.nameEn}`}
-                    value={category.id}
-                  />
+                  <option key={category.id} value={category.id}>
+                    {category.nameAr} - {category.nameEn}
+                  </option>
                 ))}
-              </Picker>
-            </View>
-          )}
-          {selectedCategory && (
-            <View style={styles.categoryPreview}>
-              <Ionicons
-                name={selectedCategory.icon as any}
-                size={20}
-                color={selectedCategory.color || colors.primary}
-              />
-              <Text style={styles.helperText}>
-                الفئة المحددة: {selectedCategory.nameAr}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Start Date */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>تاريخ البداية *</Text>
-          {Platform.OS === 'web' ? (
-            <TextInput
-              style={styles.input}
-              value={startDate}
-              onChangeText={setStartDate}
-              placeholder="2026-01-05"
-              placeholderTextColor={colors.gray[400]}
-              editable={!uploading}
-            />
-          ) : (
-            <>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowStartDatePicker(true)}
-                disabled={uploading}
-              >
-                <Ionicons name="calendar-outline" size={20} color={colors.primary} />
-                <Text style={styles.dateButtonText}>
-                  {startDate ? formatDateForDisplay(startDate) : 'اختر تاريخ البداية'}
-                </Text>
-              </TouchableOpacity>
-              {showStartDatePicker && (
-                <DateTimePicker
-                  value={startDate ? new Date(startDate) : new Date()}
-                  mode="date"
-                  display="default"
-                  onChange={handleStartDateChange}
+              </select>
+            ) : (
+              <View style={styles.pickerContainer}>
+                <Picker
+                  selectedValue={selectedCategoryId}
+                  onValueChange={(itemValue) => setSelectedCategoryId(itemValue)}
+                  enabled={!uploading}
+                  style={styles.picker}
+                >
+                  <Picker.Item label="اختر الفئة" value="" />
+                  {mainCategories.map(category => (
+                    <Picker.Item
+                      key={category.id}
+                      label={`${category.nameAr} - ${category.nameEn}`}
+                      value={category.id}
+                    />
+                  ))}
+                </Picker>
+              </View>
+            )}
+            {selectedCategory && (
+              <View style={styles.categoryPreview}>
+                <Ionicons
+                  name={selectedCategory.icon as any}
+                  size={20}
+                  color={selectedCategory.color || colors.primary}
                 />
-              )}
-            </>
-          )}
-        </View>
-
-        {/* End Date */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>تاريخ النهاية *</Text>
-          {Platform.OS === 'web' ? (
-            <TextInput
-              style={styles.input}
-              value={endDate}
-              onChangeText={setEndDate}
-              placeholder="2026-02-02"
-              placeholderTextColor={colors.gray[400]}
-              editable={!uploading}
-            />
-          ) : (
-            <>
-              <TouchableOpacity
-                style={styles.dateButton}
-                onPress={() => setShowEndDatePicker(true)}
-                disabled={uploading}
-              >
-                <Ionicons name="calendar-outline" size={20} color={colors.primary} />
-                <Text style={styles.dateButtonText}>
-                  {endDate ? formatDateForDisplay(endDate) : 'اختر تاريخ النهاية'}
+                <Text style={styles.helperText}>
+                  الفئة المحددة: {selectedCategory.nameAr}
                 </Text>
-              </TouchableOpacity>
-              {showEndDatePicker && (
-                <DateTimePicker
-                  value={endDate ? new Date(endDate) : new Date()}
-                  mode="date"
-                  display="default"
-                  onChange={handleEndDateChange}
-                  minimumDate={startDate ? new Date(startDate) : undefined}
-                />
-              )}
-            </>
-          )}
-        </View>
-
-        {/* Upload Type Selection */}
-        <View style={styles.inputGroup}>
-          <Text style={styles.label}>نوع الرفع *</Text>
-          <View style={styles.uploadTypeButtons}>
-            <TouchableOpacity
-              style={[
-                styles.uploadTypeButton,
-                uploadType === 'pdf' && styles.uploadTypeButtonActive,
-              ]}
-              onPress={handlePickPDF}
-              disabled={uploading}
-            >
-              <Ionicons
-                name="document-text"
-                size={24}
-                color={uploadType === 'pdf' ? colors.white : colors.primary}
-              />
-              <Text
-                style={[
-                  styles.uploadTypeButtonText,
-                  uploadType === 'pdf' && styles.uploadTypeButtonTextActive,
-                ]}
-              >
-                رفع PDF
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.uploadTypeButton,
-                uploadType === 'images' && styles.uploadTypeButtonActive,
-              ]}
-              onPress={handlePickImages}
-              disabled={uploading}
-            >
-              <Ionicons
-                name="images"
-                size={24}
-                color={uploadType === 'images' ? colors.white : colors.primary}
-              />
-              <Text
-                style={[
-                  styles.uploadTypeButtonText,
-                  uploadType === 'images' && styles.uploadTypeButtonTextActive,
-                ]}
-              >
-                رفع صور
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {selectedFile && (
-            <View style={styles.selectedFileInfo}>
-              <Ionicons name="document-attach" size={20} color={colors.primary} />
-              <Text style={styles.selectedFileName}>{selectedFile.name}</Text>
-              <Text style={styles.selectedFileSize}>
-                {(selectedFile.size! / 1024 / 1024).toFixed(2)} MB
-              </Text>
-            </View>
-          )}
-
-          {selectedImages.length > 0 && (
-            <View style={styles.selectedFileInfo}>
-              <Ionicons name="images" size={20} color={colors.primary} />
-              <Text style={styles.selectedFileName}>
-                {selectedImages.length} صورة محددة
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Upload Progress */}
-        {uploading && (
-          <View style={styles.progressContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.stageText}>{progress.stage}</Text>
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: `${progress.percentage}%` }]} />
-            </View>
-            <Text style={styles.progressText}>{Math.round(progress.percentage)}%</Text>
-            {progress.total > 0 && (
-              <Text style={styles.progressStepText}>
-                الخطوة {progress.current} من {progress.total}
-              </Text>
+              </View>
             )}
           </View>
-        )}
 
-        {/* Action Buttons */}
-        <View style={styles.actions}>
-          <TouchableOpacity
-            style={[styles.button, styles.cancelButton]}
-            onPress={onCancel}
-            disabled={uploading}
-          >
-            <Text style={styles.cancelButtonText}>إلغاء</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.button, styles.uploadButton, uploading && styles.buttonDisabled]}
-            onPress={handleUpload}
-            disabled={uploading}
-          >
-            {uploading ? (
-              <ActivityIndicator size="small" color={colors.white} />
+          {/* Start Date - WITH KEYBOARD NAVIGATION */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>تاريخ البداية *</Text>
+            {Platform.OS === 'web' ? (
+              <TextInput
+                ref={startDateRef}
+                style={styles.input}
+                value={startDate}
+                onChangeText={setStartDate}
+                placeholder="2026-01-05"
+                placeholderTextColor={colors.gray[400]}
+                editable={!uploading}
+                returnKeyType="next"
+                onSubmitEditing={() => endDateRef.current?.focus()}
+                blurOnSubmit={false}
+              />
             ) : (
               <>
-                <Ionicons name="cloud-upload-outline" size={20} color={colors.white} />
-                <Text style={styles.uploadButtonText}>رفع ومعالجة</Text>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => setShowStartDatePicker(true)}
+                  disabled={uploading}
+                >
+                  <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+                  <Text style={styles.dateButtonText}>
+                    {startDate ? formatDateForDisplay(startDate) : 'اختر تاريخ البداية'}
+                  </Text>
+                </TouchableOpacity>
+                {showStartDatePicker && (
+                  <DateTimePicker
+                    value={startDate ? new Date(startDate) : new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={handleStartDateChange}
+                  />
+                )}
               </>
             )}
-          </TouchableOpacity>
+          </View>
+
+          {/* End Date - WITH KEYBOARD NAVIGATION */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>تاريخ النهاية *</Text>
+            {Platform.OS === 'web' ? (
+              <TextInput
+                ref={endDateRef}
+                style={styles.input}
+                value={endDate}
+                onChangeText={setEndDate}
+                placeholder="2026-02-02"
+                placeholderTextColor={colors.gray[400]}
+                editable={!uploading}
+                returnKeyType="done"
+                onSubmitEditing={() => {
+                  // Dismiss keyboard when done
+                  endDateRef.current?.blur();
+                }}
+              />
+            ) : (
+              <>
+                <TouchableOpacity
+                  style={styles.dateButton}
+                  onPress={() => setShowEndDatePicker(true)}
+                  disabled={uploading}
+                >
+                  <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+                  <Text style={styles.dateButtonText}>
+                    {endDate ? formatDateForDisplay(endDate) : 'اختر تاريخ النهاية'}
+                  </Text>
+                </TouchableOpacity>
+                {showEndDatePicker && (
+                  <DateTimePicker
+                    value={endDate ? new Date(endDate) : new Date()}
+                    mode="date"
+                    display="default"
+                    onChange={handleEndDateChange}
+                    minimumDate={startDate ? new Date(startDate) : undefined}
+                  />
+                )}
+              </>
+            )}
+          </View>
+
+          {/* Upload Type Selection */}
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>نوع الرفع *</Text>
+            <View style={styles.uploadTypeButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.uploadTypeButton,
+                  uploadType === 'pdf' && styles.uploadTypeButtonActive,
+                ]}
+                onPress={handlePickPDF}
+                disabled={uploading}
+              >
+                <Ionicons
+                  name="document-text"
+                  size={24}
+                  color={uploadType === 'pdf' ? colors.white : colors.primary}
+                />
+                <Text
+                  style={[
+                    styles.uploadTypeButtonText,
+                    uploadType === 'pdf' && styles.uploadTypeButtonTextActive,
+                  ]}
+                >
+                  رفع PDF
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.uploadTypeButton,
+                  uploadType === 'images' && styles.uploadTypeButtonActive,
+                ]}
+                onPress={handlePickImages}
+                disabled={uploading}
+              >
+                <Ionicons
+                  name="images"
+                  size={24}
+                  color={uploadType === 'images' ? colors.white : colors.primary}
+                />
+                <Text
+                  style={[
+                    styles.uploadTypeButtonText,
+                    uploadType === 'images' && styles.uploadTypeButtonTextActive,
+                  ]}
+                >
+                  رفع صور
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            {selectedFile && (
+              <View style={styles.selectedFileInfo}>
+                <Ionicons name="document-attach" size={20} color={colors.primary} />
+                <Text style={styles.selectedFileName}>{selectedFile.name}</Text>
+                <Text style={styles.selectedFileSize}>
+                  {(selectedFile.size! / 1024 / 1024).toFixed(2)} MB
+                </Text>
+              </View>
+            )}
+
+            {selectedImages.length > 0 && (
+              <View style={styles.selectedFileInfo}>
+                <Ionicons name="images" size={20} color={colors.primary} />
+                <Text style={styles.selectedFileName}>
+                  {selectedImages.length} صورة محددة
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* Upload Progress */}
+          {uploading && (
+            <View style={styles.progressContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.stageText}>{progress.stage}</Text>
+              <View style={styles.progressBar}>
+                <View style={[styles.progressFill, { width: `${progress.percentage}%` }]} />
+              </View>
+              <Text style={styles.progressText}>{Math.round(progress.percentage)}%</Text>
+              {progress.total > 0 && (
+                <Text style={styles.progressStepText}>
+                  الخطوة {progress.current} من {progress.total}
+                </Text>
+              )}
+            </View>
+          )}
+
+          {/* Action Buttons */}
+          <View style={styles.actions}>
+            <TouchableOpacity
+              style={[styles.button, styles.cancelButton]}
+              onPress={onCancel}
+              disabled={uploading}
+            >
+              <Text style={styles.cancelButtonText}>إلغاء</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.button, styles.uploadButton, uploading && styles.buttonDisabled]}
+              onPress={handleUpload}
+              disabled={uploading}
+            >
+              {uploading ? (
+                <ActivityIndicator size="small" color={colors.white} />
+              ) : (
+                <>
+                  <Ionicons name="cloud-upload-outline" size={20} color={colors.white} />
+                  <Text style={styles.uploadButtonText}>رفع ومعالجة</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
+// ==================== STYLES ====================
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -1303,20 +1329,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.lg,
     fontWeight: 'bold',
     color: colors.primary,
-  },
-  warningBox: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    backgroundColor: colors.warning + '20',
-    padding: spacing.sm,
-    borderRadius: borderRadius.sm,
-    marginTop: spacing.xs,
-    gap: spacing.xs,
-  },
-  warningText: {
-    fontSize: typography.fontSize.sm,
-    color: colors.warning,
-    flex: 1,
   },
   dateButton: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',

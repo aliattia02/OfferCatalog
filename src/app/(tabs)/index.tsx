@@ -1,4 +1,4 @@
-// src/app/(tabs)/index.tsx - WITH FIXED SENTRY TEST
+// src/app/(tabs)/index.tsx - FIXED CATEGORY NAVIGATION
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
@@ -273,14 +273,23 @@ export default function HomeScreen() {
     dispatch(toggleFavoriteSubcategory(subcategoryId));
   }, [dispatch]);
 
+  // 🔥 FIXED: Navigate to flyers screen with mainCategoryId parameter
   const handleCategoryPress = useCallback((category: Category) => {
     addBreadcrumb('User selected category', 'navigation', {
       categoryId: category.id,
       categoryName: category.nameAr,
     });
+
+    console.log('🔥 [Home] Navigating to flyers with category:', category.id);
+
     router.push({
       pathname: '/(tabs)/flyers',
-      params: { mainCategoryId: category.id },
+      params: {
+        mainCategoryId: category.id,
+        // Reset other filters when selecting a category
+        selectedStore: 'all',
+        statusFilter: 'active'
+      },
     });
   }, [router]);
 
@@ -305,20 +314,17 @@ export default function HomeScreen() {
     router.push('/search');
   }, [router]);
 
-  // ✅ FIXED: Handle Sentry test button
   const handleTestSentry = useCallback(() => {
     try {
       const result = testSentryError();
       setSentryTestResult(result);
 
-      // Show alert with result
       Alert.alert(
         'Sentry Test',
         result,
         [{ text: 'OK' }]
       );
 
-      // Clear message after 5 seconds
       setTimeout(() => setSentryTestResult(''), 5000);
     } catch (error) {
       console.error('Test error failed:', error);
@@ -463,23 +469,20 @@ export default function HomeScreen() {
         />
       }
     >
-      {/* ✅ FIXED SENTRY TEST BUTTON */}
-      <View style={styles.testButtonContainer}>
-        <TouchableOpacity
-          style={styles.testButton}
-          onPress={handleTestSentry}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.testButtonText}>
-            🧪 Test Sentry Error
-          </Text>
-          {sentryTestResult && (
-            <Text style={styles.testResultText}>
-              ✅ {sentryTestResult}
-            </Text>
-          )}
-        </TouchableOpacity>
-      </View>
+      {__DEV__ && (
+        <View style={styles.testButtonContainer}>
+          <TouchableOpacity
+            style={styles.testButton}
+            onPress={handleTestSentry}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.testButtonText}>🧪 Test Sentry Error</Text>
+          </TouchableOpacity>
+          {sentryTestResult ? (
+            <Text style={styles.testResultText}>✅ {sentryTestResult}</Text>
+          ) : null}
+        </View>
+      )}
 
       <TouchableOpacity
         style={styles.searchContainer}

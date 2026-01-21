@@ -203,18 +203,25 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
 
   // Handle params from search navigation
   useEffect(() => {
-    if (initialViewModeParam === 'offers') {
-      setViewMode('offers');
-    }
+  if (initialViewModeParam === 'offers') {
+    setViewMode('offers');
+  }
 
-    if (initialSubcategoryParam) {
-      setSelectedSubcategory(initialSubcategoryParam);
-      const subcategory = getCategoryById(initialSubcategoryParam);
-      if (subcategory?.parentId) {
-        setSelectedMainCategory(subcategory.parentId);
-      }
+  if (initialSubcategoryParam) {
+    setSelectedSubcategory(initialSubcategoryParam);
+    const subcategory = getCategoryById(initialSubcategoryParam);
+    if (subcategory?.parentId) {
+      setSelectedMainCategory(subcategory.parentId);
     }
-  }, [initialViewModeParam, initialSubcategoryParam]);
+  }
+
+  // 🔥 NEW: Handle main category from home screen navigation
+  if (initialMainCategory) {
+    console.log('🔥 [Flyers] Setting main category from params:', initialMainCategory);
+    setSelectedMainCategory(initialMainCategory);
+    setSelectedSubcategory(null); // Clear subcategory when coming from home
+  }
+}, [initialViewModeParam, initialSubcategoryParam, initialMainCategory]);
 
   // Load all offers for stats
   useEffect(() => {

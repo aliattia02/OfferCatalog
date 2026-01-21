@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+// src/data/offers.ts - CLIENT VERSION (No PDF)
 import type { Offer, Catalogue, CataloguePage } from '../types';
 
 // Alternative placeholder service
@@ -25,18 +25,6 @@ const getOfferDates = () => {
 };
 
 const { startDate, endDate } = getOfferDates();
-
-// FIXED: Helper to get PDF URL based on platform
-const getPdfUrl = (filename: string): string => {
-  if (Platform.OS === 'web') {
-    // For web, PDFs should be in public/catalogues folder
-    // Expo web serves files from public folder at root URL
-    return `/catalogues/${filename}`;
-  } else {
-    // For native, return the filename - will be handled by expo-asset
-    return filename;
-  }
-};
 
 // Sample offers for Kazyon
 export const kazyonOffers: Offer[] = [
@@ -312,53 +300,41 @@ export const offers: Offer[] = [...kazyonOffers, ...carrefourOffers];
 // Catalogue pages
 const kazyonPages: CataloguePage[] = [
   {
-    id: 'kazyon-page-1',
-    catalogueId: 'kazyon-catalogue-1',
     pageNumber: 1,
     imageUrl: createPlaceholder(400, 600, 'Kazyon Page 1'),
-    offers: ['kazyon-offer-1', 'kazyon-offer-2'],
+    offers: kazyonOffers.slice(0, 2),
   },
   {
-    id: 'kazyon-page-2',
-    catalogueId: 'kazyon-catalogue-1',
     pageNumber: 2,
     imageUrl: createPlaceholder(400, 600, 'Kazyon Page 2'),
-    offers: ['kazyon-offer-3', 'kazyon-offer-4', 'kazyon-offer-5'],
+    offers: kazyonOffers.slice(2, 5),
   },
   {
-    id: 'kazyon-page-3',
-    catalogueId: 'kazyon-catalogue-1',
     pageNumber: 3,
     imageUrl: createPlaceholder(400, 600, 'Kazyon Page 3'),
-    offers: ['kazyon-offer-6', 'kazyon-offer-7'],
+    offers: kazyonOffers.slice(5, 7),
   },
 ];
 
 const carrefourPages: CataloguePage[] = [
   {
-    id: 'carrefour-page-1',
-    catalogueId: 'carrefour-catalogue-1',
     pageNumber: 1,
     imageUrl: createPlaceholder(400, 600, 'Carrefour Page 1'),
-    offers: ['carrefour-offer-1', 'carrefour-offer-2'],
+    offers: carrefourOffers.slice(0, 2),
   },
   {
-    id: 'carrefour-page-2',
-    catalogueId: 'carrefour-catalogue-1',
     pageNumber: 2,
     imageUrl: createPlaceholder(400, 600, 'Carrefour Page 2'),
-    offers: ['carrefour-offer-3', 'carrefour-offer-4', 'carrefour-offer-5'],
+    offers: carrefourOffers.slice(2, 5),
   },
   {
-    id: 'carrefour-page-3',
-    catalogueId: 'carrefour-catalogue-1',
     pageNumber: 3,
     imageUrl: createPlaceholder(400, 600, 'Carrefour Page 3'),
-    offers: ['carrefour-offer-6', 'carrefour-offer-7', 'carrefour-offer-8'],
+    offers: carrefourOffers.slice(5, 8),
   },
 ];
 
-// FIXED: Use correct PDF filenames without the duplicate .pdf extension
+// ✅ CATALOGUES WITHOUT PDF - Only images matter on client side
 export const catalogues: Catalogue[] = [
   {
     id: 'kazyon-catalogue-1',
@@ -368,7 +344,6 @@ export const catalogues: Catalogue[] = [
     startDate,
     endDate,
     coverImage: createPlaceholder(400, 600, 'Kazyon Cover'),
-    pdfUrl: getPdfUrl('kazyon_2025-12-23_2025-12-29.pdf'), // Fixed filename
     pages: kazyonPages,
   },
   {
@@ -379,7 +354,6 @@ export const catalogues: Catalogue[] = [
     startDate,
     endDate,
     coverImage: createPlaceholder(400, 600, 'Carrefour Cover'),
-    pdfUrl: getPdfUrl('catalogue_92b7a97e_1765366806.pdf'),
     pages: carrefourPages,
   },
 ];

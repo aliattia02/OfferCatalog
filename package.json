@@ -1,7 +1,7 @@
 {
   "name": "Daily-Deals",
   "version": "1.0.0",
-  "type": "commonjs",
+  "type":  "commonjs",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start --dev-client",

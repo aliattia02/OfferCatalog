@@ -1,6 +1,5 @@
-// src/components/common/AdBanner.tsx
-// UPDATED: Each ad has its own positions array + Fixed date validation
-import React from 'react';
+// src/components/common/AdBanner.tsx - REDUCED CONSOLE SPAM
+import React, { useRef } from 'react';
 import {
   View,
   Image,
@@ -17,10 +16,17 @@ import { colors, spacing, borderRadius } from '../../constants/theme';
 import { isDateRangeActive } from '../../utils/dateUtils';
 
 interface AdBannerProps {
-  position: 'home' | 'flyers' | 'search' | 'store';
-  maxAds?: number; // Maximum number of ads to show
-  horizontal?: boolean; // Show ads horizontally
+  position: 'home' | 'flyers' | 'search' | 'store' | 'tabs_persistent' | 'tabs_bottom';
+  maxAds?: number;
+  horizontal?: boolean;
 }
+
+// 🔥 Track what we've already logged to prevent spam
+const loggedOnce = {
+  masterToggles: false,
+  disabledReasons: new Set<string>(),
+  positions: new Set<string>(),
+};
 
 export const AdBanner: React.FC<AdBannerProps> = ({
   position,
@@ -29,76 +35,74 @@ export const AdBanner: React.FC<AdBannerProps> = ({
 }) => {
   const { i18n } = useTranslation();
   const config = useAppSelector((state) => state.appConfig.config);
+  const hasLoggedForPosition = useRef(false);
 
-  console.log('🎯 [AdBanner] Checking ads for position:', position);
-  console.log('📊 [AdBanner] Master toggles:', {
-    enableAds: config.features.enableAds,
-    adsEnabled: config.advertisements.enabled,
-    bannerAdsEnabled: config.advertisements.bannerAds.enabled,
-  });
+  // 🔥 Only log once per position per session
+  if (__DEV__ && !hasLoggedForPosition.current) {
+    if (!loggedOnce.positions.has(position)) {
+      console.log(`🎯 [AdBanner] Checking ads for position: ${position}`);
+      loggedOnce.positions.add(position);
+    }
+    hasLoggedForPosition.current = true;
+  }
+
+  // 🔥 Log master toggles only ONCE per app session
+  if (__DEV__ && !loggedOnce.masterToggles) {
+    console.log('📊 [AdBanner] Master toggles:', {
+      enableAds: config.features.enableAds,
+      adsEnabled: config.advertisements.enabled,
+      bannerAdsEnabled: config.advertisements.bannerAds.enabled,
+    });
+    loggedOnce.masterToggles = true;
+  }
 
   // Check master toggles
   if (!config.features.enableAds) {
-    console.log('❌ [AdBanner] Master ads disabled (features.enableAds)');
+    // 🔥 Only log once per reason
+    if (__DEV__ && !loggedOnce.disabledReasons.has('features.enableAds')) {
+      console.log('❌ [AdBanner] Master ads disabled (features.enableAds)');
+      loggedOnce.disabledReasons.add('features.enableAds');
+    }
     return null;
   }
 
   if (!config.advertisements.enabled) {
-    console.log('❌ [AdBanner] Advertisements disabled');
+    if (__DEV__ && !loggedOnce.disabledReasons.has('advertisements.enabled')) {
+      console.log('❌ [AdBanner] Advertisements disabled');
+      loggedOnce.disabledReasons.add('advertisements.enabled');
+    }
     return null;
   }
 
   if (!config.advertisements.bannerAds.enabled) {
-    console.log('❌ [AdBanner] Banner ads disabled');
+    if (__DEV__ && !loggedOnce.disabledReasons.has('bannerAds.enabled')) {
+      console.log('❌ [AdBanner] Banner ads disabled');
+      loggedOnce.disabledReasons.add('bannerAds.enabled');
+    }
     return null;
   }
 
-  console.log(`📢 [AdBanner] Total ads in config: ${config.advertisements.bannerAds.ads.length}`);
-
   // Filter ads for this position
   const filteredAds = config.advertisements.bannerAds.ads.filter(ad => {
-    console.log(`\n🔍 [AdBanner] Checking ad "${ad.id}":`);
-    console.log('   - Title:', ad.titleAr || ad.titleEn);
-    console.log('   - isActive:', ad.isActive);
-    console.log('   - positions:', ad.positions);
-    console.log('   - startDate:', ad.startDate || 'none');
-    console.log('   - endDate:', ad.endDate || 'none');
-
     // Check if ad is active
-    if (!ad.isActive) {
-      console.log('   ❌ Ad is inactive');
-      return false;
-    }
+    if (!ad.isActive) return false;
 
     // Check if ad has positions for this screen
-    if (!ad.positions || !ad.positions.includes(position)) {
-      console.log(`   ❌ Position "${position}" not in ad's positions:`, ad.positions);
-      return false;
-    }
+    if (!ad.positions || !ad.positions.includes(position)) return false;
 
-    // ✅ FIX: If both dates are missing/empty, ad is ALWAYS active
-    if (!ad.startDate && !ad.endDate) {
-      console.log('   ✅ No dates specified - ALWAYS ACTIVE');
-      return true;
-    }
+    // If both dates are missing/empty, ad is ALWAYS active
+    if (!ad.startDate && !ad.endDate) return true;
 
     // Check date range if dates are provided
-    const hasValidDates = isDateRangeActive(ad.startDate, ad.endDate);
-    console.log('   - hasValidDates:', hasValidDates);
-
-    if (!hasValidDates) {
-      console.log('   ❌ Date range not valid');
-      return false;
-    }
-
-    console.log('   ✅ Ad passed all checks');
-    return true;
+    return isDateRangeActive(ad.startDate, ad.endDate);
   });
 
-  console.log(`\n✅ [AdBanner] Found ${filteredAds.length} valid ads for position "${position}"`);
+  // 🔥 Only log results once per position
+  if (__DEV__ && !hasLoggedForPosition.current && filteredAds.length > 0) {
+    console.log(`✅ [AdBanner] Found ${filteredAds.length} ad(s) for "${position}"`);
+  }
 
   if (filteredAds.length === 0) {
-    console.log('❌ [AdBanner] No ads to display');
     return null;
   }
 
@@ -108,23 +112,22 @@ export const AdBanner: React.FC<AdBannerProps> = ({
   // Limit ads if maxAds is specified
   const adsToShow = maxAds ? sortedAds.slice(0, maxAds) : sortedAds;
 
-  console.log(`📢 [AdBanner] Displaying ${adsToShow.length} ad(s)`);
-
   const handlePress = async (ad: AdBannerType) => {
-    console.log('🔗 [AdBanner] Attempting to open:', ad.targetUrl);
+    if (__DEV__) {
+      console.log('🔗 [AdBanner] Opening:', ad.targetUrl);
+    }
+
     try {
       let url = ad.targetUrl;
 
       // Add https:// if missing protocol
       if (!url.startsWith('http://') && !url.startsWith('https://')) {
         url = 'https://' + url;
-        console.log('🔧 [AdBanner] Added https://, new URL:', url);
       }
 
       const supported = await Linking.canOpenURL(url);
       if (supported) {
         await Linking.openURL(url);
-        console.log('✅ [AdBanner] URL opened successfully');
       } else {
         console.error('❌ [AdBanner] Cannot open URL:', url);
       }
@@ -155,8 +158,6 @@ export const AdBanner: React.FC<AdBannerProps> = ({
           source={{ uri: ad.imageUrl }}
           style={styles.image}
           resizeMode="cover"
-          onError={(e) => console.error('❌ [AdBanner] Image load error:', e.nativeEvent.error)}
-          onLoad={() => console.log('✅ [AdBanner] Image loaded:', ad.imageUrl)}
         />
         {title && (
           <View style={styles.titleContainer}>

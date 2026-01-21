@@ -7,7 +7,7 @@ import Constants from 'expo-constants';
 const SENTRY_DSN =
   process.env.EXPO_PUBLIC_SENTRY_DSN ||
   Constants.expoConfig?.extra?.SENTRY_DSN ||
-  'https://f5adc24cef5aa1f3347d425833d760ef@o4510741401436160.ingest.de.sentry.io/4510741403926608';
+  'https://4455e821d6409f1900afefae1c7ecf2c@o4510741401436160.ingest.de.sentry.io/4510741488664656';
 
 // Track if Sentry was successfully initialized
 let sentryInitialized = false;

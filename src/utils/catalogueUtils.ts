@@ -1,6 +1,5 @@
-// src/utils/catalogueUtils.ts - UPDATED WITH CATEGORY HELPERS
-import { Platform } from 'react-native';
-import type { Catalogue, CataloguePage, Category } from '../types';
+// src/utils/catalogueUtils.ts - CLIENT VERSION (No PDF URL generation)
+import type { Catalogue } from '../types';
 import {
   MAIN_CATEGORY_IDS,
   getCategoryById,
@@ -19,7 +18,7 @@ export interface ParsedCatalogueInfo {
   endDate: string;
   filename: string;
   isValid: boolean;
-  suggestedCategoryId?: string; // NEW - Suggested main category based on store
+  suggestedCategoryId?: string;
 }
 
 // Store name mappings (English to Arabic)
@@ -33,12 +32,11 @@ const storeNameMappings: Record<string, string> = {
   'ragab': 'رجب أولاد رجب',
   'seoudi': 'سعودي',
   'awlad': 'أولاد رجب',
-  'catalogue': 'كتالوج', // fallback for unknown
+  'catalogue': 'كتالوج',
 };
 
 /**
- * NEW - Store to default category mapping
- * Maps stores to their primary category type
+ * Store to default category mapping
  */
 const storeDefaultCategory: Record<string, string> = {
   'kazyon': MAIN_CATEGORY_IDS.FOOD_GROCERIES,
@@ -60,6 +58,17 @@ const storeDefaultCategory: Record<string, string> = {
 };
 
 /**
+ * Normalize date string to YYYY-MM-DD format
+ */
+const normalizeDate = (dateStr: string): string => {
+  const parts = dateStr.split('-');
+  if (parts.length !== 3) return dateStr;
+
+  const [year, month, day] = parts;
+  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+};
+
+/**
  * Parse a catalogue filename
  */
 export const parseCatalogueFilename = (filename: string): ParsedCatalogueInfo => {
@@ -67,7 +76,6 @@ export const parseCatalogueFilename = (filename: string): ParsedCatalogueInfo =>
   const nameWithoutExt = filename.replace(/\.pdf$/i, '');
 
   // Try to parse: storeName_startDate_endDate
-  // Regex to match: name_YYYY-MM-DD_YYYY-MM-DD or name_YYYY-M-D_YYYY-M-D
   const regex = /^([a-zA-Z0-9]+)_(\d{4}-\d{1,2}-\d{1,2})_(\d{4}-\d{1,2}-\d{1,2})$/;
   const match = nameWithoutExt.match(regex);
 
@@ -86,8 +94,7 @@ export const parseCatalogueFilename = (filename: string): ParsedCatalogueInfo =>
     };
   }
 
-  // Fallback: try to extract any useful info
-  // For files like: catalogue_92b7a97e_1765366806.pdf
+  // Fallback
   const parts = nameWithoutExt.split('_');
   const today = new Date();
   const weekLater = new Date(today);
@@ -105,7 +112,7 @@ export const parseCatalogueFilename = (filename: string): ParsedCatalogueInfo =>
 };
 
 /**
- * NEW - Get suggested category for a store
+ * Get suggested category for a store
  */
 export const getSuggestedCategoryForStore = (storeId: string): string => {
   const normalized = storeId.toLowerCase();
@@ -113,7 +120,7 @@ export const getSuggestedCategoryForStore = (storeId: string): string => {
 };
 
 /**
- * NEW - Get category display name for catalogue
+ * Get category display name for catalogue
  */
 export const getCategoryDisplayName = (categoryId?: string, language: 'ar' | 'en' = 'ar'): string => {
   if (!categoryId) return language === 'ar' ? 'غير محدد' : 'Not specified';
@@ -125,7 +132,7 @@ export const getCategoryDisplayName = (categoryId?: string, language: 'ar' | 'en
 };
 
 /**
- * NEW - Filter catalogues by main category
+ * Filter catalogues by main category
  */
 export const filterCataloguesByCategory = (
   catalogues: Catalogue[],
@@ -135,7 +142,7 @@ export const filterCataloguesByCategory = (
 };
 
 /**
- * NEW - Group catalogues by category
+ * Group catalogues by category
  */
 export const groupCataloguesByCategory = (
   catalogues: Catalogue[]
@@ -143,12 +150,10 @@ export const groupCataloguesByCategory = (
   const mainCategories = getMainCategories();
   const grouped: Record<string, Catalogue[]> = {};
 
-  // Initialize with empty arrays for all main categories
+  // Initialize with empty arrays
   mainCategories.forEach(cat => {
     grouped[cat.id] = [];
   });
-
-  // Add 'uncategorized' for catalogues without category
   grouped['uncategorized'] = [];
 
   // Group catalogues
@@ -161,17 +166,6 @@ export const groupCataloguesByCategory = (
   });
 
   return grouped;
-};
-
-/**
- * Normalize date string to YYYY-MM-DD format
- */
-const normalizeDate = (dateStr: string): string => {
-  const parts = dateStr.split('-');
-  if (parts.length !== 3) return dateStr;
-
-  const [year, month, day] = parts;
-  return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 };
 
 /**
@@ -228,26 +222,21 @@ export const getCatalogueStatus = (startDate: string, endDate: string): Catalogu
 };
 
 /**
- * Create a Catalogue object from parsed info
+ * ✅ UPDATED: Create Catalogue WITHOUT pdfUrl (client doesn't need it)
  */
 export const createCatalogueFromParsed = (
   parsed: ParsedCatalogueInfo,
   index: number
 ): Catalogue => {
-  const pdfUrl = Platform.OS === 'web'
-    ? `/catalogues/${parsed.filename}`
-    : parsed.filename;
-
   return {
     id: `catalogue-${parsed.storeName}-${index}`,
     storeId: parsed.storeName,
-    categoryId: parsed.suggestedCategoryId, // NEW - Add suggested category
+    categoryId: parsed.suggestedCategoryId,
     titleAr: `عروض ${parsed.storeNameAr}`,
     titleEn: `${parsed.storeName.charAt(0).toUpperCase() + parsed.storeName.slice(1)} Offers`,
     startDate: parsed.startDate,
     endDate: parsed.endDate,
     coverImage: `https://placehold.co/400x600/e63946/ffffff?text=${encodeURIComponent(parsed.storeNameAr)}`,
-    pdfUrl,
     pages: [],
   };
 };
@@ -267,9 +256,6 @@ export const formatDateAr = (dateStr: string): string => {
 
 /**
  * Format date range for display
- * @param startDate Start date string (YYYY-MM-DD)
- * @param endDate End date string (YYYY-MM-DD)
- * @returns Formatted date range in Arabic
  */
 export const formatDateRange = (startDate: string, endDate: string): string => {
   try {
@@ -322,14 +308,14 @@ export const getDaysRemaining = (endDate: string): number => {
 };
 
 /**
- * NEW - Validate category ID
+ * Validate category ID
  */
 export const isValidCategoryId = (categoryId: string): boolean => {
   return !!getCategoryById(categoryId);
 };
 
 /**
- * NEW - Get catalogues statistics by category
+ * Get catalogues statistics by category
  */
 export interface CatalogueStatsByCategory {
   categoryId: string;

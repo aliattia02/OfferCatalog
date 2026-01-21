@@ -1,4 +1,5 @@
-// Part 1: Updated imports and state management
+// ✅ FIXED VERSION - Part 1/6: Imports, Constants, and Types
+
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   View,
@@ -15,6 +16,7 @@ import {
   Dimensions,
   I18nManager,
   StyleSheet,
+  Platform,
 } from 'react-native';
 
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -22,7 +24,7 @@ import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
-import { Button, CachedImage } from '../../components/common';
+import { Button, CachedImage, AdBanner } from '../../components/common';
 import { SavePageButton } from '../../components/flyers';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { useLocalized } from '../../hooks';
@@ -37,8 +39,20 @@ import { perfLogger, trackNavigation } from '../../utils/performanceLogger';
 import type { OfferWithCatalogue } from '../../services/offerService';
 import type { Catalogue } from '../../types';
 
+// ✅ Platform-aware constants
+const IS_WEB = Platform.OS === 'web';
+const USE_NATIVE_DRIVER = !IS_WEB;
+const PAN_SENSITIVITY = 0.6;
+const ZOOM_SCALE = 2.5;
 const PLACEHOLDER_PAGE_IMAGE_URL = 'https://placehold.co/600x800/cccccc/ffffff?text=No+Image';
 const { width, height } = Dimensions.get('window');
+
+// ✅ RTL-aware navigation icons
+const NAV_ICONS = {
+  prev: I18nManager.isRTL ? 'chevron-forward' : 'chevron-back',
+  next: I18nManager.isRTL ? 'chevron-back' : 'chevron-forward',
+  nextCatalogue: I18nManager.isRTL ? 'arrow-back' : 'arrow-forward',
+};
 
 type CatalogueStatus = 'active' | 'upcoming' | 'expired';
 
@@ -46,12 +60,14 @@ interface CatalogueWithStatus extends Catalogue {
   status: CatalogueStatus;
 }
 
-// 🔥 NEW: Offers cache state
 interface OffersCacheState {
   hasOffers: boolean;
   checkedAt: number;
   totalOffers: number;
 }
+
+// ✅ Track loaded images to prevent duplicate onLoad calls
+const loadedImagesCache = new Set<string>();
 
 export default function FlyerDetailScreen() {
   const { id, page } = useLocalSearchParams<{ id: string; page?: string }>();
@@ -60,13 +76,28 @@ export default function FlyerDetailScreen() {
   const dispatch = useAppDispatch();
   const { getTitle, getName } = useLocalized();
 
-  // 🔥 PERFORMANCE: Track component lifecycle
+  // ✅ Stable refs for tracking
   const mountTime = useRef(Date.now());
   const renderCount = useRef(0);
   const hasInitialized = useRef(false);
-  const [isReady, setIsReady] = useState(false);
+  const imageLoadStartRef = useRef(0);
+  const transitionStartRef = useRef(0);
+  const imageHasRenderedRef = useRef(false);
+  const offersCacheChecked = useRef(false);
+  const currentImageUrlRef = useRef<string>('');
 
-  // 🔥 NEW: Image loading tracking
+  // State
+  const [isReady, setIsReady] = useState(false);
+  const [currentPage, setCurrentPage] = useState(0);
+  const [catalogueOffers, setCatalogueOffers] = useState<OfferWithCatalogue[]>([]);
+  const [loadingOffers, setLoadingOffers] = useState(true);
+  const [offersCache, setOffersCache] = useState<OffersCacheState | null>(null);
+  const [fullScreenImage, setFullScreenImage] = useState(false);
+  const [isZoomed, setIsZoomed] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
+  const [showPerfOverlay, setShowPerfOverlay] = useState(false);
+
+  // ✅ Single metrics object
   const [imageLoadMetrics, setImageLoadMetrics] = useState({
     totalTime: 0,
     mountTime: 0,
@@ -76,31 +107,6 @@ export default function FlyerDetailScreen() {
     imageLoadEndTime: 0,
     imageRenderTime: 0,
   });
-  
-  // 🔥 NEW: Toggle for performance overlay
-  const [showPerfOverlay, setShowPerfOverlay] = useState(false);
-  
-  const imageLoadStartRef = useRef(0);
-  const transitionStartRef = useRef(0);
-  const imageHasRenderedRef = useRef(false);
-
-  // State
-  const [currentPage, setCurrentPage] = useState(0);
-  const [catalogueOffers, setCatalogueOffers] = useState<OfferWithCatalogue[]>([]);
-  const [loadingOffers, setLoadingOffers] = useState(true);
-  
-  // 🔥 NEW: Offers availability cache
-  const [offersCache, setOffersCache] = useState<OffersCacheState | null>(null);
-  const offersCacheChecked = useRef(false);
-  
-  const [fullScreenImage, setFullScreenImage] = useState(false);
-  const [isZoomed, setIsZoomed] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
-
-  // Refs for PanResponder
-  const currentPageRef = useRef(0);
-  const isZoomedRef = useRef(false);
-  const lastTap = useRef<number>(0);
 
   // Redux
   const catalogue = getCatalogueById(id);
@@ -112,119 +118,115 @@ export default function FlyerDetailScreen() {
   const totalPages = catalogue?.pages?.length || 0;
   const totalPagesRef = useRef(totalPages);
 
-// 🔥 NEW: Performance tracking overlay component with toggle
-const PerformanceOverlay = ({
-  visible,
-  metrics,
-  onToggle,
-}: {
-  visible: boolean;
-  metrics: {
-    totalTime: number;
-    mountTime: number;
-    firstRenderTime: number;
-    dataLoadTime: number;
-    imageLoadStartTime: number;
-    imageLoadEndTime: number;
-    imageRenderTime: number;
-  };
-  onToggle: () => void;
-}) => {
-  const getColor = (time: number) => {
-    if (time < 100) return '#4caf50';
-    if (time < 500) return '#ff9800';
-    return '#f44336';
-  };
+  // Refs for PanResponder
+  const currentPageRef = useRef(0);
+  const isZoomedRef = useRef(false);
+  const lastTap = useRef<number>(0);
 
-  const getTotalColor = () => getColor(metrics.totalTime);
-  const getImageLoadTime = () => metrics.imageLoadEndTime - metrics.imageLoadStartTime;
+  // Zoom animation values
+  const scale = useRef(new Animated.Value(1)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const lastTranslateX = useRef(0);
+  const lastTranslateY = useRef(0);
 
-  return (
-    <>
-      {/* Toggle Button - Always Visible */}
-      <TouchableOpacity
-        style={styles.perfToggleButton}
-        onPress={onToggle}
-        activeOpacity={0.7}
-      >
-        <Ionicons
-          name={visible ? "speedometer" : "speedometer-outline"}
-          size={20}
-          color={colors.white}
-        />
-      </TouchableOpacity>
+  renderCount.current++;
 
-      {/* Overlay - Only when visible */}
-      {visible && (
-        <View style={styles.perfOverlay}>
-          <View style={styles.perfHeader}>
-            <Text style={styles.perfTitle}>🎯 Transition Metrics</Text>
-            <Text style={[styles.perfTotal, { color: getTotalColor() }]}>
-              {metrics.totalTime}ms
-            </Text>
+  // ✅ FIXED VERSION - Part 2/6: Performance Overlay Component and Core Effects
+
+  // Performance tracking overlay component
+  const PerformanceOverlay = ({
+    visible,
+    metrics,
+    onToggle,
+  }: {
+    visible: boolean;
+    metrics: typeof imageLoadMetrics;
+    onToggle: () => void;
+  }) => {
+    const getColor = (time: number) => {
+      if (time < 100) return '#4caf50';
+      if (time < 500) return '#ff9800';
+      return '#f44336';
+    };
+
+    const getTotalColor = () => getColor(metrics.totalTime);
+    const getImageLoadTime = () => metrics.imageLoadEndTime - metrics.imageLoadStartTime;
+
+    return (
+      <>
+        <TouchableOpacity
+          style={styles.perfToggleButton}
+          onPress={onToggle}
+          activeOpacity={0.7}
+        >
+          <Ionicons
+            name={visible ? "speedometer" : "speedometer-outline"}
+            size={20}
+            color={colors.white}
+          />
+        </TouchableOpacity>
+
+        {visible && (
+          <View style={styles.perfOverlay}>
+            <View style={styles.perfHeader}>
+              <Text style={styles.perfTitle}>🎯 Transition Metrics</Text>
+              <Text style={[styles.perfTotal, { color: getTotalColor() }]}>
+                {metrics.totalTime}ms
+              </Text>
+            </View>
+
+            <View style={styles.perfMetrics}>
+              <View style={styles.perfRow}>
+                <Text style={styles.perfLabel}>Mount:</Text>
+                <Text style={styles.perfValue}>{metrics.mountTime}ms</Text>
+              </View>
+
+              <View style={styles.perfRow}>
+                <Text style={styles.perfLabel}>First Render:</Text>
+                <Text style={styles.perfValue}>{metrics.firstRenderTime}ms</Text>
+              </View>
+
+              <View style={styles.perfRow}>
+                <Text style={styles.perfLabel}>Data Load:</Text>
+                <Text style={[styles.perfValue, { color: getColor(metrics.dataLoadTime) }]}>
+                  {metrics.dataLoadTime}ms
+                </Text>
+              </View>
+
+              <View style={styles.perfRow}>
+                <Text style={styles.perfLabel}>🖼️ Image Start:</Text>
+                <Text style={styles.perfValue}>{metrics.imageLoadStartTime}ms</Text>
+              </View>
+
+              <View style={styles.perfRow}>
+                <Text style={styles.perfLabel}>🖼️ Image Loaded:</Text>
+                <Text style={[styles.perfValue, { color: getColor(getImageLoadTime()) }]}>
+                  {getImageLoadTime()}ms
+                </Text>
+              </View>
+
+              <View style={styles.perfRow}>
+                <Text style={styles.perfLabel}>🖼️ Image Rendered:</Text>
+                <Text style={styles.perfValue}>{metrics.imageRenderTime}ms</Text>
+              </View>
+            </View>
+
+            {getImageLoadTime() > 500 && (
+              <View style={styles.perfWarning}>
+                <Ionicons name="warning" size={16} color="#ff9800" />
+                <Text style={styles.perfWarningText}>
+                  Image loading is slow! ({getImageLoadTime()}ms)
+                </Text>
+              </View>
+            )}
           </View>
+        )}
+      </>
+    );
+  };
 
-          <View style={styles.perfMetrics}>
-            <View style={styles.perfRow}>
-              <Text style={styles.perfLabel}>Mount:</Text>
-              <Text style={styles.perfValue}>{metrics.mountTime}ms</Text>
-            </View>
-
-            <View style={styles.perfRow}>
-              <Text style={styles.perfLabel}>First Render:</Text>
-              <Text style={styles.perfValue}>{metrics.firstRenderTime}ms</Text>
-            </View>
-
-            <View style={styles.perfRow}>
-              <Text style={styles.perfLabel}>Data Load:</Text>
-              <Text style={[styles.perfValue, { color: getColor(metrics.dataLoadTime) }]}>
-                {metrics.dataLoadTime}ms
-              </Text>
-            </View>
-
-            <View style={styles.perfRow}>
-              <Text style={styles.perfLabel}>🖼️ Image Start:</Text>
-              <Text style={styles.perfValue}>{metrics.imageLoadStartTime}ms</Text>
-            </View>
-
-            <View style={styles.perfRow}>
-              <Text style={styles.perfLabel}>🖼️ Image Loaded:</Text>
-              <Text style={[styles.perfValue, { color: getColor(getImageLoadTime()) }]}>
-                {getImageLoadTime()}ms
-              </Text>
-            </View>
-
-            <View style={styles.perfRow}>
-              <Text style={styles.perfLabel}>🖼️ Image Rendered:</Text>
-              <Text style={styles.perfValue}>{metrics.imageRenderTime}ms</Text>
-            </View>
-          </View>
-
-          {getImageLoadTime() > 500 && (
-            <View style={styles.perfWarning}>
-              <Ionicons name="warning" size={16} color="#ff9800" />
-              <Text style={styles.perfWarningText}>
-                Image loading is slow! ({getImageLoadTime()}ms)
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
-    </>
-  );
-};
-
-
-// Part 3: Optimized offers loading with initial check
-
-  // 🔥 PERFORMANCE: Track renders
-  useEffect(() => {
-    renderCount.current++;
-    perfLogger.trackRender('FlyerDetail', 3);
-    console.log(`📄 [FlyerDetail] Render #${renderCount.current}`);
-  });
-
-  // 🔥 PERFORMANCE: Track mount and defer heavy work
+  // ✅ Stable mount effect - only runs once
   useEffect(() => {
     const transitionStart = Date.now();
     transitionStartRef.current = transitionStart;
@@ -241,7 +243,6 @@ const PerformanceOverlay = ({
       mountTime: mountDuration,
     }));
 
-    // Defer heavy initialization
     InteractionManager.runAfterInteractions(() => {
       console.log('✅ [FlyerDetail] Interactions complete');
       const firstRenderTime = Date.now() - transitionStart;
@@ -268,32 +269,28 @@ const PerformanceOverlay = ({
     };
   }, []);
 
-  // 🔥 NEW: OPTIMIZED - Check if catalogue has ANY offers at start
-  // This runs ONCE when component mounts and caches the result
+  // ✅ Offers check with proper dependencies
   useEffect(() => {
-    const checkCatalogueHasOffers = async () => {
-      if (!catalogue?.id || offersCacheChecked.current) {
-        return;
-      }
+    if (!catalogue?.id || offersCacheChecked.current) {
+      return;
+    }
 
-      offersCacheChecked.current = true;
+    offersCacheChecked.current = true;
 
+    const checkOffers = async () => {
       try {
         console.log(`🔍 [Offers Check] Checking if catalogue ${catalogue.id} has offers...`);
         perfLogger.start('FlyerDetail.checkOffers');
 
         const offers = await getOffersByCatalogue(catalogue.id);
-
         const hasOffers = offers.length > 0;
-        const cacheState: OffersCacheState = {
+
+        setOffersCache({
           hasOffers,
           checkedAt: Date.now(),
           totalOffers: offers.length,
-        };
+        });
 
-        setOffersCache(cacheState);
-
-        // If we have offers, set them immediately
         if (hasOffers) {
           setCatalogueOffers(offers);
           console.log(`✅ [Offers Check] Found ${offers.length} offers for catalogue`);
@@ -321,10 +318,10 @@ const PerformanceOverlay = ({
       }
     };
 
-    checkCatalogueHasOffers();
+    checkOffers();
   }, [catalogue?.id]);
 
-  // 🔥 OPTIMIZED: Memoize store lookup
+  // Memoize store lookup
   const store = useMemo(() => {
     return stores.find(s => s.id === catalogue?.storeId) || (catalogue ? {
       id: catalogue.storeId,
@@ -335,14 +332,14 @@ const PerformanceOverlay = ({
     } : null);
   }, [stores, catalogue?.storeId, catalogue?.titleAr, catalogue?.titleEn]);
 
-  // 🔥 OPTIMIZED: Memoize header title
+  // ✅ Stable header title
   const headerTitle = useMemo(() => {
     if (!catalogue) return '';
     const dateRange = formatDateRange(catalogue.startDate, catalogue.endDate);
     return `${catalogue.titleAr} • ${dateRange}`;
   }, [catalogue?.titleAr, catalogue?.startDate, catalogue?.endDate]);
 
-  // Analytics: Log screen view
+  // ✅ Analytics with proper dependency
   useEffect(() => {
     if (id && !hasInitialized.current) {
       hasInitialized.current = true;
@@ -351,7 +348,7 @@ const PerformanceOverlay = ({
         logViewItem(catalogue.id, catalogue.titleAr, catalogue.categoryId);
       }
     }
-  }, [id, catalogue?.id]);
+  }, [id]);
 
   // Set initial page
   useEffect(() => {
@@ -365,7 +362,7 @@ const PerformanceOverlay = ({
     }
   }, [page, totalPages]);
 
-  // Update refs
+  // Update refs when state changes
   useEffect(() => {
     currentPageRef.current = currentPage;
   }, [currentPage]);
@@ -378,26 +375,22 @@ const PerformanceOverlay = ({
     totalPagesRef.current = totalPages;
   }, [totalPages]);
 
-// Part 4: Optimized page offers and callbacks
+  // ✅ FIXED VERSION - Part 3/6: Image Loading Tracking and Callbacks
 
-  // Zoom animation values
-  const scale = useRef(new Animated.Value(1)).current;
-  const translateX = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(0)).current;
-  const lastTranslateX = useRef(0);
-  const lastTranslateY = useRef(0);
-
-  // 🔥 NEW: Track image loading for current page
+  // ✅ IMPROVED: Image loading tracking with deduplication
   useEffect(() => {
-    if (!catalogue?.pages || !catalogue.pages[currentPage]) {
+    if (!catalogue?.pages?.[currentPage]) {
       return;
     }
 
     const currentPageData = catalogue.pages[currentPage];
+    const imageUrl = currentPageData.imageUrl;
+
+    // Reset image state
     setImageLoaded(false);
     imageHasRenderedRef.current = false;
+    currentImageUrlRef.current = imageUrl;
 
-    // Mark image load start
     const imageStartTime = Date.now() - transitionStartRef.current;
     imageLoadStartRef.current = Date.now();
 
@@ -409,13 +402,16 @@ const PerformanceOverlay = ({
     trackNavigation.markPhase('imageLoadStart');
     console.log(`🖼️ [Image] Load started for page ${currentPage + 1} at ${imageStartTime}ms`);
 
-    // Preload the image
-    if (currentPageData.imageUrl) {
-      Image.prefetch(currentPageData.imageUrl)
+    // ✅ Only prefetch if not already in cache
+    if (imageUrl && !loadedImagesCache.has(imageUrl)) {
+      Image.prefetch(imageUrl)
         .then(() => {
           const imageEndTime = Date.now();
           const loadDuration = imageEndTime - imageLoadStartRef.current;
           const totalElapsed = imageEndTime - transitionStartRef.current;
+
+          // Mark as loaded in cache
+          loadedImagesCache.add(imageUrl);
 
           setImageLoadMetrics(prev => ({
             ...prev,
@@ -435,14 +431,18 @@ const PerformanceOverlay = ({
         .catch((error) => {
           console.error(`❌ [Image] Prefetch failed:`, error);
         });
+    } else if (loadedImagesCache.has(imageUrl)) {
+      console.log(`✅ [Image] Using cached image for page ${currentPage + 1}`);
     }
   }, [currentPage, catalogue?.id]);
 
-  // 🔥 NEW: Track when image actually renders
+  // ✅ IMPROVED: Stable handleImageLoad callback with better deduplication
   const handleImageLoad = useCallback(() => {
-    // Prevent multiple calls
+    const currentImageUrl = currentImageUrlRef.current;
+
+    // Prevent multiple calls for the same image
     if (imageHasRenderedRef.current) {
-      console.log('⚠️ [Image] onLoad called multiple times, ignoring...');
+      console.log(`⚠️ [Image] onLoad called again for ${currentImageUrl}, ignoring...`);
       return;
     }
 
@@ -452,6 +452,7 @@ const PerformanceOverlay = ({
     setImageLoadMetrics(prev => ({
       ...prev,
       imageRenderTime: renderTime,
+      totalTime: Date.now() - transitionStartRef.current,
     }));
 
     setImageLoaded(true);
@@ -459,13 +460,6 @@ const PerformanceOverlay = ({
 
     const loadDuration = Date.now() - imageLoadStartRef.current;
     console.log(`🖼️ [Image] Rendered in ${loadDuration}ms (total: ${renderTime}ms)`);
-
-    // Mark transition as complete
-    const totalTransitionTime = Date.now() - transitionStartRef.current;
-    setImageLoadMetrics(prev => ({
-      ...prev,
-      totalTime: totalTransitionTime,
-    }));
   }, []);
 
   // Reset zoom when page changes
@@ -473,43 +467,46 @@ const PerformanceOverlay = ({
     resetZoom();
   }, [currentPage, fullScreenImage]);
 
+  // ✅ Stable resetZoom callback
   const resetZoom = useCallback(() => {
     setIsZoomed(false);
     isZoomedRef.current = false;
+
     Animated.parallel([
       Animated.timing(scale, {
         toValue: 1,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }),
       Animated.timing(translateX, {
         toValue: 0,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }),
       Animated.timing(translateY, {
         toValue: 0,
         duration: 200,
-        useNativeDriver: true,
+        useNativeDriver: USE_NATIVE_DRIVER,
       }),
     ]).start();
+
     lastTranslateX.current = 0;
     lastTranslateY.current = 0;
-  }, [scale, translateX, translateY]);
+  }, []);
 
-  // 🔥 OPTIMIZED: Use cached catalogue status
+  // ✅ Stable catalogue status callback
   const getCatalogueStatus = useCallback((startDate: string, endDate: string): CatalogueStatus => {
     if (!catalogue) return 'expired';
     return cacheService.getCatalogueStatus(catalogue.id, startDate, endDate);
   }, [catalogue?.id]);
 
-  // 🔥 OPTIMIZED: Memoize next catalogue with proper dependencies
+  // ✅ Memoize next catalogue
   const nextCatalogue = useMemo(() => {
     if (!catalogue) return null;
 
     perfLogger.start('FlyerDetail.calculateNextCatalogue');
 
-    const cataloguesWithStatus: CatalogueWithStatus[] = catalogues.map(cat => ({
+    const cataloguesWithStatus = catalogues.map(cat => ({
       ...cat,
       status: getCatalogueStatus(cat.startDate, cat.endDate),
     }));
@@ -547,7 +544,7 @@ const PerformanceOverlay = ({
     nextCatalogueRef.current = nextCatalogue;
   }, [nextCatalogue]);
 
-  // Navigate to next catalogue
+  // ✅ Stable navigation callback
   const navigateToNextCatalogue = useCallback(() => {
     if (nextCatalogueRef.current) {
       console.log('📄 Navigating to next catalogue:', nextCatalogueRef.current.id);
@@ -561,14 +558,12 @@ const PerformanceOverlay = ({
     }
   }, [router]);
 
-  // 🔥 NEW: Toggle performance overlay
+  // ✅ Stable performance overlay toggle
   const handleTogglePerfOverlay = useCallback(() => {
     setShowPerfOverlay(prev => !prev);
   }, []);
 
-// Part 5: Event handlers and PanResponders
-
-  // Double-tap zoom handler
+  // ✅ Stable double-tap handler
   const handleDoubleTap = useCallback(() => {
     const now = Date.now();
 
@@ -577,21 +572,9 @@ const PerformanceOverlay = ({
         setIsZoomed(false);
         isZoomedRef.current = false;
         Animated.parallel([
-          Animated.spring(scale, {
-            toValue: 1,
-            useNativeDriver: true,
-            friction: 5,
-          }),
-          Animated.spring(translateX, {
-            toValue: 0,
-            useNativeDriver: true,
-            friction: 5,
-          }),
-          Animated.spring(translateY, {
-            toValue: 0,
-            useNativeDriver: true,
-            friction: 5,
-          }),
+          Animated.spring(scale, { toValue: 1, useNativeDriver: USE_NATIVE_DRIVER, friction: 5 }),
+          Animated.spring(translateX, { toValue: 0, useNativeDriver: USE_NATIVE_DRIVER, friction: 5 }),
+          Animated.spring(translateY, { toValue: 0, useNativeDriver: USE_NATIVE_DRIVER, friction: 5 }),
         ]).start();
         lastTranslateX.current = 0;
         lastTranslateY.current = 0;
@@ -599,8 +582,8 @@ const PerformanceOverlay = ({
         setIsZoomed(true);
         isZoomedRef.current = true;
         Animated.spring(scale, {
-          toValue: 2.5,
-          useNativeDriver: true,
+          toValue: ZOOM_SCALE,
+          useNativeDriver: USE_NATIVE_DRIVER,
           friction: 5,
         }).start();
       }
@@ -608,9 +591,9 @@ const PerformanceOverlay = ({
     } else {
       lastTap.current = now;
     }
-  }, [scale, translateX, translateY]);
+  }, []);
 
-  // Clamp translation
+  // ✅ Stable clamp translation
   const clampTranslation = useCallback((x: number, y: number, currentScale: number) => {
     const maxX = (width * (currentScale - 1)) / 2;
     const maxY = (height * 0.8 * (currentScale - 1)) / 2;
@@ -621,13 +604,13 @@ const PerformanceOverlay = ({
     };
   }, []);
 
-  // 🔥 OPTIMIZED: Memoize PanResponders
+  // ✅ FIXED VERSION - Part 4/6: PanResponders and Business Logic
+
+  // ✅ Memoize PanResponders with stable dependencies
   const normalViewPan = useMemo(() =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dx) > 10;
-      },
+      onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dx) > 10,
       onPanResponderRelease: (_, gestureState) => {
         const { dx, vx } = gestureState;
         const page = currentPageRef.current;
@@ -637,8 +620,9 @@ const PerformanceOverlay = ({
         const isLongSwipe = Math.abs(dx) > 50;
 
         if (isFastSwipe || isLongSwipe) {
-          const isSwipeLeft = dx < 0;
-          const isSwipeRight = dx > 0;
+          // ✅ RTL-aware swipe direction
+          const isSwipeLeft = I18nManager.isRTL ? dx > 0 : dx < 0;
+          const isSwipeRight = I18nManager.isRTL ? dx < 0 : dx > 0;
 
           if (isSwipeRight && page > 0) {
             setCurrentPage(page - 1);
@@ -649,8 +633,10 @@ const PerformanceOverlay = ({
           }
         }
       },
-    }), [navigateToNextCatalogue]);
+    }),
+  []);
 
+  // ✅ Memoize fullscreen pan with stable dependencies
   const fullScreenPan = useMemo(() =>
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -672,10 +658,9 @@ const PerformanceOverlay = ({
       },
       onPanResponderMove: (_, gestureState) => {
         if (isZoomedRef.current) {
-          const newX = lastTranslateX.current + gestureState.dx;
-          const newY = lastTranslateY.current + gestureState.dy;
-          const currentScale = 2.5;
-          const clamped = clampTranslation(newX, newY, currentScale);
+          const newX = lastTranslateX.current + (gestureState.dx * PAN_SENSITIVITY);
+          const newY = lastTranslateY.current + (gestureState.dy * PAN_SENSITIVITY);
+          const clamped = clampTranslation(newX, newY, ZOOM_SCALE);
 
           translateX.setValue(clamped.x);
           translateY.setValue(clamped.y);
@@ -698,8 +683,9 @@ const PerformanceOverlay = ({
           const isLongSwipe = Math.abs(dx) > 50;
 
           if (isFastSwipe || isLongSwipe) {
-            const isSwipeLeft = dx < 0;
-            const isSwipeRight = dx > 0;
+            // ✅ RTL-aware swipe direction
+            const isSwipeLeft = I18nManager.isRTL ? dx > 0 : dx < 0;
+            const isSwipeRight = I18nManager.isRTL ? dx < 0 : dx > 0;
 
             if (isSwipeRight && page > 0) {
               setCurrentPage(page - 1);
@@ -711,31 +697,28 @@ const PerformanceOverlay = ({
           }
         }
       },
-    }), [translateX, translateY, clampTranslation, navigateToNextCatalogue]);
+    }),
+  [clampTranslation]);
 
-  // 🔥 OPTIMIZED: Memoize page offers - only compute if cache says we have offers
+  // ✅ Memoize page offers
   const pageOffers = useMemo(() => {
-    // Skip filtering if we know there are no offers
     if (offersCache && !offersCache.hasOffers) {
       return [];
     }
 
-    // Only filter if we have offers
     if (catalogueOffers.length === 0) {
       return [];
     }
 
     perfLogger.start('FlyerDetail.filterPageOffers');
-    const filtered = catalogueOffers.filter(
-      offer => offer.pageNumber === currentPage + 1
-    );
+    const filtered = catalogueOffers.filter(offer => offer.pageNumber === currentPage + 1);
     perfLogger.end('FlyerDetail.filterPageOffers');
     return filtered;
-  }, [catalogueOffers, currentPage, offersCache]);
+  }, [catalogueOffers, currentPage, offersCache?.hasOffers]);
 
-  // 🔥 OPTIMIZED: Memoize isPageSaved check
+  // ✅ Stable isPageSaved
   const isPageSaved = useMemo(() => {
-    if (!catalogue || !catalogue.pages || catalogue.pages.length === 0) return false;
+    if (!catalogue?.pages || catalogue.pages.length === 0) return false;
     return basketItems.some(
       item =>
         item.type === 'page' &&
@@ -744,7 +727,7 @@ const PerformanceOverlay = ({
     );
   }, [basketItems, catalogue?.id, catalogue?.pages, currentPage]);
 
-  // 🔥 OPTIMIZED: Memoize callbacks
+  // Memoize callbacks
   const handleAddToBasket = useCallback((offer: OfferWithCatalogue) => {
     dispatch(addToBasket({
       offer,
@@ -801,9 +784,7 @@ const PerformanceOverlay = ({
     }
   }, [currentPage, totalPages, nextCatalogue, navigateToNextCatalogue]);
 
-// Part 6: Render functions and early returns
-
-  // 🔥 OPTIMIZED: Memoize offer thumbnail render
+  // Memoize offer thumbnail render
   const renderOfferThumbnail = useCallback((offer: OfferWithCatalogue) => {
     const discount = offer.originalPrice
       ? calculateDiscount(offer.originalPrice, offer.offerPrice)
@@ -857,6 +838,8 @@ const PerformanceOverlay = ({
     );
   }, [handleOfferPress, handleAddToBasket]);
 
+ // ✅ FIXED VERSION - Part 5/6: Main Render Logic
+
   // Early returns for error states
   if (!catalogue) {
     return (
@@ -882,7 +865,7 @@ const PerformanceOverlay = ({
   const currentPageData = hasPages ? catalogue.pages[currentPage] : null;
   const isLastPage = currentPage === totalPages - 1;
 
-  // 🔥 PERFORMANCE: Show loading skeleton while interactions complete
+  // Show loading skeleton while interactions complete
   if (!isReady) {
     return (
       <>
@@ -901,12 +884,10 @@ const PerformanceOverlay = ({
     );
   }
 
-  // 🔥 NEW: Show offers status in UI
   const shouldShowOffersSection = offersCache?.hasOffers && pageOffers.length > 0;
   const shouldShowNoOffersMessage = offersCache?.hasOffers === false;
 
-// Part 7: Main JSX return - First half
-
+  // Main render
   return (
     <>
       <Stack.Screen
@@ -920,7 +901,6 @@ const PerformanceOverlay = ({
         }}
       />
 
-      {/* 🔥 NEW: Performance Overlay with Toggle */}
       <PerformanceOverlay
         visible={showPerfOverlay}
         metrics={imageLoadMetrics}
@@ -928,6 +908,9 @@ const PerformanceOverlay = ({
       />
 
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        {/* ✅ Ad banner above catalogue */}
+        <AdBanner position="flyers" maxAds={1} />
+
         {hasPages ? (
           <View style={styles.pageContainer}>
             <View {...normalViewPan.panHandlers} style={styles.swipeContainer}>
@@ -950,7 +933,6 @@ const PerformanceOverlay = ({
                   }}
                 />
 
-                {/* 🔥 NEW: Loading indicator while image loads */}
                 {!imageLoaded && (
                   <View style={styles.imageLoadingOverlay}>
                     <ActivityIndicator size="large" color={colors.primary} />
@@ -964,7 +946,7 @@ const PerformanceOverlay = ({
               {isLastPage && nextCatalogue && (
                 <View style={styles.swipeIndicator}>
                   <Ionicons
-                    name="chevron-forward"
+                    name={NAV_ICONS.next}
                     size={20}
                     color={colors.primary}
                   />
@@ -975,7 +957,6 @@ const PerformanceOverlay = ({
               )}
             </View>
 
-            {/* Navigation controls */}
             <View style={styles.pageNavigationCenter}>
               <View style={styles.navControls}>
                 <TouchableOpacity
@@ -984,7 +965,7 @@ const PerformanceOverlay = ({
                   disabled={currentPage === 0}
                 >
                   <Ionicons
-                    name="chevron-back"
+                    name={NAV_ICONS.prev}
                     size={24}
                     color={currentPage === 0 ? colors.gray[400] : colors.white}
                   />
@@ -1006,7 +987,7 @@ const PerformanceOverlay = ({
                   disabled={isLastPage && !nextCatalogue}
                 >
                   <Ionicons
-                    name={isLastPage && nextCatalogue ? "arrow-forward" : "chevron-forward"}
+                    name={isLastPage && nextCatalogue ? NAV_ICONS.nextCatalogue : NAV_ICONS.next}
                     size={24}
                     color={isLastPage && !nextCatalogue ? colors.gray[400] : colors.white}
                   />
@@ -1023,6 +1004,7 @@ const PerformanceOverlay = ({
           </View>
         )}
 
+        {/* ✅ Save Page Button - directly under catalogue pages */}
         {hasPages && (
           <View style={styles.savePageSection}>
             <SavePageButton
@@ -1032,7 +1014,19 @@ const PerformanceOverlay = ({
           </View>
         )}
 
-        {/* 🔥 OPTIMIZED: Offers section - only render if we have offers */}
+        {/* ✅ Ad banner below catalogue */}
+        <AdBanner position="flyers" maxAds={1} />
+
+        {/* ✅ MOVED: No offers message - above the offers section */}
+        {shouldShowNoOffersMessage && hasPages && (
+          <View style={styles.noOffersContainer}>
+            <Ionicons name="pricetags-outline" size={48} color={colors.gray[400]} />
+            <Text style={styles.noOffersText}>
+              يمكنك اضافة الصفحه بكاملها الي السله - لا توجد عروض مسجله لهذا الكتالوج
+            </Text>
+          </View>
+        )}
+
         {loadingOffers ? (
           <View style={styles.loadingSection}>
             <ActivityIndicator size="large" color={colors.primary} />
@@ -1049,21 +1043,11 @@ const PerformanceOverlay = ({
               {pageOffers.map(renderOfferThumbnail)}
             </View>
           </View>
-        ) : shouldShowNoOffersMessage && hasPages ? (
-          <View style={styles.noOffersContainer}>
-            <Ionicons name="pricetags-outline" size={48} color={colors.gray[400]} />
-            <Text style={styles.noOffersText}>
-              يمكنك اضافة الصفحه بكاملها الي السله - لا توجد عروض مسجله لهذا الكتالوج
-            </Text>
-          </View>
         ) : null}
 
         <View style={styles.bottomPadding} />
       </ScrollView>
 
-// Part 8: Fullscreen Modal and beginning of styles
-
-      {/* Fullscreen Modal */}
       <Modal
         visible={fullScreenImage}
         transparent={true}
@@ -1126,7 +1110,7 @@ const PerformanceOverlay = ({
           {isLastPage && nextCatalogue && !isZoomed && (
             <View style={styles.fullScreenSwipeHint}>
               <Ionicons
-                name="chevron-forward"
+                name={NAV_ICONS.next}
                 size={16}
                 color={colors.white}
               />
@@ -1143,7 +1127,7 @@ const PerformanceOverlay = ({
               disabled={currentPage === 0 || isZoomed}
             >
               <Ionicons
-                name="chevron-back"
+                name={NAV_ICONS.prev}
                 size={28}
                 color={colors.white}
               />
@@ -1165,7 +1149,7 @@ const PerformanceOverlay = ({
               disabled={(isLastPage && !nextCatalogue) || isZoomed}
             >
               <Ionicons
-                name={isLastPage && nextCatalogue ? "arrow-forward" : "chevron-forward"}
+                name={isLastPage && nextCatalogue ? NAV_ICONS.nextCatalogue : NAV_ICONS.next}
                 size={28}
                 color={isLastPage && !nextCatalogue ? colors.gray[400] : colors.white}
               />
@@ -1176,8 +1160,7 @@ const PerformanceOverlay = ({
     </>
   );
 }
-
-// Part 9: Complete StyleSheet
+// ✅ FIXED VERSION - Part 6/6: StyleSheet
 
 const styles = StyleSheet.create({
   container: {
@@ -1245,8 +1228,9 @@ const styles = StyleSheet.create({
   swipeIndicator: {
     position: 'absolute',
     bottom: 60,
-    right: spacing.md,
-    flexDirection: 'row',
+    right: I18nManager.isRTL ? undefined : spacing.md,
+    left: I18nManager.isRTL ? spacing.md : undefined,
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
     paddingHorizontal: spacing.sm,
@@ -1268,7 +1252,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   navControls: {
-    flexDirection: 'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
@@ -1541,7 +1525,7 @@ const styles = StyleSheet.create({
     bottom: 40,
     left: 0,
     right: 0,
-    flexDirection: 'row',
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
@@ -1570,11 +1554,12 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.lg,
     fontWeight: 'bold',
   },
-  // 🔥 NEW: Performance overlay styles with toggle
-  perfToggleMinimized: {
+  // ✅ FIXED: Performance toggle button styles
+  perfToggleButton: {
     position: 'absolute',
     top: 100,
-    right: 10,
+    right: I18nManager.isRTL ? undefined : 10,
+    left: I18nManager.isRTL ? 10 : undefined,
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -1591,7 +1576,8 @@ const styles = StyleSheet.create({
   perfOverlay: {
     position: 'absolute',
     top: 100,
-    right: 10,
+    right: I18nManager.isRTL ? undefined : 10,
+    left: I18nManager.isRTL ? 10 : undefined,
     backgroundColor: 'rgba(0, 0, 0, 0.85)',
     padding: spacing.sm,
     borderRadius: borderRadius.md,
@@ -1612,11 +1598,6 @@ const styles = StyleSheet.create({
     borderBottomColor: 'rgba(255, 255, 255, 0.2)',
     paddingBottom: spacing.xs,
   },
-  perfHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
   perfTitle: {
     color: colors.white,
     fontSize: 12,
@@ -1625,9 +1606,6 @@ const styles = StyleSheet.create({
   perfTotal: {
     fontSize: 14,
     fontWeight: 'bold',
-  },
-  perfCloseButton: {
-    padding: 2,
   },
   perfMetrics: {
     gap: 4,

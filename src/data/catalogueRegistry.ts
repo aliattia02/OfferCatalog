@@ -1,10 +1,10 @@
-// src/data/catalogueRegistry. ts
+// src/data/catalogueRegistry.ts - CLIENT VERSION (No PDF)
 import { Catalogue } from '../types';
 import { getAllCatalogues } from '../services/adminService';
 
 // Cache for catalogues loaded from Firestore
 let cataloguesCache: Catalogue[] = [];
-let lastFetchTime:  number = 0;
+let lastFetchTime: number = 0;
 const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 export interface CatalogueWithStatus extends Catalogue {
@@ -36,12 +36,14 @@ export const loadCataloguesFromFirestore = async (): Promise<Catalogue[]> => {
     lastFetchTime = now;
     console.log(`✅ Loaded ${catalogues.length} catalogues from Firestore`);
 
-    // Log each catalogue for debugging
-    catalogues. forEach(cat => {
-      console.log(`  📄 ${cat.titleAr} (${cat.id})`);
-      console.log(`     PDF: ${cat.pdfUrl}`);
-      console.log(`     Dates: ${cat.startDate} to ${cat.endDate}`);
-    });
+    // Log each catalogue for debugging (WITHOUT PDF)
+    if (__DEV__) {
+      catalogues.forEach(cat => {
+        console.log(`  📄 ${cat.titleAr} (${cat.id})`);
+        console.log(`     Dates: ${cat.startDate} to ${cat.endDate}`);
+        console.log(`     Pages: ${cat.pages?.length || 0}`);
+      });
+    }
 
     return catalogues;
   } catch (error) {
@@ -54,10 +56,14 @@ export const loadCataloguesFromFirestore = async (): Promise<Catalogue[]> => {
 /**
  * Get catalogue by ID (synchronous - uses cache)
  */
-export const getCatalogueById = (id?:  string): Catalogue | undefined => {
+export const getCatalogueById = (id?: string): Catalogue | undefined => {
   if (!id) return undefined;
   const found = cataloguesCache.find(c => c.id === id);
-  console.log(`🔍 getCatalogueById('${id}'):`, found ? 'Found' : 'Not found');
+
+  if (__DEV__) {
+    console.log(`🔍 getCatalogueById('${id}'):`, found ? 'Found' : 'Not found');
+  }
+
   return found;
 };
 
@@ -65,7 +71,9 @@ export const getCatalogueById = (id?:  string): Catalogue | undefined => {
  * Get all catalogues (synchronous - uses cache)
  */
 export const getAllCataloguesSync = (): Catalogue[] => {
-  console.log(`📚 getAllCataloguesSync:  Returning ${cataloguesCache.length} catalogues`);
+  if (__DEV__) {
+    console.log(`📚 getAllCataloguesSync: Returning ${cataloguesCache.length} catalogues`);
+  }
   return cataloguesCache;
 };
 
@@ -98,9 +106,11 @@ export const getCataloguesGroupedByStatus = (): {
   all: CatalogueWithStatus[];
   active: CatalogueWithStatus[];
   upcoming: CatalogueWithStatus[];
-  expired:  CatalogueWithStatus[];
+  expired: CatalogueWithStatus[];
 } => {
-  console.log(`📊 getCataloguesGroupedByStatus: Processing ${cataloguesCache.length} catalogues`);
+  if (__DEV__) {
+    console.log(`📊 getCataloguesGroupedByStatus: Processing ${cataloguesCache.length} catalogues`);
+  }
 
   const cataloguesWithStatus: CatalogueWithStatus[] = cataloguesCache.map(catalogue => {
     const status = getCatalogueStatus(catalogue.startDate, catalogue.endDate);
@@ -109,8 +119,8 @@ export const getCataloguesGroupedByStatus = (): {
       ...catalogue,
       status,
       parsedInfo: {
-        storeName:  catalogue.storeId,
-        storeNameAr: catalogue.storeName || catalogue.titleAr. replace('عروض ', ''),
+        storeName: catalogue.storeId,
+        storeNameAr: catalogue.storeName || catalogue.titleAr.replace('عروض ', ''),
         startDate: catalogue.startDate,
         endDate: catalogue.endDate,
       },
@@ -124,12 +134,14 @@ export const getCataloguesGroupedByStatus = (): {
     expired: cataloguesWithStatus.filter(c => c.status === 'expired'),
   };
 
-  console.log(`📊 Grouped catalogues: `, {
-    all: grouped.all.length,
-    active: grouped.active.length,
-    upcoming: grouped.upcoming.length,
-    expired: grouped.expired. length,
-  });
+  if (__DEV__) {
+    console.log(`📊 Grouped catalogues:`, {
+      all: grouped.all.length,
+      active: grouped.active.length,
+      upcoming: grouped.upcoming.length,
+      expired: grouped.expired.length,
+    });
+  }
 
   return grouped;
 };

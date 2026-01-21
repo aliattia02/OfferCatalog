@@ -1,6 +1,6 @@
-// data/stores.ts - FIXED VERSION with Proper Logos
+// data/stores.ts - COMPLETE VERSION with Default Logo Fallback
 import type { Store, Branch } from '../types';
-import { storeLogos } from '../assets/logoRegistry';
+import { storeLogos, getStoreLogo } from '../assets/logoRegistry';
 
 // ============================================
 // GOVERNORATE DEFINITIONS
@@ -202,13 +202,18 @@ export const getCityName = (cityId: CityId, lang: 'ar' | 'en' = 'ar'): string =>
 export const getCityGovernorate = (cityId: CityId): GovernorateId => {
   return cityNames[cityId]?.governorate;
 };
+
+// ============================================
+// STORES DATA
+// ============================================
+
 export const stores: Store[] = [
   // MULTI-CATEGORY STORES
   {
     id: 'carrefour',
     nameAr: 'كارفور',
     nameEn: 'Carrefour',
-    logo: storeLogos.carrefour,
+    logo: getStoreLogo('carrefour'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     branches: [],
   },
@@ -216,7 +221,7 @@ export const stores: Store[] = [
     id: 'hyperone',
     nameAr: 'هايبر وان',
     nameEn: 'HyperOne',
-    logo: storeLogos.hyperone,
+    logo: getStoreLogo('hyperone'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     branches: [],
   },
@@ -224,7 +229,7 @@ export const stores: Store[] = [
     id: 'kazyon',
     nameAr: 'كازيون',
     nameEn: 'Kazyon',
-    logo: storeLogos.kazyon,
+    logo: getStoreLogo('kazyon'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     branches: [],
   },
@@ -232,7 +237,7 @@ export const stores: Store[] = [
     id: 'awladragab',
     nameAr: 'أولاد رجب',
     nameEn: 'Awlad Ragab',
-    logo: storeLogos.awladragab,
+    logo: getStoreLogo('awladragab'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     branches: [],
   },
@@ -242,7 +247,7 @@ export const stores: Store[] = [
     id: 'metro',
     nameAr: 'مترو',
     nameEn: 'Metro',
-    logo: storeLogos.metro,
+    logo: getStoreLogo('metro'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     branches: [],
   },
@@ -250,7 +255,7 @@ export const stores: Store[] = [
     id: 'spinneys',
     nameAr: 'سبينيس',
     nameEn: 'Spinneys',
-    logo: storeLogos.spinneys,
+    logo: getStoreLogo('spinneys'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     branches: [],
   },
@@ -258,7 +263,7 @@ export const stores: Store[] = [
     id: 'seoudi',
     nameAr: 'سعودي',
     nameEn: 'Seoudi',
-    logo: storeLogos.seoudi,
+    logo: getStoreLogo('seoudi'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     branches: [],
   },
@@ -266,7 +271,7 @@ export const stores: Store[] = [
     id: 'kheirzaman',
     nameAr: 'خير زمان',
     nameEn: 'Kheir Zaman',
-    logo: storeLogos.kheirzaman,
+    logo: getStoreLogo('kheirzaman'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     branches: [],
   },
@@ -274,7 +279,7 @@ export const stores: Store[] = [
     id: 'fathalla',
     nameAr: 'فتح الله',
     nameEn: 'Fathalla',
-    logo: storeLogos.fathalla,
+    logo: getStoreLogo('fathalla'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     branches: [],
   },
@@ -282,7 +287,23 @@ export const stores: Store[] = [
     id: 'bim',
     nameAr: 'بيم',
     nameEn: 'BIM',
-    logo: storeLogos.bim,
+    logo: getStoreLogo('bim'),
+    categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
+    branches: [],
+  },
+  {
+    id: 'gomla',
+    nameAr: 'جملة ماركت',
+    nameEn: 'Gomla Market',
+    logo: getStoreLogo('gomla'),
+    categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
+    branches: [],
+  },
+  {
+    id: 'pandah',
+    nameAr: 'باندا ماركت',
+    nameEn: 'Pandah Market',
+    logo: getStoreLogo('pandah'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     branches: [],
   },
@@ -292,7 +313,7 @@ export const stores: Store[] = [
     id: 'btech',
     nameAr: 'بي تك',
     nameEn: 'B.TECH',
-    logo: storeLogos.btech,
+    logo: getStoreLogo('btech'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     branches: [],
   },
@@ -300,7 +321,7 @@ export const stores: Store[] = [
     id: 'oscar',
     nameAr: 'أوسكار',
     nameEn: 'Oscar',
-    logo: storeLogos.oscar,
+    logo: getStoreLogo('oscar'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     branches: [],
   },
@@ -308,7 +329,7 @@ export const stores: Store[] = [
     id: 'extra',
     nameAr: 'إكسترا',
     nameEn: 'eXtra',
-    logo: storeLogos.extra,
+    logo: getStoreLogo('extra'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     branches: [],
   },
@@ -318,7 +339,7 @@ export const stores: Store[] = [
     id: 'sharkia_local',
     nameAr: 'متاجر الشرقية',
     nameEn: 'Sharkia Local Stores',
-    logo: storeLogos.sharkia_local,
+    logo: getStoreLogo('sharkia_local'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     isLocal: true,
     governorate: 'sharkia',
@@ -328,7 +349,7 @@ export const stores: Store[] = [
     id: 'dakahlia_local',
     nameAr: 'متاجر الدقهلية',
     nameEn: 'Dakahlia Local Stores',
-    logo: storeLogos.dakahlia_local,
+    logo: getStoreLogo('dakahlia_local'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     isLocal: true,
     governorate: 'dakahlia',
@@ -338,13 +359,14 @@ export const stores: Store[] = [
     id: 'cairo_local',
     nameAr: 'متاجر القاهرة',
     nameEn: 'Cairo Local Stores',
-    logo: storeLogos.cairo_local,
+    logo: getStoreLogo('cairo_local'),
     categories: ['general', 'food_groceries', 'electronics', 'home', 'fashion'],
     isLocal: true,
     governorate: 'cairo',
     branches: [],
   },
 ];
+
 // ============================================
 // BRANCHES DATA (Organized by Governorate)
 // ============================================

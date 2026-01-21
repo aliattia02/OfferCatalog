@@ -1,10 +1,10 @@
+// metro.config.js - Fixed for Windows ESM compatibility
 const { getSentryExpoConfig } = require("@sentry/react-native/metro");
 const { getDefaultConfig } = require("expo/metro-config");
 
-const config = getSentryExpoConfig(
-  __dirname,
-  getDefaultConfig(__dirname)
-);
+// Get the default Expo config first, then wrap with Sentry
+const defaultConfig = getDefaultConfig(__dirname);
+const config = getSentryExpoConfig(__dirname, defaultConfig);
 
 // Asset support
 config.resolver.assetExts.push("pdf");
@@ -15,7 +15,7 @@ config.transformer = {
   getTransformOptions: async () => ({
     transform: {
       experimentalImportSupport: false,
-      inlineRequires: true,
+      inlineRequires:  true,
     },
   }),
   minifierConfig: {
@@ -23,7 +23,7 @@ config.transformer = {
     keep_fnames: true,
     mangle: {
       keep_classnames: true,
-      keep_fnames: true,
+      keep_fnames:  true,
     },
   },
 };
@@ -31,7 +31,7 @@ config.transformer = {
 // Resolver fix
 config.resolver = {
   ...config.resolver,
-  resolverMainFields: ["react-native", "browser", "main"],
+  resolverMainFields:  ["react-native", "browser", "main"],
 };
 
 module.exports = config;

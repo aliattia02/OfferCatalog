@@ -63,6 +63,13 @@ const AVAILABLE_POSITIONS = [
     description: 'Shows in store details screen',
     category: 'screens'
   },
+  // ✅ NEW: Added offer position
+  {
+    id: 'offer',
+    label: 'Offer Details',
+    description: 'Shows in offer details screen',
+    category: 'screens'
+  },
 ];
 
 const ANNOUNCEMENT_TYPES = [

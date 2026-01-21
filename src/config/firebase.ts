@@ -1,4 +1,4 @@
-// src/config/firebase. ts - FIXED:  Proper web auth initialization + Analytics
+// src/config/firebase.ts - FIXED: Platform-specific App IDs + proper Analytics initialization
 import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
 import {
   getAuth,
@@ -23,22 +23,38 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // For React Native persistence
 import { getReactNativePersistence } from 'firebase/auth';
 
+// ✅ CRITICAL FIX: Get platform-specific App ID
+const getAppId = () => {
+  if (Platform.OS === 'web') {
+    return Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_APP_ID_WEB ||
+           process.env.EXPO_PUBLIC_FIREBASE_APP_ID_WEB;
+  } else if (Platform.OS === 'android') {
+    return Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_APP_ID_ANDROID ||
+           process.env.EXPO_PUBLIC_FIREBASE_APP_ID_ANDROID;
+  } else if (Platform.OS === 'ios') {
+    // Add iOS App ID when available
+    return Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_APP_ID_IOS ||
+           process.env.EXPO_PUBLIC_FIREBASE_APP_ID_IOS;
+  }
+  return undefined;
+};
+
 // Firebase configuration from environment variables
 const firebaseConfig = {
-  apiKey: Constants.expoConfig?. extra?. EXPO_PUBLIC_FIREBASE_API_KEY || process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
-  authDomain: Constants.expoConfig?.extra?. EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: Constants.expoConfig?. extra?.EXPO_PUBLIC_FIREBASE_PROJECT_ID || process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: Constants.expoConfig?.extra?. EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: Constants.expoConfig?. extra?.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || process. env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: Constants. expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_APP_ID || process. env.EXPO_PUBLIC_FIREBASE_APP_ID,
-  measurementId: Constants. expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID || process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
+  apiKey: Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_API_KEY || process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
+  authDomain: Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_PROJECT_ID || process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: getAppId(), // ✅ Platform-specific App ID
+  measurementId: Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID || process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
 let app: FirebaseApp | null = null;
 let auth: Auth | null = null;
 let db: Firestore | null = null;
 let storage: FirebaseStorage | null = null;
-let analytics:  Analytics | null = null;
+let analytics: Analytics | null = null;
 let isInitializing = false;
 let initializationPromise: Promise<void> | null = null;
 
@@ -55,7 +71,7 @@ export const initializeFirebase = async (): Promise<{
   // If already initializing, wait for it to complete
   if (isInitializing && initializationPromise) {
     await initializationPromise;
-    return { app:  app!, auth: auth!, db: db!, storage:  storage!, analytics };
+    return { app: app!, auth: auth!, db: db!, storage: storage!, analytics };
   }
 
   // If already initialized, return existing instances
@@ -69,7 +85,20 @@ export const initializeFirebase = async (): Promise<{
 
   initializationPromise = (async () => {
     try {
-      console.log('🚀 Initializing Firebase.. .');
+      console.log('🚀 Initializing Firebase...');
+      console.log('📱 Platform:', Platform.OS);
+
+      // Validate configuration
+      if (!firebaseConfig.appId) {
+        throw new Error(`❌ Firebase App ID not found for platform: ${Platform.OS}`);
+      }
+
+      console.log('✅ Firebase Config loaded:', {
+        projectId: firebaseConfig.projectId,
+        appId: firebaseConfig.appId,
+        hasApiKey: !!firebaseConfig.apiKey,
+        hasMeasurementId: !!firebaseConfig.measurementId,
+      });
 
       // Initialize Firebase App
       const existingApps = getApps();
@@ -78,16 +107,16 @@ export const initializeFirebase = async (): Promise<{
         console.log('✅ Firebase app initialized');
       } else {
         app = existingApps[0];
-        console. log('✅ Using existing Firebase app');
+        console.log('✅ Using existing Firebase app');
       }
 
-      // ✅ CRITICAL FIX: Initialize Auth differently for web vs native
-      if (! auth) {
+      // Initialize Auth differently for web vs native
+      if (!auth) {
         if (Platform.OS === 'web') {
           try {
             auth = getAuth(app);
-            console. log('✅ Firebase Auth initialized for web with getAuth()');
-          } catch (error:  any) {
+            console.log('✅ Firebase Auth initialized for web');
+          } catch (error: any) {
             console.error('❌ Error initializing web auth:', error);
             throw error;
           }
@@ -98,7 +127,7 @@ export const initializeFirebase = async (): Promise<{
             });
             console.log('✅ Firebase Auth initialized for React Native with AsyncStorage persistence');
           } catch (error: any) {
-            console. warn('⚠️ initializeAuth failed, falling back to getAuth:', error. message);
+            console.warn('⚠️ initializeAuth failed, falling back to getAuth:', error.message);
             auth = getAuth(app);
           }
         }
@@ -115,7 +144,7 @@ export const initializeFirebase = async (): Promise<{
             });
             console.log('✅ Firestore initialized for web with persistent cache');
           } catch (error: any) {
-            console. warn('⚠️ Persistent cache initialization failed, using default:', error.message);
+            console.warn('⚠️ Persistent cache initialization failed, using default:', error.message);
             db = getFirestore(app);
           }
         } else {
@@ -125,33 +154,36 @@ export const initializeFirebase = async (): Promise<{
       }
 
       // Initialize Storage
-      if (! storage) {
+      if (!storage) {
         storage = getStorage(app);
         console.log('✅ Firebase Storage initialized');
       }
 
       // Initialize Analytics - WEB ONLY with proper checks
-      if (Platform.OS === 'web' && firebaseConfig.measurementId) {
-        try {
-          const { getAnalytics, isSupported } = await import('firebase/analytics');
-          const supported = await isSupported();
-          if (supported) {
-            analytics = getAnalytics(app);
-            console.log('✅ Firebase Analytics initialized for web');
-          } else {
-            console.log('⚠️ Firebase Analytics not supported in this environment');
+      if (Platform.OS === 'web') {
+        if (!firebaseConfig.measurementId) {
+          console.warn('⚠️ Firebase measurementId not found, Analytics disabled');
+        } else {
+          try {
+            const { getAnalytics, isSupported } = await import('firebase/analytics');
+            const supported = await isSupported();
+            if (supported) {
+              analytics = getAnalytics(app);
+              console.log('✅ Firebase Analytics initialized for web');
+            } else {
+              console.log('⚠️ Firebase Analytics not supported in this environment');
+            }
+          } catch (error: any) {
+            console.warn('⚠️ Firebase Analytics initialization failed:', error.message);
           }
-        } catch (error: any) {
-          console. warn('⚠️ Firebase Analytics initialization failed:', error.message);
         }
-      } else if (Platform.OS !== 'web') {
-        // For native, analytics will be handled by @react-native-firebase/analytics
-        console.log('📱 Native analytics will use @react-native-firebase/analytics');
+      } else {
+        console.log('📱 Native platform - Analytics handled by @react-native-firebase/analytics');
       }
 
       console.log('✅ All Firebase services initialized successfully');
     } catch (error) {
-      console. error('❌ Error initializing Firebase:', error);
+      console.error('❌ Error initializing Firebase:', error);
       app = null;
       auth = null;
       db = null;
@@ -164,15 +196,15 @@ export const initializeFirebase = async (): Promise<{
   })();
 
   await initializationPromise;
-  return { app:  app!, auth: auth!, db: db!, storage: storage!, analytics };
+  return { app: app!, auth: auth!, db: db!, storage: storage!, analytics };
 };
 
 /**
  * Get Firebase Auth instance
  */
 export const getAuthInstance = (): Auth => {
-  if (! auth) {
-    throw new Error('Firebase Auth not initialized.  Call initializeFirebase first.');
+  if (!auth) {
+    throw new Error('Firebase Auth not initialized. Call initializeFirebase first.');
   }
   return auth;
 };
