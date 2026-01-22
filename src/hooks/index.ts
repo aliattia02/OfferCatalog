@@ -18,6 +18,7 @@ export { useInterstitialAd } from './useInterstitialAd';
 export { useDebounce } from './useDebounce';
 export { useSmartRefresh } from './useSmartRefresh';
 export { usePersistBasket } from './usePersistBasket'; // ✅ Export the new hook
+export { useBasketLimit } from './useBasketLimit';
 export * from './useSafeTabBarHeight';
 
 // Hook for app initialization

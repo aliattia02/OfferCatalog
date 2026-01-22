@@ -1,4 +1,4 @@
-// src/app/(tabs)/index.tsx - FIXED CATEGORY NAVIGATION
+// src/app/(tabs)/index.tsx - FIXED: Tracing test button added
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
@@ -38,9 +38,8 @@ import { loadCatalogues } from '../../store/slices/offersSlice';
 import { getMainCategories } from '../../data/categories';
 import { getActiveOffers } from '../../services/offerService';
 import { cacheService } from '../../services/cacheService';
-import { formatDateRange } from '../../utils/catalogueUtils';
 import { logScreenView, logSelectContent } from '../../services/analyticsService';
-import { setScreen, addBreadcrumb, captureError, testSentryError } from '../../config/sentry';
+import { setScreen, addBreadcrumb, captureError, testSentryError, testSentryTracing } from '../../config/sentry';
 import type { Category, Catalogue, Store } from '../../types';
 import type { OfferWithCatalogue } from '../../services/offerService';
 
@@ -73,8 +72,33 @@ const normalizeDate = (dateStr: string): string => {
   }
 };
 
+// 🔧 NEW: Format date range without year
+const formatDateRangeNoYear = (startDate: string, endDate: string, language: string = 'ar'): string => {
+  try {
+    const start = new Date(normalizeDate(startDate));
+    const end = new Date(normalizeDate(endDate));
+
+    const monthNames = language === 'ar'
+      ? ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+      : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    const startDay = start.getDate();
+    const startMonth = monthNames[start.getMonth()];
+    const endDay = end.getDate();
+    const endMonth = monthNames[end.getMonth()];
+
+    if (language === 'ar') {
+      return `${startDay} ${startMonth} - ${endDay} ${endMonth}`;
+    } else {
+      return `${startMonth} ${startDay} - ${endMonth} ${endDay}`;
+    }
+  } catch (error) {
+    return `${startDate} - ${endDate}`;
+  }
+};
+
 export default function HomeScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { paddingBottom } = useSafeTabBarHeight();
@@ -85,6 +109,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [isInteractionComplete, setIsInteractionComplete] = useState(false);
   const [sentryTestResult, setSentryTestResult] = useState<string>('');
+  const [tracingTestResult, setTracingTestResult] = useState<string>(''); // 🔥 NEW
 
   const { showAd, currentAd, checkAndShowAd, dismissAd } = useInterstitialAd();
 
@@ -100,7 +125,6 @@ export default function HomeScreen() {
   const userGovernorate = useAppSelector(state => state.settings.userGovernorate);
   const mainCategories = getMainCategories();
 
-  // Track screen view for Sentry
   useEffect(() => {
     setScreen('HomeScreen');
     logScreenView('Home');
@@ -273,7 +297,6 @@ export default function HomeScreen() {
     dispatch(toggleFavoriteSubcategory(subcategoryId));
   }, [dispatch]);
 
-  // 🔥 FIXED: Navigate to flyers screen with mainCategoryId parameter
   const handleCategoryPress = useCallback((category: Category) => {
     addBreadcrumb('User selected category', 'navigation', {
       categoryId: category.id,
@@ -286,7 +309,6 @@ export default function HomeScreen() {
       pathname: '/(tabs)/flyers',
       params: {
         mainCategoryId: category.id,
-        // Reset other filters when selecting a category
         selectedStore: 'all',
         statusFilter: 'active'
       },
@@ -329,6 +351,25 @@ export default function HomeScreen() {
     } catch (error) {
       console.error('Test error failed:', error);
       setSentryTestResult('Failed to send test error');
+    }
+  }, []);
+
+  // 🔥 NEW: Tracing test handler
+  const handleTestTracing = useCallback(async () => {
+    try {
+      const result = await testSentryTracing();
+      setTracingTestResult(result);
+
+      Alert.alert(
+        'Sentry Tracing Test',
+        result,
+        [{ text: 'OK' }]
+      );
+
+      setTimeout(() => setTracingTestResult(''), 5000);
+    } catch (error) {
+      console.error('Tracing test failed:', error);
+      setTracingTestResult('Failed to test tracing');
     }
   }, []);
 
@@ -430,13 +471,14 @@ export default function HomeScreen() {
             {storeName}
           </Text>
 
+          {/* 🔧 FIXED: Date without year */}
           <Text style={styles.thumbnailDate} numberOfLines={1}>
-            {formatDateRange(normalizeDate(catalogue.startDate), normalizeDate(catalogue.endDate))}
+            {formatDateRangeNoYear(catalogue.startDate, catalogue.endDate, i18n.language)}
           </Text>
         </TouchableOpacity>
       </View>
     );
-  }, [favoriteStoreIds, handleCataloguePress, handleToggleFavoriteStore]);
+  }, [favoriteStoreIds, handleCataloguePress, handleToggleFavoriteStore, i18n.language]);
 
   const renderCategoryGroup = useCallback((group: CategoryGroup) => (
     <View key={group.categoryId} style={styles.categoryGroup}>
@@ -478,8 +520,22 @@ export default function HomeScreen() {
           >
             <Text style={styles.testButtonText}>🧪 Test Sentry Error</Text>
           </TouchableOpacity>
+
+          {/* 🔥 NEW: Tracing test button */}
+          <TouchableOpacity
+            style={[styles.testButton, { marginTop: 8, backgroundColor: colors.success }]}
+            onPress={handleTestTracing}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.testButtonText}>📊 Test Sentry Tracing</Text>
+          </TouchableOpacity>
+
           {sentryTestResult ? (
             <Text style={styles.testResultText}>✅ {sentryTestResult}</Text>
+          ) : null}
+
+          {tracingTestResult ? (
+            <Text style={styles.testResultText}>✅ {tracingTestResult}</Text>
           ) : null}
         </View>
       )}

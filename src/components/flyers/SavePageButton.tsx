@@ -1,7 +1,9 @@
+// src/components/flyers/SavePageButton.tsx - WITH BASKET LIMIT CHECK
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, typography, borderRadius } from '../../constants/theme';
+import { useBasketLimit } from '../../hooks';
 
 interface SavePageButtonProps {
   isSaved: boolean;
@@ -14,6 +16,24 @@ export const SavePageButton: React.FC<SavePageButtonProps> = ({
   onPress,
   style,
 }) => {
+  const { checkBasketLimit } = useBasketLimit();
+
+  const handlePress = () => {
+    // If already saved, just call onPress (to show "already saved" message)
+    if (isSaved) {
+      onPress();
+      return;
+    }
+
+    // Check basket limit before saving
+    if (!checkBasketLimit()) {
+      return; // Alert already shown by hook
+    }
+
+    // Proceed with saving
+    onPress();
+  };
+
   return (
     <TouchableOpacity
       style={[
@@ -21,7 +41,7 @@ export const SavePageButton: React.FC<SavePageButtonProps> = ({
         isSaved && styles.buttonSaved,
         style,
       ]}
-      onPress={onPress}
+      onPress={handlePress}
       activeOpacity={0.7}
     >
       <Ionicons

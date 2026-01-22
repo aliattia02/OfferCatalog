@@ -1285,9 +1285,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+    overflow: 'hidden',
   },
   storeFilterScroll: {
-    maxHeight: 380,
+    flexGrow: 0,
+    flexShrink: 1,
   },
   storeFilterSectionHeader: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',

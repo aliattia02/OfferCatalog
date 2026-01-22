@@ -1,9 +1,9 @@
+// 🔧 FIXED: CatalogueCard with date formatting (no year)
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CachedImage } from '../common';
 import { colors, spacing, borderRadius, typography, shadows } from '../../constants/theme';
-import { formatDate } from '../../utils/helpers';
 import { useLocalized } from '../../hooks';
 import type { Catalogue, Store } from '../../types';
 
@@ -12,6 +12,40 @@ interface CatalogueCardProps {
   store: Store;
   onPress: () => void;
 }
+
+// 🔧 NEW: Helper to format date without year
+const formatDateNoYear = (dateStr: string, language: string = 'ar'): string => {
+  try {
+    const date = new Date(dateStr);
+    
+    const monthNames = language === 'ar' 
+      ? ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر']
+      : ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    const day = date.getDate();
+    const month = monthNames[date.getMonth()];
+    
+    if (language === 'ar') {
+      return `${day} ${month}`;
+    } else {
+      return `${month} ${day}`;
+    }
+  } catch (error) {
+    return dateStr;
+  }
+};
+
+// 🔧 NEW: Format date range without year
+const formatDateRangeNoYear = (startDate: string, endDate: string, language: string = 'ar'): string => {
+  const start = formatDateNoYear(startDate, language);
+  const end = formatDateNoYear(endDate, language);
+  
+  if (language === 'ar') {
+    return `${start} - ${end}`;
+  } else {
+    return `${start} - ${end}`;
+  }
+};
 
 export const CatalogueCard: React.FC<CatalogueCardProps> = ({
   catalogue,
@@ -39,7 +73,7 @@ export const CatalogueCard: React.FC<CatalogueCardProps> = ({
           <View style={styles.dateContainer}>
             <Ionicons name="calendar-outline" size={14} color={colors.white} />
             <Text style={styles.dateText}>
-              {formatDate(catalogue.endDate, language)}
+              {formatDateRangeNoYear(catalogue.startDate, catalogue.endDate, language)}
             </Text>
           </View>
         </View>

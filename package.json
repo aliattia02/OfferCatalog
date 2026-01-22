@@ -1,7 +1,7 @@
 {
   "name": "Daily-Deals",
   "version": "1.0.0",
-  "type":  "commonjs",
+  "type": "commonjs",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start --dev-client",
@@ -23,7 +23,7 @@
     "@react-native-google-signin/google-signin": "^16.1.1",
     "@react-native-picker/picker": "2.11.1",
     "@reduxjs/toolkit": "^2.11.2",
-    "@sentry/react-native": "~7.2.0",
+    "@sentry/react-native": "^7.9.0",
     "expo": "~54.0.30",
     "expo-asset": "~12.0.12",
     "expo-auth-session": "~7.0.10",

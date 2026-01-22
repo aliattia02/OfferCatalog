@@ -1,12 +1,12 @@
-// src/config/sentry.ts - FIXED: Using @sentry/react-native directly
+// src/config/sentry.ts - FIXED: For Sentry v8+
 import * as Sentry from '@sentry/react-native';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 
-// Get Sentry DSN from multiple sources (fallback chain)
+// Get Sentry DSN from app.json extra config
 const SENTRY_DSN =
-  process.env.EXPO_PUBLIC_SENTRY_DSN ||
   Constants.expoConfig?.extra?.SENTRY_DSN ||
+  process.env.EXPO_PUBLIC_SENTRY_DSN ||
   'https://4455e821d6409f1900afefae1c7ecf2c@o4510741401436160.ingest.de.sentry.io/4510741488664656';
 
 // Track if Sentry was successfully initialized
@@ -22,45 +22,47 @@ export const initializeSentry = () => {
       return;
     }
 
+    console.log('🚀 Initializing Sentry...');
+
     Sentry.init({
       dsn: SENTRY_DSN,
 
       // Enable in BOTH dev and production for testing
       enabled: true,
 
-      // Environment - mark as 'development' when in __DEV__
+      // Environment
       environment: __DEV__ ? 'development' : 'production',
 
       // Release tracking
       release: `${Constants.expoConfig?.slug}@${Constants.expoConfig?.version}`,
       dist: Constants.expoConfig?.version,
 
-      // Performance monitoring
+      // 🔥 Performance monitoring - 100% in dev, 20% in prod
       tracesSampleRate: __DEV__ ? 1.0 : 0.2,
 
-      // Debug mode for testing
+      // Debug mode
       debug: __DEV__,
 
-      // Enable native crash reporting
+      // Native crash reporting
       enableNative: true,
+      enableNativeCrashHandling: true,
 
       // Auto session tracking
       enableAutoSessionTracking: true,
-
-      // Session timeout
       sessionTrackingIntervalMillis: 30000,
 
-      // Additional context
+      // Network breadcrumbs
+      enableCaptureFailedRequests: true,
+
+      // Add platform context
       beforeSend(event, hint) {
         try {
-          // Add platform info
           event.tags = {
             ...event.tags,
             platform: Platform.OS,
             appVersion: Constants.expoConfig?.version,
           };
 
-          // Log in dev mode
           if (__DEV__) {
             console.log('📤 [Sentry] Sending event:', event.event_id);
           }
@@ -72,20 +74,42 @@ export const initializeSentry = () => {
         }
       },
 
-      // Integrations
+      // 🔥 Integrations for Sentry v8+
       integrations: [
-        Sentry.reactNativeTracingIntegration(),
+        // React Native Tracing
+        Sentry.reactNativeTracingIntegration({
+          // Automatic instrumentation
+          enableNativeFramesTracking: true,
+          enableStallTracking: true,
+          enableAppStartTracking: true,
+          enableUserInteractionTracing: true,
+
+          // HTTP tracking
+          traceFetch: true,
+          traceXHR: true,
+
+          // Timeouts
+          idleTimeout: 1000,
+          finalTimeout: 30000,
+        }),
+
+        // HTTP Client integration
+        Sentry.httpClientIntegration({
+          failedRequestStatusCodes: [400, 599],
+          failedRequestTargets: [/.*/],
+        }),
       ],
     });
 
     sentryInitialized = true;
     console.log('✅ Sentry initialized successfully');
     console.log('📍 Environment:', __DEV__ ? 'development' : 'production');
+    console.log('📍 Tracing enabled: YES');
+    console.log('📍 Sample Rate:', __DEV__ ? '100%' : '20%');
     console.log('📍 DSN:', SENTRY_DSN.substring(0, 50) + '...');
   } catch (error) {
     console.error('❌ Sentry initialization failed:', error);
     sentryInitialized = false;
-    // Don't throw - let app continue without Sentry
   }
 };
 
@@ -105,9 +129,7 @@ export const setScreen = (screenName: string) => {
       console.log(`📱 [Sentry] Screen set: ${screenName}`);
     }
 
-    if (!isSentryAvailable()) {
-      return;
-    }
+    if (!isSentryAvailable()) return;
 
     Sentry.setContext('screen', {
       name: screenName,
@@ -122,7 +144,7 @@ export const setScreen = (screenName: string) => {
 };
 
 /**
- * Set user context for better crash reports
+ * Set user context
  */
 export const setSentryUser = (user: { uid: string; email: string | null; isAdmin: boolean }) => {
   try {
@@ -130,9 +152,7 @@ export const setSentryUser = (user: { uid: string; email: string | null; isAdmin
       console.log('✅ [Sentry] User context set:', user.email);
     }
 
-    if (!isSentryAvailable()) {
-      return;
-    }
+    if (!isSentryAvailable()) return;
 
     Sentry.setUser({
       id: user.uid,
@@ -147,7 +167,7 @@ export const setSentryUser = (user: { uid: string; email: string | null; isAdmin
 };
 
 /**
- * Clear user context on logout
+ * Clear user context
  */
 export const clearSentryUser = () => {
   try {
@@ -155,10 +175,7 @@ export const clearSentryUser = () => {
       console.log('✅ [Sentry] User context cleared');
     }
 
-    if (!isSentryAvailable()) {
-      return;
-    }
-
+    if (!isSentryAvailable()) return;
     Sentry.setUser(null);
   } catch (error) {
     console.error('Sentry clearSentryUser error:', error);
@@ -166,7 +183,7 @@ export const clearSentryUser = () => {
 };
 
 /**
- * Manually capture error with context
+ * Capture error with context
  */
 export const captureError = (error: Error, context?: Record<string, any>) => {
   try {
@@ -198,7 +215,7 @@ export const captureError = (error: Error, context?: Record<string, any>) => {
 };
 
 /**
- * Capture a message (not an error)
+ * Capture a message
  */
 export const captureMessage = (message: string, level: Sentry.SeverityLevel = 'info') => {
   try {
@@ -206,10 +223,7 @@ export const captureMessage = (message: string, level: Sentry.SeverityLevel = 'i
       console.log(`📝 [Sentry] Message: ${message}`);
     }
 
-    if (!isSentryAvailable()) {
-      return;
-    }
-
+    if (!isSentryAvailable()) return;
     Sentry.captureMessage(message, level);
   } catch (error) {
     console.error('Sentry captureMessage error:', error);
@@ -217,7 +231,7 @@ export const captureMessage = (message: string, level: Sentry.SeverityLevel = 'i
 };
 
 /**
- * Add breadcrumb for debugging
+ * Add breadcrumb
  */
 export const addBreadcrumb = (message: string, category: string = 'custom', data?: Record<string, any>) => {
   try {
@@ -264,7 +278,7 @@ export const setContext = (name: string, context: Record<string, any>) => {
 };
 
 /**
- * 🧪 TEST FUNCTION - Capture a test error
+ * 🧪 TEST: Capture a test error
  */
 export const testSentryError = () => {
   try {
@@ -274,7 +288,6 @@ export const testSentryError = () => {
 
     const testError = new Error('🧪 Sentry Test Error from HomeScreen');
 
-    // Capture the error instead of throwing it
     captureError(testError, {
       test: true,
       screen: 'HomeScreen',
@@ -282,12 +295,72 @@ export const testSentryError = () => {
     });
 
     console.log('✅ [Sentry] Test error sent!');
-
-    // Return success message
     return 'Test error sent to Sentry! Check your dashboard.';
   } catch (error) {
     console.error('❌ [Sentry] Failed to send test error:', error);
     return 'Failed to send test error. Check console.';
+  }
+};
+
+/**
+ * 🧪 TEST: Test tracing with Sentry v8 API
+ */
+export const testSentryTracing = async () => {
+  try {
+    console.log('🧪 [Sentry] Testing tracing...');
+
+    if (!isSentryAvailable()) {
+      return 'Tracing not available - Sentry not initialized';
+    }
+
+    // 🔥 Use Sentry.startSpan for v8+
+    const result = await Sentry.startSpan(
+      {
+        name: 'test.transaction',
+        op: 'test',
+        attributes: {
+          testData: 'test value',
+          manual: 'true',
+        },
+      },
+      async (span) => {
+        // Child span 1: Fetch
+        await Sentry.startSpan(
+          {
+            name: 'Fetch test data',
+            op: 'test.fetch',
+            attributes: {
+              records: 42,
+            },
+          },
+          async () => {
+            await new Promise(resolve => setTimeout(resolve, 100));
+          }
+        );
+
+        // Child span 2: Process
+        await Sentry.startSpan(
+          {
+            name: 'Process test data',
+            op: 'test.process',
+            attributes: {
+              processed: true,
+            },
+          },
+          async () => {
+            await new Promise(resolve => setTimeout(resolve, 50));
+          }
+        );
+
+        return 'Transaction completed';
+      }
+    );
+
+    console.log('✅ [Sentry] Test transaction sent!');
+    return 'Test transaction sent! Check your Performance tab in Sentry.';
+  } catch (error) {
+    console.error('❌ [Sentry] Tracing test failed:', error);
+    return `Failed to test tracing: ${error instanceof Error ? error.message : 'Unknown error'}`;
   }
 };
 

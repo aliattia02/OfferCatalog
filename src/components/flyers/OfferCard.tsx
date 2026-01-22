@@ -1,11 +1,11 @@
-// src/components/flyers/OfferCard.tsx - OPTIMIZED WITH IMAGE CACHING
+// src/components/flyers/OfferCard.tsx - WITH BASKET LIMIT CHECK
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CachedImage } from '../common';
 import { colors, spacing, borderRadius, typography, shadows } from '../../constants/theme';
 import { formatCurrency, calculateDiscount } from '../../utils/helpers';
-import { useLocalized } from '../../hooks';
+import { useLocalized, useBasketLimit } from '../../hooks';
 import type { Offer } from '../../types';
 
 interface OfferCardProps {
@@ -14,7 +14,7 @@ interface OfferCardProps {
   onAddToBasket: () => void;
   isFavorite?: boolean;
   onToggleFavorite?: () => void;
-  isInBasket?: boolean; // ✅ NEW: Determines cache priority
+  isInBasket?: boolean;
 }
 
 export const OfferCard: React.FC<OfferCardProps> = ({
@@ -23,12 +23,24 @@ export const OfferCard: React.FC<OfferCardProps> = ({
   onAddToBasket,
   isFavorite = false,
   onToggleFavorite,
-  isInBasket = false, // ✅ NEW
+  isInBasket = false,
 }) => {
   const { getName, getDescription } = useLocalized();
+  const { checkBasketLimit } = useBasketLimit();
+
   const discount = offer.originalPrice
     ? calculateDiscount(offer.originalPrice, offer.offerPrice)
     : 0;
+
+  const handleAddToBasket = () => {
+    // Check basket limit before adding
+    if (!checkBasketLimit()) {
+      return; // Alert already shown by hook
+    }
+
+    // Proceed with adding
+    onAddToBasket();
+  };
 
   return (
     <TouchableOpacity style={styles.container} onPress={onPress} activeOpacity={0.7}>
@@ -37,7 +49,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({
           source={offer.imageUrl}
           style={styles.image}
           contentFit="cover"
-          cachePriority={isInBasket ? 'high' : 'normal'} // ✅ High priority for basket items
+          cachePriority={isInBasket ? 'high' : 'normal'}
           enableCache={true}
         />
         {discount > 0 && (
@@ -81,7 +93,7 @@ export const OfferCard: React.FC<OfferCardProps> = ({
           )}
         </View>
 
-        <TouchableOpacity style={styles.addButton} onPress={onAddToBasket}>
+        <TouchableOpacity style={styles.addButton} onPress={handleAddToBasket}>
           <Ionicons name="add" size={20} color={colors.white} />
           <Text style={styles.addButtonText}>أضف للسلة</Text>
         </TouchableOpacity>
@@ -90,7 +102,6 @@ export const OfferCard: React.FC<OfferCardProps> = ({
   );
 };
 
-// Copy all your existing styles from the original OfferCard.tsx
 const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.white,
