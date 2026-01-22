@@ -941,7 +941,7 @@ export default function FlyerDetailScreen() {
                   source={currentPageData?.imageUrl || PLACEHOLDER_PAGE_IMAGE_URL}
                   style={styles.pageImage}
                   contentFit="contain"
-                  showLoader={true}
+                  showLoader={false}
                   cachePriority="high"
                   onLoadStart={() => {
                     console.log('🖼️ [CachedImage] onLoadStart');
@@ -977,44 +977,52 @@ export default function FlyerDetailScreen() {
             </View>
 
             <View style={styles.pageNavigationCenter}>
-              <View style={styles.navControls}>
-                {currentPage > 0 && (
-  <TouchableOpacity
-    style={styles.navButton}
-    onPress={() => handleNavPress('prev')}
-  >
-    <Ionicons
-      name={NAV_ICONS.prev}
-      size={24}
-      color={colors.white}
-    />
-  </TouchableOpacity>
-)}
-{currentPage === 0 && <View style={{ width: 50 }} />}
+  <View style={styles.navControls}>
+    {/* Previous button - appears on RIGHT in RTL, LEFT in LTR */}
+    {currentPage > 0 ? (
+      <TouchableOpacity
+        style={[
+          styles.navButton,
+          I18nManager.isRTL ? styles.navButtonRTL : styles.navButtonLTR
+        ]}
+        onPress={() => handleNavPress('prev')}
+      >
+        <Ionicons
+          name={NAV_ICONS.prev}
+          size={24}
+          color={colors.white}
+        />
+      </TouchableOpacity>
+    ) : (
+      <View style={{ width: 50 }} />
+    )}
 
-                <View style={styles.pageIndicatorBadge}>
-                  <Text style={styles.pageIndicator}>
-                    {currentPage + 1} / {catalogue.pages.length}
-                  </Text>
-                </View>
+    {/* Page indicator - always in center */}
+    <View style={styles.pageIndicatorBadge}>
+      <Text style={styles.pageIndicator}>
+        {currentPage + 1} / {catalogue.pages.length}
+      </Text>
+    </View>
 
-                <TouchableOpacity
-                  style={[
-                    styles.navButton,
-                    isLastPage && !nextCatalogue && styles.navButtonDisabled,
-                    isLastPage && nextCatalogue && styles.navButtonNextCatalogue,
-                  ]}
-                  onPress={() => handleNavPress('next')}
-                  disabled={isLastPage && !nextCatalogue}
-                >
-                  <Ionicons
-                    name={isLastPage && nextCatalogue ? NAV_ICONS.nextCatalogue : NAV_ICONS.next}
-                    size={24}
-                    color={isLastPage && !nextCatalogue ? colors.gray[400] : colors.white}
-                  />
-                </TouchableOpacity>
-              </View>
-            </View>
+    {/* Next button - appears on LEFT in RTL, RIGHT in LTR */}
+    <TouchableOpacity
+      style={[
+        styles.navButton,
+        I18nManager.isRTL ? styles.navButtonLTR : styles.navButtonRTL,
+        isLastPage && !nextCatalogue && styles.navButtonDisabled,
+        isLastPage && nextCatalogue && styles.navButtonNextCatalogue,
+      ]}
+      onPress={() => handleNavPress('next')}
+      disabled={isLastPage && !nextCatalogue}
+    >
+      <Ionicons
+        name={isLastPage && nextCatalogue ? NAV_ICONS.nextCatalogue : NAV_ICONS.next}
+        size={24}
+        color={isLastPage && !nextCatalogue ? colors.gray[400] : colors.white}
+      />
+    </TouchableOpacity>
+  </View>
+</View>
           </View>
         ) : (
           <View style={styles.noPagesContainer}>
@@ -1139,43 +1147,52 @@ export default function FlyerDetailScreen() {
             </View>
           )}
 
-          <View style={styles.fullScreenNav}>
-           {currentPage > 0 && (
+         <View style={styles.fullScreenNav}>
+  {/* Previous button - RIGHT in RTL, LEFT in LTR */}
+  {currentPage > 0 ? (
+    <TouchableOpacity
+      style={[
+        styles.fullScreenNavButton,
+        I18nManager.isRTL ? styles.navButtonRTL : styles.navButtonLTR
+      ]}
+      onPress={() => handleNavPress('prev')}
+      disabled={isZoomed}
+    >
+      <Ionicons
+        name={NAV_ICONS.prev}
+        size={28}
+        color={colors.white}
+      />
+    </TouchableOpacity>
+  ) : (
+    <View style={{ width: 60 }} />
+  )}
+
+  {/* Page indicator - center */}
+  <View style={styles.fullScreenPageIndicator}>
+    <Text style={styles.fullScreenPageText}>
+      {currentPage + 1} / {totalPages}
+    </Text>
+  </View>
+
+  {/* Next button - LEFT in RTL, RIGHT in LTR */}
   <TouchableOpacity
-    style={styles.fullScreenNavButton}
-    onPress={() => handleNavPress('prev')}
-    disabled={isZoomed}
+    style={[
+      styles.fullScreenNavButton,
+      I18nManager.isRTL ? styles.navButtonLTR : styles.navButtonRTL,
+      isLastPage && !nextCatalogue && styles.navButtonDisabled,
+      isLastPage && nextCatalogue && styles.navButtonNextCatalogue,
+    ]}
+    onPress={() => handleNavPress('next')}
+    disabled={(isLastPage && !nextCatalogue) || isZoomed}
   >
     <Ionicons
-      name={NAV_ICONS.prev}
+      name={isLastPage && nextCatalogue ? NAV_ICONS.nextCatalogue : NAV_ICONS.next}
       size={28}
-      color={colors.white}
+      color={isLastPage && !nextCatalogue ? colors.gray[400] : colors.white}
     />
   </TouchableOpacity>
-)}
-{currentPage === 0 && <View style={{ width: 60 }} />}
-            <View style={styles.fullScreenPageIndicator}>
-              <Text style={styles.fullScreenPageText}>
-                {currentPage + 1} / {totalPages}
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              style={[
-                styles.fullScreenNavButton,
-                isLastPage && !nextCatalogue && styles.navButtonDisabled,
-                isLastPage && nextCatalogue && styles.navButtonNextCatalogue,
-              ]}
-              onPress={() => handleNavPress('next')}
-              disabled={(isLastPage && !nextCatalogue) || isZoomed}
-            >
-              <Ionicons
-                name={isLastPage && nextCatalogue ? NAV_ICONS.nextCatalogue : NAV_ICONS.next}
-                size={28}
-                color={isLastPage && !nextCatalogue ? colors.gray[400] : colors.white}
-              />
-            </TouchableOpacity>
-          </View>
+</View>
         </View>
       </Modal>
     </>
@@ -1250,19 +1267,20 @@ const styles = StyleSheet.create({
     height: 480,
     backgroundColor: colors.gray[200],
   },
-  swipeIndicator: {
-    position: 'absolute',
-    bottom: 60,
-    right: I18nManager.isRTL ? undefined : spacing.md,
-    left: I18nManager.isRTL ? spacing.md : undefined,
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: borderRadius.full,
-    gap: 4,
-  },
+ swipeIndicator: {
+  position: 'absolute',
+  bottom: 60,
+  // ✅ CORRECTED: Swaps sides when changing language
+  right: I18nManager.isRTL ? undefined : spacing.md,  // RIGHT in English
+  left: I18nManager.isRTL ? spacing.md : undefined,   // LEFT in Arabic
+  flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+  alignItems: 'center',
+  backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  paddingHorizontal: spacing.sm,
+  paddingVertical: spacing.xs,
+  borderRadius: borderRadius.full,
+  gap: 4,
+},
   swipeIndicatorText: {
     fontSize: typography.fontSize.xs,
     color: colors.primary,
@@ -1277,12 +1295,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   navControls: {
-    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    width: '100%',
-    paddingHorizontal: spacing.md,
-  },
+  flexDirection: 'row', // Keep as 'row', not 'row-reverse'
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  width: '100%',
+  paddingHorizontal: spacing.md,
+},
   navButton: {
     width: 50,
     height: 50,

@@ -1,4 +1,4 @@
-// src/services/imageCompressionService.ts - ENHANCED VERSION
+// src/services/imageCompressionService.ts - MOBILE-OPTIMIZED VERSION
 import * as ImageManipulator from 'expo-image-manipulator';
 
 export interface CompressionOptions {
@@ -18,18 +18,19 @@ export interface CompressionResult {
 }
 
 /**
- * Optimized compression settings for catalogue images
- * These settings achieve 75-85% size reduction with minimal quality loss
+ * MOBILE-OPTIMIZED compression settings
+ * Dimensions kept same for layout consistency
+ * Quality reduced to save bandwidth (80-88% reduction)
  */
 const DEFAULT_OPTIONS: CompressionOptions = {
-  maxWidth: 1200,      // Good for mobile viewing
-  maxHeight: 1600,     // Portrait catalogue pages
-  quality: 0.72,       // 72% quality - optimal balance
-  format: 'jpeg',      // Best compression for photos
+  maxWidth: 1200,      // SAME dimensions
+  maxHeight: 1600,     // SAME dimensions
+  quality: 0.40,       // REDUCED from 0.72 (saves ~20-25% more data)
+  format: 'jpeg',
 };
 
 /**
- * Compress a single image with automatic size detection
+ * Compress a single image
  */
 export const compressImage = async (
   imageUri: string,
@@ -52,7 +53,7 @@ export const compressImage = async (
       console.warn('   ⚠️ Could not determine original size');
     }
 
-    // Compress the image with smart resizing
+    // Compress the image
     const result = await ImageManipulator.manipulateAsync(
       imageUri,
       [
@@ -98,7 +99,6 @@ export const compressImage = async (
     };
   } catch (error) {
     console.error('❌ Image compression failed:', error);
-    // Return original URI if compression fails
     return {
       uri: imageUri,
       width: 0,
@@ -108,7 +108,7 @@ export const compressImage = async (
 };
 
 /**
- * Compress multiple images with progress tracking and statistics
+ * Compress multiple images with progress tracking
  */
 export const compressMultipleImages = async (
   imageUris: string[],
@@ -161,7 +161,6 @@ export interface CompressionStats {
 
 /**
  * Compress a data URL (base64 image)
- * Useful for PDF page conversion
  */
 export const compressDataUrl = async (
   dataUrl: string,
@@ -192,7 +191,6 @@ export const compressDataUrl = async (
     if (result.base64) {
       const compressedDataUrl = `data:image/jpeg;base64,${result.base64}`;
 
-      // Calculate size reduction
       const originalSize = dataUrl.length;
       const compressedSize = compressedDataUrl.length;
       const reduction = ((originalSize - compressedSize) / originalSize) * 100;
@@ -210,37 +208,42 @@ export const compressDataUrl = async (
 };
 
 /**
- * Get optimal compression settings based on image type
- * OPTIMIZED FOR STORAGE SAVINGS
+ * MOBILE-OPTIMIZED settings - SAME dimensions, LOWER quality
+ * Dimensions preserved for layout consistency on mobile
  */
 export const getOptimalSettings = (
-  imageType: 'cover' | 'page' | 'thumbnail'
+  imageType: 'cover' | 'page' | 'thumbnail' | 'offer'
 ): CompressionOptions => {
   switch (imageType) {
     case 'cover':
-      // Slightly higher quality for cover images, but still compressed
       return {
-        maxWidth: 800,
-        maxHeight: 1200,
-        quality: 0.75,    // 75% quality for covers
+        maxWidth: 800,       // SAME
+        maxHeight: 1200,     // SAME
+        quality: 0.40,       // REDUCED from 0.75
         format: 'jpeg',
       };
 
     case 'page':
-      // Balanced settings for catalogue pages - maximum savings
       return {
-        maxWidth: 1200,
-        maxHeight: 1600,
-        quality: 0.70,    // 70% quality - great balance
+        maxWidth: 1200,      // SAME
+        maxHeight: 1600,     // SAME
+        quality: 0.40,       // REDUCED from 0.70
         format: 'jpeg',
       };
 
     case 'thumbnail':
-      // Smaller size for thumbnails
       return {
-        maxWidth: 400,
+        maxWidth: 400,       // SAME
+        maxHeight: 600,      // SAME
+        quality: 0.40,       // REDUCED from 0.65
+        format: 'jpeg',
+      };
+
+    case 'offer':
+      return {
+        maxWidth: 600,
         maxHeight: 600,
-        quality: 0.65,    // Lower quality acceptable for thumbnails
+        quality: 0.40,
         format: 'jpeg',
       };
 
@@ -250,7 +253,38 @@ export const getOptimalSettings = (
 };
 
 /**
- * Estimate storage savings for a batch of images
+ * Generate tiny blur placeholder (for progressive loading)
+ * This creates a 20x20 blurred version (~1-2KB)
+ */
+export const generateBlurPlaceholder = async (
+  imageUri: string
+): Promise<string | null> => {
+  try {
+    const result = await ImageManipulator.manipulateAsync(
+      imageUri,
+      [
+        { resize: { width: 20 } }, // Tiny image
+      ],
+      {
+        compress: 0.5,
+        format: ImageManipulator.SaveFormat.JPEG,
+        base64: true,
+      }
+    );
+
+    if (result.base64) {
+      return `data:image/jpeg;base64,${result.base64}`;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Failed to generate blur placeholder:', error);
+    return null;
+  }
+};
+
+/**
+ * Estimate storage savings
  */
 export const estimateStorageSavings = (
   imageCount: number,
@@ -260,16 +294,19 @@ export const estimateStorageSavings = (
   after: string;
   saved: string;
   percentage: string;
-  costSavings: string; // Estimated Firebase Storage cost savings
+  costSavings: string;
+  bandwidthSavings: string;
 } => {
   const beforeMB = imageCount * avgImageSizeMB;
-  const afterMB = beforeMB * 0.22; // Assume 78% compression
+  const afterMB = beforeMB * 0.15; // 85% compression
   const savedMB = beforeMB - afterMB;
   const percentage = ((savedMB / beforeMB) * 100).toFixed(0);
 
-  // Firebase Storage costs approximately $0.026 per GB per month
   const savedGB = savedMB / 1024;
   const monthlySavings = savedGB * 0.026;
+
+  const bandwidthSavedGB = (savedMB / 1024) * 10;
+  const bandwidthSavings = bandwidthSavedGB * 0.12;
 
   return {
     before: `${beforeMB.toFixed(1)}MB`,
@@ -277,6 +314,7 @@ export const estimateStorageSavings = (
     saved: `${savedMB.toFixed(1)}MB`,
     percentage: `${percentage}%`,
     costSavings: `$${monthlySavings.toFixed(2)}/month`,
+    bandwidthSavings: `$${bandwidthSavings.toFixed(2)}`,
   };
 };
 
@@ -285,7 +323,7 @@ export const estimateStorageSavings = (
  */
 export const batchCompressImages = async (
   imageUris: string[],
-  imageType: 'cover' | 'page' | 'thumbnail' = 'page',
+  imageType: 'cover' | 'page' | 'thumbnail' | 'offer' = 'page',
   onProgress?: (progress: {
     current: number;
     total: number;
