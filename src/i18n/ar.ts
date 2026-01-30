@@ -1,4 +1,4 @@
-// src/i18n/ar.ts - COMPLETE ARABIC TRANSLATIONS FOR دليل العروض
+// src/i18n/ar.ts - WITH NOTIFICATION TRANSLATIONS
 export default {
   // App Name
   appName: 'دليل العروض',
@@ -173,7 +173,7 @@ export default {
     activeOffers: 'عروض نشطة',
   },
 
-  // Settings Screen
+  // Settings Screen - ENHANCED WITH NOTIFICATIONS
   settings: {
     title: 'الإعدادات',
     account: 'الحساب',
@@ -192,6 +192,7 @@ export default {
     adminPanelDesc: 'إدارة الكتالوجات والعروض',
     cacheMonitor: 'مراقب الذاكرة المؤقتة',
     cacheMonitorDesc: 'عرض إحصائيات واستخدام الذاكرة المؤقتة',
+    performanceMonitor: 'مراقب الأداء',
     language: 'اللغة',
     arabic: 'العربية',
     english: 'English',
@@ -200,12 +201,24 @@ export default {
     locationHint: 'سيساعدنا موقعك في إظهار المتاجر والفروع القريبة منك',
     shopping: 'التسوق',
     storesAvailable: 'متاجر متاحة',
+
+    // Notifications - NEW!
     notifications: 'الإشعارات',
     notificationsEnabled: 'تفعيل الإشعارات',
+    notificationsGranted: 'الإشعارات مفعلة',
+    notificationsDenied: 'الإشعارات معطلة',
+    notificationsBlocked: 'الإشعارات محظورة',
+    notificationsBlockedMessage: 'يرجى تفعيل الإشعارات من إعدادات الجهاز لتلقي التحديثات',
+    openSettings: 'فتح الإعدادات',
+    signInRequired: 'يجب تسجيل الدخول',
+    signInToSubscribe: 'سجل الدخول لإدارة تفضيلات الإشعارات',
+    subscribedTo: 'تم الاشتراك في',
+    unsubscribedFrom: 'تم إلغاء الاشتراك من',
     notificationSettings: 'إعدادات الإشعارات',
     newOffers: 'عروض جديدة',
     expiringOffers: 'عروض قاربت على الانتهاء',
     favoriteStores: 'المتاجر المفضلة',
+
     favorites: 'المفضلة',
     favoritesCount: 'متاجر • فئات',
     about: 'عن التطبيق',

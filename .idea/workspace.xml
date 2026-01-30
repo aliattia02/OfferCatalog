@@ -5,18 +5,19 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="a6fb0a7f-0c9d-4c8a-8ceb-d55f1414c39f" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/src/hooks/useBasketLimit.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/app/notification-test.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/components/admin/NotificationManager.tsx" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/hooks/useNotifications.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" afterPath="$PROJECT_DIR$/package-lock.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/app/(tabs)/flyers.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(tabs)/flyers.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/app/(tabs)/index.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(tabs)/index.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/(tabs)/settings.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/(tabs)/settings.tsx" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/app/admin/dashboard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/admin/dashboard.tsx" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/app/flyer/[id].tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/app/flyer/[id].tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/flyers/CatalogueCard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/flyers/CatalogueCard.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/flyers/OfferCard.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/flyers/OfferCard.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/components/flyers/SavePageButton.tsx" beforeDir="false" afterPath="$PROJECT_DIR$/src/components/flyers/SavePageButton.tsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/config/sentry.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/config/sentry.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/hooks/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/hooks/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/i18n/ar.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/i18n/ar.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/i18n/en.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/i18n/en.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/services/notifications.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/services/notifications.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/store/slices/settingsSlice.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/store/slices/settingsSlice.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -64,38 +65,38 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.cidr.known.project.marker": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.readMode.enableVisualFormatting": "true",
-    "cf.first.check.clang-format": "false",
-    "cidr.known.project.marker": "true",
-    "git-widget-placeholder": "main",
-    "ignore.virus.scanning.warn.message": "true",
-    "kotlin-language-version-configured": "true",
-    "last_opened_file_path": "C:/Users/aliat/New/Offer/src/hooks",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "preferences.lookFeel",
-    "ts.external.directory.path": "C:\\Users\\aliat\\New\\Offer\\node_modules\\typescript\\lib",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.readMode.enableVisualFormatting&quot;: &quot;true&quot;,
+    &quot;cf.first.check.clang-format&quot;: &quot;false&quot;,
+    &quot;cidr.known.project.marker&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;kotlin-language-version-configured&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/aliat/New/Offer/src/hooks&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.lookFeel&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;C:\\Users\\aliat\\New\\Offer\\node_modules\\typescript\\lib&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="C:\Users\aliat\New\Offer\src\hooks" />
+      <recent name="C:\Users\aliat\New\Offer\src\components\admin" />
       <recent name="C:\Users\aliat\New\Offer\scripts" />
       <recent name="C:\Users\aliat\New\Offer" />
       <recent name="C:\Users\aliat\New\Offer\src\config" />
-      <recent name="C:\Users\aliat\New\Offer\src\services" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
       <recent name="C:\Users\aliat\New\Offer\src\utils" />
@@ -155,7 +156,11 @@
       <workItem from="1768928760509" duration="3192000" />
       <workItem from="1769005023265" duration="7351000" />
       <workItem from="1769025125922" duration="6671000" />
-      <workItem from="1769047463230" duration="3239000" />
+      <workItem from="1769047463230" duration="4271000" />
+      <workItem from="1769073162097" duration="1530000" />
+      <workItem from="1769093172008" duration="2265000" />
+      <workItem from="1769106487037" duration="1170000" />
+      <workItem from="1769108565900" duration="7000" />
     </task>
     <servers />
   </component>

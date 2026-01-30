@@ -7,6 +7,7 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   I18nManager,
   RefreshControl,
   ActivityIndicator,
@@ -86,13 +87,13 @@ export default function FlyersScreen() {
   const [viewMode, setViewMode] = useState<'catalogues' | 'offers'>(
     initialViewModeParam === 'offers' ? 'offers' : 'catalogues'
   );
-const [statusFilter, setStatusFilter] = useState<FilterType>('active');
+  const [statusFilter, setStatusFilter] = useState<FilterType>('active');
   const [offersStatusFilter, setOffersStatusFilter] = useState<FilterType>('active');
   const [refreshing, setRefreshing] = useState(false);
   const [offersData, setOffersData] = useState<OfferWithCatalogue[]>([]);
   const [offersLoading, setOffersLoading] = useState(false);
   const [allOffersForStats, setAllOffersForStats] = useState<OfferWithCatalogue[]>([]);
-  
+
   // Debounce timer ref for offer loading
   const loadOffersTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -124,67 +125,67 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
 
   // Get unique stores that have catalogues - UPDATED to filter by location
   const storesWithCatalogues = useMemo(() => {
-  const storeMap = new Map<string, any>();
+    const storeMap = new Map<string, any>();
 
-  // 🔥 Filter catalogues by user location first
-  const cataloguesToShow = userGovernorate
-    ? catalogues.filter(cat => !cat.isLocalStore || cat.localStoreGovernorate === userGovernorate)
-    : catalogues;
+    // 🔥 Filter catalogues by user location first
+    const cataloguesToShow = userGovernorate
+      ? catalogues.filter(cat => !cat.isLocalStore || cat.localStoreGovernorate === userGovernorate)
+      : catalogues;
 
-  cataloguesToShow.forEach(catalogue => {
-    // For local stores, create ONE entry per governorate
-    if (catalogue.isLocalStore && catalogue.localStoreGovernorate) {
-      const uniqueId = `${catalogue.storeId}|${catalogue.localStoreGovernorate}`;
+    cataloguesToShow.forEach(catalogue => {
+      // For local stores, create ONE entry per governorate
+      if (catalogue.isLocalStore && catalogue.localStoreGovernorate) {
+        const uniqueId = `${catalogue.storeId}|${catalogue.localStoreGovernorate}`;
 
-      if (!storeMap.has(uniqueId)) {
-        // Collect all local store names for this governorate
-        const localStoreNamesInGov = cataloguesToShow
-          .filter(c =>
-            c.isLocalStore &&
-            c.storeId === catalogue.storeId &&
-            c.localStoreGovernorate === catalogue.localStoreGovernorate
-          )
-          .map(c => c.localStoreNameAr)
-          .filter((name, index, self) => name && self.indexOf(name) === index)
-          .join(' , ');
+        if (!storeMap.has(uniqueId)) {
+          // Collect all local store names for this governorate
+          const localStoreNamesInGov = cataloguesToShow
+            .filter(c =>
+              c.isLocalStore &&
+              c.storeId === catalogue.storeId &&
+              c.localStoreGovernorate === catalogue.localStoreGovernorate
+            )
+            .map(c => c.localStoreNameAr)
+            .filter((name, index, self) => name && self.indexOf(name) === index)
+            .join(' , ');
 
-        const governorateName = getGovernorateName(catalogue.localStoreGovernorate as GovernorateId);
+          const governorateName = getGovernorateName(catalogue.localStoreGovernorate as GovernorateId);
 
-        storeMap.set(uniqueId, {
-          id: uniqueId,
-          originalStoreId: catalogue.storeId,
-          nameAr: `متاجر ${governorateName}`,
-          nameEn: `${governorateName} Local Stores`,
-          localStoreNames: localStoreNamesInGov,
-          isLocal: true,
-          governorate: catalogue.localStoreGovernorate,
-        });
-      }
-    } else {
-      // For national stores, use the regular store ID
-      if (!storeMap.has(catalogue.storeId)) {
-        const store = stores.find(s => s.id === catalogue.storeId);
-        if (store) {
-          storeMap.set(catalogue.storeId, {
-            id: catalogue.storeId,
+          storeMap.set(uniqueId, {
+            id: uniqueId,
             originalStoreId: catalogue.storeId,
-            nameAr: store.nameAr,
-            nameEn: store.nameEn,
-            isLocal: false,
+            nameAr: `متاجر ${governorateName}`,
+            nameEn: `${governorateName} Local Stores`,
+            localStoreNames: localStoreNamesInGov,
+            isLocal: true,
+            governorate: catalogue.localStoreGovernorate,
           });
         }
+      } else {
+        // For national stores, use the regular store ID
+        if (!storeMap.has(catalogue.storeId)) {
+          const store = stores.find(s => s.id === catalogue.storeId);
+          if (store) {
+            storeMap.set(catalogue.storeId, {
+              id: catalogue.storeId,
+              originalStoreId: catalogue.storeId,
+              nameAr: store.nameAr,
+              nameEn: store.nameEn,
+              isLocal: false,
+            });
+          }
+        }
       }
-    }
-  });
-
-  return Array.from(storeMap.values())
-    .sort((a, b) => {
-      if (a.isLocal !== b.isLocal) {
-        return a.isLocal ? 1 : -1;
-      }
-      return a.nameAr.localeCompare(b.nameAr, 'ar');
     });
-}, [catalogues, userGovernorate]);
+
+    return Array.from(storeMap.values())
+      .sort((a, b) => {
+        if (a.isLocal !== b.isLocal) {
+          return a.isLocal ? 1 : -1;
+        }
+        return a.nameAr.localeCompare(b.nameAr, 'ar');
+      });
+  }, [catalogues, userGovernorate]);
 
   // Set initial store filter from URL params
   useEffect(() => {
@@ -203,25 +204,25 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
 
   // Handle params from search navigation
   useEffect(() => {
-  if (initialViewModeParam === 'offers') {
-    setViewMode('offers');
-  }
-
-  if (initialSubcategoryParam) {
-    setSelectedSubcategory(initialSubcategoryParam);
-    const subcategory = getCategoryById(initialSubcategoryParam);
-    if (subcategory?.parentId) {
-      setSelectedMainCategory(subcategory.parentId);
+    if (initialViewModeParam === 'offers') {
+      setViewMode('offers');
     }
-  }
 
-  // 🔥 NEW: Handle main category from home screen navigation
-  if (initialMainCategory) {
-    console.log('🔥 [Flyers] Setting main category from params:', initialMainCategory);
-    setSelectedMainCategory(initialMainCategory);
-    setSelectedSubcategory(null); // Clear subcategory when coming from home
-  }
-}, [initialViewModeParam, initialSubcategoryParam, initialMainCategory]);
+    if (initialSubcategoryParam) {
+      setSelectedSubcategory(initialSubcategoryParam);
+      const subcategory = getCategoryById(initialSubcategoryParam);
+      if (subcategory?.parentId) {
+        setSelectedMainCategory(subcategory.parentId);
+      }
+    }
+
+    // 🔥 NEW: Handle main category from home screen navigation
+    if (initialMainCategory) {
+      console.log('🔥 [Flyers] Setting main category from params:', initialMainCategory);
+      setSelectedMainCategory(initialMainCategory);
+      setSelectedSubcategory(null); // Clear subcategory when coming from home
+    }
+  }, [initialViewModeParam, initialSubcategoryParam, initialMainCategory]);
 
   // Load all offers for stats
   useEffect(() => {
@@ -242,12 +243,12 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
       if (loadOffersTimeoutRef.current) {
         clearTimeout(loadOffersTimeoutRef.current);
       }
-      
+
       // Debounce by 300ms
       loadOffersTimeoutRef.current = setTimeout(() => {
         loadOffers();
       }, 300);
-      
+
       return () => {
         if (loadOffersTimeoutRef.current) {
           clearTimeout(loadOffersTimeoutRef.current);
@@ -335,48 +336,44 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
     setRefreshing(false);
   };
 
-  // Remove inline getCatalogueStatus - use cached version from utils
-  // const getCatalogueStatus = (startDate: string, endDate: string): CatalogueStatus => { ... }
+  // 🔥 UPDATED: Apply location filtering to catalogues with CACHED status
+  const cataloguesWithStatus: CatalogueWithStatus[] = useMemo(() => {
+    let filtered = catalogues;
 
- // 🔥 UPDATED: Apply location filtering to catalogues with CACHED status
- const cataloguesWithStatus: CatalogueWithStatus[] = useMemo(() => {
-  let filtered = catalogues;
+    // 1. Filter by main category
+    if (selectedMainCategory) {
+      filtered = catalogues.filter(cat => cat.categoryId === selectedMainCategory);
+    }
 
-  // 1. Filter by main category
-  if (selectedMainCategory) {
-    filtered = catalogues.filter(cat => cat.categoryId === selectedMainCategory);
-  }
+    // 2. 🔥 NEW: Filter by user location (governorate)
+    if (userGovernorate) {
+      filtered = filtered.filter(cat => {
+        // Always show national stores
+        if (!cat.isLocalStore) return true;
 
-  // 2. 🔥 NEW: Filter by user location (governorate)
-  if (userGovernorate) {
-    filtered = filtered.filter(cat => {
-      // Always show national stores
-      if (!cat.isLocalStore) return true;
+        // For local stores, only show if they match the user's governorate
+        return cat.localStoreGovernorate === userGovernorate;
+      });
+    }
 
-      // For local stores, only show if they match the user's governorate
-      return cat.localStoreGovernorate === userGovernorate;
-    });
-  }
+    // 3. Filter by selected store (handle pipe separator for local stores)
+    if (selectedStore !== 'all') {
+      filtered = filtered.filter(cat => {
+        // For local store filter (format: storeId|governorate)
+        if (selectedStore.includes('|')) {
+          const [storeId, governorate] = selectedStore.split('|');
+          return cat.storeId === storeId && cat.localStoreGovernorate === governorate;
+        }
+        // For national stores (simple storeId)
+        return cat.storeId === selectedStore;
+      });
+    }
 
-  // 3. Filter by selected store (handle pipe separator for local stores)
-  if (selectedStore !== 'all') {
-    filtered = filtered.filter(cat => {
-      // For local store filter (format: storeId|governorate)
-      if (selectedStore.includes('|')) {
-        const [storeId, governorate] = selectedStore.split('|');
-        return cat.storeId === storeId && cat.localStoreGovernorate === governorate;
-      }
-      // For national stores (simple storeId)
-      return cat.storeId === selectedStore;
-    });
-  }
-
-  return filtered.map(cat => ({
-    ...cat,
-    status: cacheService.getCatalogueStatus(cat.id, cat.startDate, cat.endDate),
-  }));
-}, [catalogues, selectedMainCategory, selectedStore, userGovernorate]);
-
+    return filtered.map(cat => ({
+      ...cat,
+      status: cacheService.getCatalogueStatus(cat.id, cat.startDate, cat.endDate),
+    }));
+  }, [catalogues, selectedMainCategory, selectedStore, userGovernorate]);
 
   // Enhanced store grouping logic to split local stores by localStoreNameId
   const storeGroups: StoreGroup[] = useMemo(() => {
@@ -551,16 +548,16 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
   };
 
   const getSelectedStoreName = () => {
-  if (selectedStore === 'all') return t('flyers.allStores');
+    if (selectedStore === 'all') return t('flyers.allStores');
 
-  if (selectedStore.includes('|')) {
-    const matchingStore = storesWithCatalogues.find(s => s.id === selectedStore);
-    return matchingStore ? matchingStore.nameAr : t('flyers.allStores');
-  }
+    if (selectedStore.includes('|')) {
+      const matchingStore = storesWithCatalogues.find(s => s.id === selectedStore);
+      return matchingStore ? matchingStore.nameAr : t('flyers.allStores');
+    }
 
-  const store = getStoreById(selectedStore);
-  return store ? store.nameAr : t('flyers.allStores');
-};
+    const store = getStoreById(selectedStore);
+    return store ? store.nameAr : t('flyers.allStores');
+  };
 
   const getStatusBadgeStyle = (status: CatalogueStatus) => {
     switch (status) {
@@ -573,6 +570,57 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
   const getStatusLabel = (status: string) => {
     return t(`status.${status}`);
   };
+
+  // Separate national and local store groups
+  const nationalStoreGroups = useMemo(() => {
+    return filteredStoreGroups.filter(g => !g.isLocal);
+  }, [filteredStoreGroups]);
+
+  const localStoresByGovernorate = useMemo(() => {
+    const localGroups = filteredStoreGroups.filter(g => g.isLocal);
+
+    // Group by governorate
+    const grouped: Record<string, StoreGroup[]> = {};
+
+    localGroups.forEach(group => {
+      // Extract governorate from catalogues
+      const governorate = group.catalogues[0]?.localStoreGovernorate;
+      if (governorate) {
+        if (!grouped[governorate]) {
+          grouped[governorate] = [];
+        }
+        grouped[governorate].push(group);
+      }
+    });
+
+    // Sort governorates alphabetically
+    const sortedGovernorates = Object.keys(grouped).sort((a, b) => {
+      const nameA = getGovernorateName(a as GovernorateId);
+      const nameB = getGovernorateName(b as GovernorateId);
+      return nameA.localeCompare(nameB, 'ar');
+    });
+
+    // Create final sorted structure
+    const result: Array<{
+      governorate: GovernorateId;
+      governorateName: string;
+      stores: StoreGroup[]
+    }> = [];
+
+    sortedGovernorates.forEach(gov => {
+      const stores = grouped[gov].sort((a, b) =>
+        a.storeName.localeCompare(b.storeName, 'ar')
+      );
+
+      result.push({
+        governorate: gov as GovernorateId,
+        governorateName: getGovernorateName(gov as GovernorateId),
+        stores,
+      });
+    });
+
+    return result;
+  }, [filteredStoreGroups]);
 
   // Render components
   const renderMainCategoryFilter = () => (
@@ -615,7 +663,7 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
     </ScrollView>
   );
 
-  // Combined Location + Store Filter Row
+  // Combined Location + Store Filter Row - UPDATED with click-outside-to-close
   const renderLocationAndStoreFilter = () => (
     <View style={styles.locationStoreRow}>
       {/* 🔥 Location Selector */}
@@ -641,143 +689,151 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
           />
         </TouchableOpacity>
 
-       {showStoreFilter && (
-  <View style={styles.storeFilterDropdown}>
-    <ScrollView style={styles.storeFilterScroll} showsVerticalScrollIndicator={false}>
-      {/* All Stores Option */}
-      <TouchableOpacity
-        style={[
-          styles.storeFilterItem,
-          selectedStore === 'all' && styles.storeFilterItemActive,
-        ]}
-        onPress={() => handleStoreFilterPress('all')}
-      >
-        <Text
-          style={[
-            styles.storeFilterItemText,
-            selectedStore === 'all' && styles.storeFilterItemTextActive,
-          ]}
-        >
-          {t('flyers.allStores')}
-        </Text>
-        <Text
-          style={[
-            styles.storeFilterItemCount,
-            selectedStore === 'all' && styles.storeFilterItemCountActive,
-          ]}
-        >
-          {userGovernorate
-            ? catalogues.filter(c => !c.isLocalStore || c.localStoreGovernorate === userGovernorate).length
-            : catalogues.length}
-        </Text>
-      </TouchableOpacity>
+        {showStoreFilter && (
+          <>
+            {/* Backdrop to close on outside click */}
+            <TouchableWithoutFeedback onPress={() => setShowStoreFilter(false)}>
+              <View style={styles.dropdownBackdrop} />
+            </TouchableWithoutFeedback>
 
-      {/* National Stores Section */}
-      {storesWithCatalogues.filter(s => !s.isLocal).length > 0 && (
-        <>
-          <View style={styles.storeFilterSectionHeader}>
-            <Ionicons name="business" size={16} color={colors.primary} />
-            <Text style={styles.storeFilterSectionTitle}>متاجر وطنية</Text>
-          </View>
-          {storesWithCatalogues
-            .filter(s => !s.isLocal)
-            .map(store => {
-              const isSelected = selectedStore === store.id;
-              const storeCount = catalogues.filter(c => c.storeId === store.originalStoreId).length;
-
-              return (
+            <View style={styles.storeFilterDropdown}>
+              <ScrollView style={styles.storeFilterScroll} showsVerticalScrollIndicator={false}>
+                {/* All Stores Option */}
                 <TouchableOpacity
-                  key={store.id}
                   style={[
                     styles.storeFilterItem,
-                    isSelected && styles.storeFilterItemActive,
+                    selectedStore === 'all' && styles.storeFilterItemActive,
                   ]}
-                  onPress={() => handleStoreFilterPress(store.id)}
+                  onPress={() => handleStoreFilterPress('all')}
                 >
                   <Text
                     style={[
                       styles.storeFilterItemText,
-                      isSelected && styles.storeFilterItemTextActive,
+                      selectedStore === 'all' && styles.storeFilterItemTextActive,
                     ]}
                   >
-                    {store.nameAr}
+                    {t('flyers.allStores')}
                   </Text>
                   <Text
                     style={[
                       styles.storeFilterItemCount,
-                      isSelected && styles.storeFilterItemCountActive,
+                      selectedStore === 'all' && styles.storeFilterItemCountActive,
                     ]}
                   >
-                    {storeCount}
+                    {userGovernorate
+                      ? catalogues.filter(c => !c.isLocalStore || c.localStoreGovernorate === userGovernorate).length
+                      : catalogues.length}
                   </Text>
                 </TouchableOpacity>
-              );
-            })}
-        </>
-      )}
 
-      {/* Local Stores Section */}
-      {storesWithCatalogues.filter(s => s.isLocal).length > 0 && (
-        <>
-          <View style={styles.storeFilterSectionHeader}>
-            <Ionicons name="location" size={16} color={colors.primary} />
-            <Text style={styles.storeFilterSectionTitle}>متاجر محلية</Text>
-          </View>
-          {storesWithCatalogues
-            .filter(s => s.isLocal)
-            .map(store => {
-              const isSelected = selectedStore === store.id;
-              const storeCount = catalogues.filter(c =>
-                c.storeId === store.originalStoreId &&
-                c.localStoreGovernorate === store.governorate
-              ).length;
+                {/* National Stores Section */}
+                {storesWithCatalogues.filter(s => !s.isLocal).length > 0 && (
+                  <>
+                    <View style={styles.storeFilterSectionHeader}>
+                      <Ionicons name="business" size={16} color={colors.primary} />
+                      <Text style={styles.storeFilterSectionTitle}>متاجر وطنية</Text>
+                    </View>
+                    {storesWithCatalogues
+                      .filter(s => !s.isLocal)
+                      .map(store => {
+                        const isSelected = selectedStore === store.id;
+                        const storeCount = catalogues.filter(c => c.storeId === store.originalStoreId).length;
 
-              return (
-                <TouchableOpacity
-                  key={store.id}
-                  style={[
-                    styles.storeFilterItem,
-                    isSelected && styles.storeFilterItemActive,
-                  ]}
-                  onPress={() => handleStoreFilterPress(store.id)}
-                >
-                  <View style={styles.storeFilterItemContent}>
-                    <Text
-                      style={[
-                        styles.storeFilterItemText,
-                        isSelected && styles.storeFilterItemTextActive,
-                      ]}
-                    >
-                      {store.nameAr}
-                    </Text>
-                    {store.localStoreNames && (
-                      <Text
-                        style={[
-                          styles.storeFilterItemSubtext,
-                          isSelected && styles.storeFilterItemSubtextActive,
-                        ]}
-                        numberOfLines={1}
-                      >
-                        ({store.localStoreNames})
-                      </Text>
-                    )}
-                  </View>
-                  <Text
-                    style={[
-                      styles.storeFilterItemCount,
-                      isSelected && styles.storeFilterItemCountActive,
-                    ]}
-                  >
-                    {storeCount}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-        </>
-      )}
-    </ScrollView>
-  </View>
-)}
+                        return (
+                          <TouchableOpacity
+                            key={store.id}
+                            style={[
+                              styles.storeFilterItem,
+                              isSelected && styles.storeFilterItemActive,
+                            ]}
+                            onPress={() => handleStoreFilterPress(store.id)}
+                          >
+                            <Text
+                              style={[
+                                styles.storeFilterItemText,
+                                isSelected && styles.storeFilterItemTextActive,
+                              ]}
+                            >
+                              {store.nameAr}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.storeFilterItemCount,
+                                isSelected && styles.storeFilterItemCountActive,
+                              ]}
+                            >
+                              {storeCount}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                  </>
+                )}
+
+                {/* Local Stores Section */}
+                {storesWithCatalogues.filter(s => s.isLocal).length > 0 && (
+                  <>
+                    <View style={styles.storeFilterSectionHeader}>
+                      <Ionicons name="location" size={16} color={colors.primary} />
+                      <Text style={styles.storeFilterSectionTitle}>متاجر محلية</Text>
+                    </View>
+                    {storesWithCatalogues
+                      .filter(s => s.isLocal)
+                      .map(store => {
+                        const isSelected = selectedStore === store.id;
+                        const storeCount = catalogues.filter(c =>
+                          c.storeId === store.originalStoreId &&
+                          c.localStoreGovernorate === store.governorate
+                        ).length;
+
+                        return (
+                          <TouchableOpacity
+                            key={store.id}
+                            style={[
+                              styles.storeFilterItem,
+                              isSelected && styles.storeFilterItemActive,
+                            ]}
+                            onPress={() => handleStoreFilterPress(store.id)}
+                          >
+                            <View style={styles.storeFilterItemContent}>
+                              <Text
+                                style={[
+                                  styles.storeFilterItemText,
+                                  isSelected && styles.storeFilterItemTextActive,
+                                ]}
+                              >
+                                {store.nameAr}
+                              </Text>
+                              {store.localStoreNames && (
+                                <Text
+                                  style={[
+                                    styles.storeFilterItemSubtext,
+                                    isSelected && styles.storeFilterItemSubtextActive,
+                                  ]}
+                                  numberOfLines={1}
+                                >
+                                  ({store.localStoreNames})
+                                </Text>
+                              )}
+                            </View>
+                            <Text
+                              style={[
+                                styles.storeFilterItemCount,
+                                isSelected && styles.storeFilterItemCountActive,
+                              ]}
+                            >
+                              {storeCount}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                  </>
+                )}
+              </ScrollView>
+            </View>
+          </>
+        )}
+
         {selectedStore !== 'all' && (
           <TouchableOpacity
             style={styles.clearStoreFilter}
@@ -791,337 +847,281 @@ const [statusFilter, setStatusFilter] = useState<FilterType>('active');
     </View>
   );
 
- // flyers.tsx - PART 2: RENDER FUNCTIONS (Status Filter, View Toggle, Cards)
+  const renderStatusFilter = () => {
+    const currentFilter = viewMode === 'catalogues' ? statusFilter : offersStatusFilter;
+    const setCurrentFilter = viewMode === 'catalogues' ? setStatusFilter : setOffersStatusFilter;
+    const stats = viewMode === 'catalogues' ? catalogueStats : offersStats;
 
-const renderStatusFilter = () => {
-  const currentFilter = viewMode === 'catalogues' ? statusFilter : offersStatusFilter;
-  const setCurrentFilter = viewMode === 'catalogues' ? setStatusFilter : setOffersStatusFilter;
-  const stats = viewMode === 'catalogues' ? catalogueStats : offersStats;
-
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      style={styles.filterScroll}
-      contentContainerStyle={styles.filterContainer}
-    >
-      {(['all', 'active', 'upcoming', 'expired'] as FilterType[]).map((filter) => {
-        const count = stats[filter];
-
-        return (
-          <TouchableOpacity
-            key={filter}
-            style={[
-              styles.filterChip,
-              currentFilter === filter && styles.filterChipActive,
-              filter === 'active' && currentFilter === filter && styles.filterChipActiveGreen
-            ]}
-            onPress={() => setCurrentFilter(filter)}
-          >
-            <Text style={[styles.filterChipText, currentFilter === filter && styles.filterChipTextActive]}>
-              {t(`flyers.${filter}Filter`)}
-              {` (${count})`}
-            </Text>
-          </TouchableOpacity>
-        );
-      })}
-    </ScrollView>
-  );
-};
-
-const renderViewToggle = () => (
-  <View style={styles.viewToggle}>
-    <TouchableOpacity
-      style={[styles.toggleButton, viewMode === 'catalogues' && styles.toggleButtonActive]}
-      onPress={() => setViewMode('catalogues')}
-    >
-      <Ionicons
-        name="book-outline"
-        size={20}
-        color={viewMode === 'catalogues' ? colors.white : colors.text}
-      />
-      <Text style={[styles.toggleText, viewMode === 'catalogues' && styles.toggleTextActive]}>
-        {t('flyers.cataloguesView')}
-      </Text>
-    </TouchableOpacity>
-    <TouchableOpacity
-      style={[styles.toggleButton, viewMode === 'offers' && styles.toggleButtonActive]}
-      onPress={() => setViewMode('offers')}
-    >
-      <Ionicons
-        name="grid-outline"
-        size={20}
-        color={viewMode === 'offers' ? colors.white : colors.text}
-      />
-      <Text style={[styles.toggleText, viewMode === 'offers' && styles.toggleTextActive]}>
-        {t('flyers.offersView')}
-      </Text>
-    </TouchableOpacity>
-  </View>
-);
-
-const renderCatalogueCard = (catalogue: CatalogueWithStatus) => {
-  const isFavorite = favoriteStoreIds.includes(catalogue.storeId);
-
-  return (
-    <View key={catalogue.id} style={styles.catalogueThumbnailWrapper}>
-      <TouchableOpacity
-        style={styles.catalogueThumbnail}
-        onPress={() => {
-          logSelectContent('catalogue', catalogue.id);
-          handleCataloguePress(catalogue.id);
-        }}
-        activeOpacity={0.7}
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterScroll}
+        contentContainerStyle={styles.filterContainer}
       >
-        <View style={styles.thumbnailImageContainer}>
-          <CachedImage
-            source={catalogue.coverImage}
-            style={styles.thumbnailImage}
-            contentFit="cover"
-          />
-          <View style={[styles.statusBadgeThumbnail, getStatusBadgeStyle(catalogue.status)]}>
-            <View style={styles.statusDot} />
-          </View>
+        {(['all', 'active', 'upcoming', 'expired'] as FilterType[]).map((filter) => {
+          const count = stats[filter];
 
-          <TouchableOpacity
-            style={styles.favoriteButton}
-            onPress={() => handleToggleFavoriteStore(catalogue.storeId)}
-            activeOpacity={0.7}
-          >
-            <Ionicons
-              name={isFavorite ? 'heart' : 'heart-outline'}
-              size={18}
-              color={isFavorite ? colors.primary : colors.white}
-            />
-          </TouchableOpacity>
-        </View>
+          return (
+            <TouchableOpacity
+              key={filter}
+              style={[
+                styles.filterChip,
+                currentFilter === filter && styles.filterChipActive,
+                filter === 'active' && currentFilter === filter && styles.filterChipActiveGreen
+              ]}
+              onPress={() => setCurrentFilter(filter)}
+            >
+              <Text style={[styles.filterChipText, currentFilter === filter && styles.filterChipTextActive]}>
+                {t(`flyers.${filter}Filter`)}
+                {` (${count})`}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </ScrollView>
+    );
+  };
 
-        <View style={styles.thumbnailInfoContainer}>
-          <Text style={styles.thumbnailStoreName} numberOfLines={1}>
-            {catalogue.titleAr}
-          </Text>
-          <Text style={styles.thumbnailSeparator}>•</Text>
-          <Text style={styles.thumbnailDate} numberOfLines={1}>
-            {formatDateRange(catalogue.startDate, catalogue.endDate)}
-          </Text>
-        </View>
+  const renderViewToggle = () => (
+    <View style={styles.viewToggle}>
+      <TouchableOpacity
+        style={[styles.toggleButton, viewMode === 'catalogues' && styles.toggleButtonActive]}
+        onPress={() => setViewMode('catalogues')}
+      >
+        <Ionicons
+          name="book-outline"
+          size={20}
+          color={viewMode === 'catalogues' ? colors.white : colors.text}
+        />
+        <Text style={[styles.toggleText, viewMode === 'catalogues' && styles.toggleTextActive]}>
+          {t('flyers.cataloguesView')}
+        </Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.toggleButton, viewMode === 'offers' && styles.toggleButtonActive]}
+        onPress={() => setViewMode('offers')}
+      >
+        <Ionicons
+          name="grid-outline"
+          size={20}
+          color={viewMode === 'offers' ? colors.white : colors.text}
+        />
+        <Text style={[styles.toggleText, viewMode === 'offers' && styles.toggleTextActive]}>
+          {t('flyers.offersView')}
+        </Text>
       </TouchableOpacity>
     </View>
   );
-};
 
-const renderStoreGroup = (group: StoreGroup) => {
-  const groupHeader = (
-    <View style={styles.storeHeader}>
-      <Ionicons
-        name={group.isLocal ? 'location' : 'storefront'}
-        size={20}
-        color={colors.primary}
-      />
-      <Text style={styles.storeName}>{group.storeName}</Text>
-      {group.isLocal && (
-        <View style={styles.localStoreBadge}>
-          <Text style={styles.localStoreBadgeText}>محلي</Text>
-        </View>
-      )}
-      <Text style={styles.catalogueCount}>
-        {group.catalogues.length} {group.catalogues.length === 1 ? t('home.catalogue') : t('home.catalogues')}
-      </Text>
-    </View>
-  );
+  const renderCatalogueCard = (catalogue: CatalogueWithStatus) => {
+    const isFavorite = favoriteStoreIds.includes(catalogue.storeId);
 
-  return (
-    <View key={group.storeId} style={styles.storeGroup}>
-      {groupHeader}
-      <View style={styles.cataloguesGrid}>
-        {group.catalogues.map(renderCatalogueCard)}
+    return (
+      <View key={catalogue.id} style={styles.catalogueThumbnailWrapper}>
+        <TouchableOpacity
+          style={styles.catalogueThumbnail}
+          onPress={() => {
+            logSelectContent('catalogue', catalogue.id);
+            handleCataloguePress(catalogue.id);
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.thumbnailImageContainer}>
+            <CachedImage
+              source={catalogue.coverImage}
+              style={styles.thumbnailImage}
+              contentFit="cover"
+            />
+            <View style={[styles.statusBadgeThumbnail, getStatusBadgeStyle(catalogue.status)]}>
+              <View style={styles.statusDot} />
+            </View>
+
+            <TouchableOpacity
+              style={styles.favoriteButton}
+              onPress={() => handleToggleFavoriteStore(catalogue.storeId)}
+              activeOpacity={0.7}
+            >
+              <Ionicons
+                name={isFavorite ? 'heart' : 'heart-outline'}
+                size={18}
+                color={isFavorite ? colors.primary : colors.white}
+              />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.thumbnailInfoContainer}>
+            <Text style={styles.thumbnailStoreName} numberOfLines={1}>
+              {catalogue.titleAr}
+            </Text>
+            <Text style={styles.thumbnailSeparator}>•</Text>
+            <Text style={styles.thumbnailDate} numberOfLines={1}>
+              {formatDateRange(catalogue.startDate, catalogue.endDate)}
+            </Text>
+          </View>
+        </TouchableOpacity>
       </View>
-    </View>
-  );
-};
+    );
+  };
 
-// Separate national and local store groups
-const nationalStoreGroups = useMemo(() => {
-  return filteredStoreGroups.filter(g => !g.isLocal);
-}, [filteredStoreGroups]);
-
-const localStoresByGovernorate = useMemo(() => {
-  const localGroups = filteredStoreGroups.filter(g => g.isLocal);
-
-  // Group by governorate
-  const grouped: Record<string, StoreGroup[]> = {};
-
-  localGroups.forEach(group => {
-    // Extract governorate from catalogues
-    const governorate = group.catalogues[0]?.localStoreGovernorate;
-    if (governorate) {
-      if (!grouped[governorate]) {
-        grouped[governorate] = [];
-      }
-      grouped[governorate].push(group);
-    }
-  });
-
-  // Sort governorates alphabetically
-  const sortedGovernorates = Object.keys(grouped).sort((a, b) => {
-    const nameA = getGovernorateName(a as GovernorateId);
-    const nameB = getGovernorateName(b as GovernorateId);
-    return nameA.localeCompare(nameB, 'ar');
-  });
-
-  // Create final sorted structure
-  const result: Array<{
-    governorate: GovernorateId;
-    governorateName: string;
-    stores: StoreGroup[]
-  }> = [];
-
-  sortedGovernorates.forEach(gov => {
-    const stores = grouped[gov].sort((a, b) =>
-      a.storeName.localeCompare(b.storeName, 'ar')
+  const renderStoreGroup = (group: StoreGroup) => {
+    const groupHeader = (
+      <View style={styles.storeHeader}>
+        <Ionicons
+          name={group.isLocal ? 'location' : 'storefront'}
+          size={20}
+          color={colors.primary}
+        />
+        <Text style={styles.storeName}>{group.storeName}</Text>
+        {group.isLocal && (
+          <View style={styles.localStoreBadge}>
+            <Text style={styles.localStoreBadgeText}>محلي</Text>
+          </View>
+        )}
+        <Text style={styles.catalogueCount}>
+          {group.catalogues.length} {group.catalogues.length === 1 ? t('home.catalogue') : t('home.catalogues')}
+        </Text>
+      </View>
     );
 
-    result.push({
-      governorate: gov as GovernorateId,
-      governorateName: getGovernorateName(gov as GovernorateId),
-      stores,
-    });
-  });
-
-  return result;
-}, [filteredStoreGroups]);
-
-
-// flyers.tsx - PART 3: MAIN RENDER & COMPLETE STYLES
-
-// Main render
-return (
-  <View style={styles.container}>
-    <ScrollView
-      style={styles.fullScrollView}
-      contentContainerStyle={{ paddingBottom }}
-      showsVerticalScrollIndicator={false}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-    >
-      <AdBanner position="flyers" />
-
-      {renderViewToggle()}
-      {renderMainCategoryFilter()}
-      {renderLocationAndStoreFilter()}
-      {renderStatusFilter()}
-
-      {viewMode === 'catalogues' ? (
-        <>
-          {cataloguesLoading && (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>{t('home.loadingCatalogues')}</Text>
-            </View>
-          )}
-
-{!cataloguesLoading && (nationalStoreGroups.length > 0 || localStoresByGovernorate.length > 0) ? (
-    <>
-              {/* National Stores Section */}
-              {nationalStoreGroups.length > 0 && (
-                <View style={styles.section}>
-                  {nationalStoreGroups.map(renderStoreGroup)}
-                </View>
-              )}
-
-{localStoresByGovernorate.length > 0 && (
-  <View style={styles.section}>
-    <View style={styles.sectionDivider}>
-      <View style={styles.dividerLine} />
-      <View style={styles.sectionHeaderWithIcon}>
-        <Ionicons name="location" size={24} color={colors.primary} />
-        <Text style={styles.sectionHeaderText}>المتاجر المحلية</Text>
-      </View>
-      <View style={styles.dividerLine} />
-    </View>
-
-    {localStoresByGovernorate.map(({ governorate, governorateName, stores }) => (
-      <View key={governorate} style={styles.governorateSection}>
-        {/* Governorate Header */}
-        <View style={styles.governorateHeader}>
-          <Ionicons name="location-outline" size={20} color={colors.primary} />
-          <Text style={styles.governorateName}>{governorateName}</Text>
-          <Text style={styles.governorateCount}>
-            ({stores.reduce((sum, store) => sum + store.catalogues.length, 0)} كتالوج)
-          </Text>
+    return (
+      <View key={group.storeId} style={styles.storeGroup}>
+        {groupHeader}
+        <View style={styles.cataloguesGrid}>
+          {group.catalogues.map(renderCatalogueCard)}
         </View>
-
-        {/* Stores in this governorate */}
-        {stores.map(renderStoreGroup)}
       </View>
-    ))}
-  </View>
-)}
-            </>
-          ) : !cataloguesLoading ? (
-            <View style={styles.emptyState}>
-              <Ionicons name="document-text-outline" size={64} color={colors.gray[300]} />
-              <Text style={styles.emptyStateText}>
-                {t('flyers.noOffers')} {statusFilter !== 'all' ? getStatusLabel(statusFilter) : ''}
-              </Text>
-              {userGovernorate && (
-                <Text style={styles.emptyStateSubtext}>
-                  لا توجد كتالوجات في موقعك المحدد
+    );
+  };
+
+  // Main render
+  return (
+    <View style={styles.container}>
+      <ScrollView
+        style={styles.fullScrollView}
+        contentContainerStyle={{ paddingBottom }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      >
+        <AdBanner position="flyers" />
+
+        {renderViewToggle()}
+        {renderMainCategoryFilter()}
+        {renderLocationAndStoreFilter()}
+        {renderStatusFilter()}
+
+        {viewMode === 'catalogues' ? (
+          <>
+            {cataloguesLoading && (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.loadingText}>{t('home.loadingCatalogues')}</Text>
+              </View>
+            )}
+
+            {!cataloguesLoading && (nationalStoreGroups.length > 0 || localStoresByGovernorate.length > 0) ? (
+              <>
+                {/* National Stores Section */}
+                {nationalStoreGroups.length > 0 && (
+                  <View style={styles.section}>
+                    {nationalStoreGroups.map(renderStoreGroup)}
+                  </View>
+                )}
+
+                {localStoresByGovernorate.length > 0 && (
+                  <View style={styles.section}>
+                    <View style={styles.sectionDivider}>
+                      <View style={styles.dividerLine} />
+                      <View style={styles.sectionHeaderWithIcon}>
+                        <Ionicons name="location" size={24} color={colors.primary} />
+                        <Text style={styles.sectionHeaderText}>المتاجر المحلية</Text>
+                      </View>
+                      <View style={styles.dividerLine} />
+                    </View>
+
+                    {localStoresByGovernorate.map(({ governorate, governorateName, stores }) => (
+                      <View key={governorate} style={styles.governorateSection}>
+                        {/* Governorate Header */}
+                        <View style={styles.governorateHeader}>
+                          <Ionicons name="location-outline" size={20} color={colors.primary} />
+                          <Text style={styles.governorateName}>{governorateName}</Text>
+                          <Text style={styles.governorateCount}>
+                            ({stores.reduce((sum, store) => sum + store.catalogues.length, 0)} كتالوج)
+                          </Text>
+                        </View>
+
+                        {/* Stores in this governorate */}
+                        {stores.map(renderStoreGroup)}
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
+            ) : !cataloguesLoading ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="document-text-outline" size={64} color={colors.gray[300]} />
+                <Text style={styles.emptyStateText}>
+                  {t('flyers.noOffers')} {statusFilter !== 'all' ? getStatusLabel(statusFilter) : ''}
                 </Text>
-              )}
-              {selectedStore !== 'all' && (
-                <TouchableOpacity
-                  style={styles.emptyActionButton}
-                  onPress={() => setSelectedStore('all')}
-                >
-                  <Text style={styles.emptyActionText}>{t('flyers.allStores')}</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          ) : null}
-        </>
-      ) : (
-        <>
-          {offersLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>{t('flyers.loadingOffers')}</Text>
-            </View>
-          ) : offersData.length > 0 ? (
-            <View style={styles.offersWrapper}>
-              {offersData.map((item) => (
-                <View key={item.id} style={styles.offerCardWrapper}>
-                  <OfferCard
-                    offer={item}
-                    onPress={() => handleOfferPress(item)}
-                    onAddToBasket={() => handleAddToBasket(item)}
-                    isFavorite={favoriteSubcategoryIds.includes(item.categoryId)}
-                    onToggleFavorite={() => handleToggleFavoriteSubcategory(item.categoryId)}
-                  />
-                </View>
-              ))}
-            </View>
-          ) : (
-            <View style={styles.emptyState}>
-              <Ionicons name="pricetag-outline" size={64} color={colors.gray[300]} />
-              <Text style={styles.emptyStateText}>
-                {t('flyers.noOffers')} {selectedSubcategory ? t('flyers.noOffersInCategory') : offersStatusFilter !== 'all' ? getStatusLabel(offersStatusFilter) : ''}
-              </Text>
-              <Text style={styles.emptyStateSubtext}>{t('flyers.tryChangeFilters')}</Text>
-              {selectedStore !== 'all' && (
-                <TouchableOpacity
-                  style={styles.emptyActionButton}
-                  onPress={() => setSelectedStore('all')}
-                >
-                  <Text style={styles.emptyActionText}>{t('flyers.allStores')}</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-        </>
-      )}
-    </ScrollView>
-  </View>
-);
+                {userGovernorate && (
+                  <Text style={styles.emptyStateSubtext}>
+                    لا توجد كتالوجات في موقعك المحدد
+                  </Text>
+                )}
+                {selectedStore !== 'all' && (
+                  <TouchableOpacity
+                    style={styles.emptyActionButton}
+                    onPress={() => setSelectedStore('all')}
+                  >
+                    <Text style={styles.emptyActionText}>{t('flyers.allStores')}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ) : null}
+          </>
+        ) : (
+          <>
+            {offersLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color={colors.primary} />
+                <Text style={styles.loadingText}>{t('flyers.loadingOffers')}</Text>
+              </View>
+            ) : offersData.length > 0 ? (
+              <View style={styles.offersWrapper}>
+                {offersData.map((item) => (
+                  <View key={item.id} style={styles.offerCardWrapper}>
+                    <OfferCard
+                      offer={item}
+                      onPress={() => handleOfferPress(item)}
+                      onAddToBasket={() => handleAddToBasket(item)}
+                      isFavorite={favoriteSubcategoryIds.includes(item.categoryId)}
+                      onToggleFavorite={() => handleToggleFavoriteSubcategory(item.categoryId)}
+                    />
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons name="pricetag-outline" size={64} color={colors.gray[300]} />
+                <Text style={styles.emptyStateText}>
+                  {t('flyers.noOffers')} {selectedSubcategory ? t('flyers.noOffersInCategory') : offersStatusFilter !== 'all' ? getStatusLabel(offersStatusFilter) : ''}
+                </Text>
+                <Text style={styles.emptyStateSubtext}>{t('flyers.tryChangeFilters')}</Text>
+                {selectedStore !== 'all' && (
+                  <TouchableOpacity
+                    style={styles.emptyActionButton}
+                    onPress={() => setSelectedStore('all')}
+                  >
+                    <Text style={styles.emptyActionText}>{t('flyers.allStores')}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </>
+        )}
+      </ScrollView>
+    </View>
+  );
 }
 
 // COMPLETE STYLES
@@ -1248,11 +1248,12 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
     gap: spacing.sm,
     alignItems: 'flex-start',
+    zIndex: 999,
   },
   storeFilterWrapper: {
     flex: 1,
     position: 'relative',
-    zIndex: 10,
+    zIndex: 1000,
   },
   storeFilterButton: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
@@ -1273,7 +1274,19 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
+  dropdownBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: -1000,
+    right: -1000,
+    bottom: -1000,
+    zIndex: 999,
+  },
   storeFilterDropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
     backgroundColor: colors.white,
     borderRadius: borderRadius.lg,
     marginTop: spacing.xs,
@@ -1284,12 +1297,12 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
-    elevation: 3,
-    overflow: 'hidden',
+    elevation: 5,
+    overflow: 'visible',
+    zIndex: 1001,
   },
   storeFilterScroll: {
-    flexGrow: 0,
-    flexShrink: 1,
+    maxHeight: 400,
   },
   storeFilterSectionHeader: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
@@ -1307,36 +1320,36 @@ const styles = StyleSheet.create({
     color: colors.primary,
   },
   governorateSection: {
-  marginBottom: spacing.xl,
-},
-governorateHeader: {
-  flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
-  alignItems: 'center',
-  backgroundColor: colors.primaryLight + '15',
-  paddingVertical: spacing.md,
-  paddingHorizontal: spacing.md,
-  borderRadius: borderRadius.md,
-  marginBottom: spacing.md,
-  gap: spacing.xs,
-  borderLeftWidth: 4,
-  borderLeftColor: colors.primary,
-},
-governorateName: {
-  flex: 1,
-  fontSize: typography.fontSize.lg,
-  fontWeight: 'bold',
-  color: colors.primary,
-  textAlign: I18nManager.isRTL ? 'right' : 'left',
-},
-governorateCount: {
-  fontSize: typography.fontSize.sm,
-  color: colors.primary,
-  backgroundColor: colors.white,
-  paddingHorizontal: spacing.sm,
-  paddingVertical: 4,
-  borderRadius: borderRadius.full,
-  fontWeight: '600',
-},
+    marginBottom: spacing.xl,
+  },
+  governorateHeader: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primaryLight + '15',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: borderRadius.md,
+    marginBottom: spacing.md,
+    gap: spacing.xs,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.primary,
+  },
+  governorateName: {
+    flex: 1,
+    fontSize: typography.fontSize.lg,
+    fontWeight: 'bold',
+    color: colors.primary,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  governorateCount: {
+    fontSize: typography.fontSize.sm,
+    color: colors.primary,
+    backgroundColor: colors.white,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: borderRadius.full,
+    fontWeight: '600',
+  },
   storeFilterItem: {
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
@@ -1500,15 +1513,15 @@ governorateCount: {
     height: '100%',
   },
   statusBadgeThumbnail: {
-  position: 'absolute',
-  top: 6,
-  right: 6,
-  width: 14,        // Increased from 10
-  height: 14,       // Increased from 10
-  borderRadius: 7,  // Half of width/height
-  borderWidth: 2,   // Increased from 1.5
-  borderColor: colors.white,
-},
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: colors.white,
+  },
   statusDot: {
     width: '100%',
     height: '100%',

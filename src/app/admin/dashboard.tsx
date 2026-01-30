@@ -1,4 +1,4 @@
-// src/app/admin/dashboard.tsx
+// src/app/admin/dashboard.tsx - WITH NOTIFICATIONS TAB
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -28,9 +28,10 @@ import { Catalogue } from '../../types';
 import { CatalogueUploadForm } from '../../components/admin/CatalogueUploadForm';
 import { CatalogueListItem } from '../../components/admin/CatalogueListItem';
 import { AdminConfigManager } from '../../components/admin/AdminConfigManager';
+import { NotificationManager } from '../../components/admin/NotificationManager';
 import { useAppSelector } from '../../store/hooks';
 
-type TabType = 'catalogues' | 'config';
+type TabType = 'catalogues' | 'notifications' | 'config';
 
 export default function AdminDashboard() {
   const [catalogues, setCatalogues] = useState<Catalogue[]>([]);
@@ -193,7 +194,7 @@ export default function AdminDashboard() {
 
   const loadCatalogues = async () => {
     try {
-      console.log('📄 [Admin] Loading catalogues...');
+      console.log('🔄 [Admin] Loading catalogues...');
       setLoading(true);
       const data = await getAllCatalogues();
 
@@ -240,7 +241,7 @@ export default function AdminDashboard() {
 
     const deletionInfo = [
       `📦 الكتالوج: ${catalogue.titleAr}`,
-      `📁 نوع الرفع: ${hasPDF ? 'PDF (تم تحويله)' : 'صور فقط'}`,
+      `📝 نوع الرفع: ${hasPDF ? 'PDF (تم تحويله)' : 'صور فقط'}`,
       `📄 عدد الصفحات: ${pageCount}`,
       '',
       '⚠️ سيتم حذف:',
@@ -358,6 +359,23 @@ export default function AdminDashboard() {
             activeTab === 'catalogues' && styles.activeTabText
           ]}>
             الكتالوجات
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, activeTab === 'notifications' && styles.activeTab]}
+          onPress={() => setActiveTab('notifications')}
+        >
+          <Ionicons
+            name="notifications"
+            size={20}
+            color={activeTab === 'notifications' ? colors.primary : colors.textSecondary}
+          />
+          <Text style={[
+            styles.tabText,
+            activeTab === 'notifications' && styles.activeTabText
+          ]}>
+            الإشعارات
           </Text>
         </TouchableOpacity>
 
@@ -493,6 +511,9 @@ export default function AdminDashboard() {
             </ScrollView>
           </>
         )
+      ) : activeTab === 'notifications' ? (
+        /* Notifications Tab */
+        <NotificationManager />
       ) : (
         /* Config Tab */
         <AdminConfigManager />

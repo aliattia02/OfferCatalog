@@ -1,5 +1,6 @@
 // ✅ PERFORMANCE OPTIMIZED - Part 1/5: Imports, Constants, State & Setup
 // 🔧 FIXED: RTL Navigation & Date Display
+// 🔧 ADDED: Basket Limit Hook Integration
 
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
@@ -28,7 +29,7 @@ import { colors, spacing, typography, borderRadius } from '../../constants/theme
 import { Button, CachedImage, AdBanner } from '../../components/common';
 import { SavePageButton } from '../../components/flyers';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
-import { useLocalized } from '../../hooks';
+import { useLocalized, useBasketLimit } from '../../hooks'; // 🔧 ADDED: useBasketLimit
 import { addToBasket, addPageToBasket } from '../../store/slices/basketSlice';
 import { getCatalogueById } from '../../data/catalogueRegistry';
 import { getOffersByCatalogue } from '../../services/offerService';
@@ -72,7 +73,7 @@ interface OffersCacheState {
 // ✅ Global cache to track loaded images
 const loadedImagesGlobalCache = new Set<string>();
 
-// 🔧 NEW: Helper to format date range without year
+// 🔧 Helper to format date range without year
 const formatDateRangeNoYear = (startDate: string, endDate: string, language: string = 'ar'): string => {
   try {
     const start = new Date(startDate);
@@ -103,6 +104,9 @@ export default function FlyerDetailScreen() {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { getTitle, getName } = useLocalized();
+
+  // 🔧 ADDED: Basket limit hook
+  const { checkBasketLimit, isAtLimit, currentCount, basketLimit } = useBasketLimit();
 
   // ✅ Performance tracking refs
   const mountTime = useRef(Date.now());
@@ -163,7 +167,7 @@ export default function FlyerDetailScreen() {
 
   renderCount.current++;
 
-  // 🔧 FIXED: Header title with improved date format
+  // 🔧 Header title with improved date format
   const headerTitle = useMemo(() => {
     if (!catalogue) return '';
     const dateRange = formatDateRangeNoYear(catalogue.startDate, catalogue.endDate, i18n.language);
@@ -413,7 +417,9 @@ export default function FlyerDetailScreen() {
   }, [totalPages]);
 
   // Continue to Part 3...
+
 // ✅ PERFORMANCE OPTIMIZED - Part 3/5: Image Loading & Core Callbacks
+// 🔧 ADDED: Basket Limit Integration
 // (Continues from Part 2)
 
   // ✅ OPTIMIZED: Image loading with global cache check
@@ -647,7 +653,9 @@ export default function FlyerDetailScreen() {
   }, []);
 
   // Continue to Part 4...
+
 // ✅ PERFORMANCE OPTIMIZED - Part 4/5: PanResponders & Business Logic
+// 🔧 ADDED: Basket Limit Checks in Add Actions
 // (Continues from Part 3)
 
   // ✅ Memoize PanResponders
@@ -767,8 +775,14 @@ export default function FlyerDetailScreen() {
     );
   }, [basketItems, catalogue?.id, catalogue?.pages, currentPage]);
 
-  // Memoize callbacks
+  // 🔧 UPDATED: Add to basket with limit check
   const handleAddToBasket = useCallback((offer: OfferWithCatalogue) => {
+    // Check basket limit before adding
+    if (!checkBasketLimit()) {
+      console.log('🛑 [FlyerDetail] Basket limit reached, cannot add offer');
+      return;
+    }
+
     dispatch(addToBasket({
       offer,
       storeName: store?.nameAr || '',
@@ -777,12 +791,13 @@ export default function FlyerDetailScreen() {
       catalogue_id: catalogue?.id || '',
       page_number: currentPage + 1,
     });
-  }, [dispatch, store?.nameAr, catalogue?.id, currentPage]);
+  }, [dispatch, store?.nameAr, catalogue?.id, currentPage, checkBasketLimit]);
 
   const handleOfferPress = useCallback((offer: OfferWithCatalogue) => {
     router.push(`/offer/${offer.id}`);
   }, [router]);
 
+  // 🔧 UPDATED: Save page with limit check
   const handleSavePage = useCallback(() => {
     if (!catalogue?.pages) {
       Alert.alert('خطأ', 'لا توجد صفحة للحفظ');
@@ -800,6 +815,12 @@ export default function FlyerDetailScreen() {
       return;
     }
 
+    // Check basket limit before adding page
+    if (!checkBasketLimit()) {
+      console.log('🛑 [FlyerDetail] Basket limit reached, cannot save page');
+      return;
+    }
+
     dispatch(
       addPageToBasket({
         catalogue,
@@ -810,7 +831,7 @@ export default function FlyerDetailScreen() {
     );
 
     Alert.alert('نجح', 'تم حفظ الصفحة في السلة');
-  }, [catalogue, currentPage, isPageSaved, dispatch, store?.nameAr, pageOffers]);
+  }, [catalogue, currentPage, isPageSaved, dispatch, store?.nameAr, pageOffers, checkBasketLimit]);
 
   const handleNavPress = useCallback((direction: 'prev' | 'next') => {
     if (direction === 'prev' && currentPage > 0) {
@@ -880,16 +901,16 @@ export default function FlyerDetailScreen() {
   }, [handleOfferPress, handleAddToBasket]);
 
   // Continue to Part 5 (Render)...
-// ✅ PERFORMANCE OPTIMIZED - Part 5/5: Main Render Logic
-// 🔧 FIXED: RTL Navigation Positioning
-// (Continues from Part 4)
+// ✅ PERFORMANCE OPTIMIZED - Part 5/5: Main Render Logic & Styles
+// 🔧 FIXED: RTL Navigation Positioning & English Swipe Button Position
+// (Continues from Part 4 - FINAL PART)
 
   // Early returns for error states
   if (!catalogue) {
     return (
       <View style={styles.errorContainer}>
         <Ionicons name="document-text-outline" size={64} color={colors.gray[300]} />
-        <Text style={styles.errorText}>الكتالوج غير موجود</Text>
+        <Text style={styles.errorText}>الكاتالوج غير موجود</Text>
         <Text style={styles.errorSubtext}>ID: {id}</Text>
         <Button title="العودة" onPress={() => router.back()} />
       </View>
@@ -928,7 +949,6 @@ export default function FlyerDetailScreen() {
     );
   }
 
-  // 🔧 FIXED: Don't show "no offers" message, just hide the section
   const shouldShowOffersSection = offersCache?.hasOffers && pageOffers.length > 0;
 
   // Main render
@@ -986,7 +1006,7 @@ export default function FlyerDetailScreen() {
                 )}
               </TouchableOpacity>
 
-              {/* 🔧 FIXED: Swipe indicator positioning for RTL */}
+              {/* 🔧 FIXED: Swipe indicator - RIGHT in Arabic, LEFT in English */}
               {isLastPage && nextCatalogue && (
                 <View style={styles.swipeIndicator}>
                   <Ionicons
@@ -995,16 +1015,15 @@ export default function FlyerDetailScreen() {
                     color={colors.primary}
                   />
                   <Text style={styles.swipeIndicatorText}>
-                    اسحب للكتالوج التالي
+                    {i18n.language === 'ar' ? 'اسحب للكاتالوج التالي' : 'Swipe to next catalogue'}
                   </Text>
                 </View>
               )}
             </View>
 
-            {/* 🔧 FIXED: Navigation buttons with proper RTL layout */}
+            {/* Navigation buttons */}
             <View style={styles.pageNavigationCenter}>
               <View style={styles.navControls}>
-                {/* Previous button */}
                 {currentPage > 0 ? (
                   <TouchableOpacity
                     style={styles.navButton}
@@ -1020,14 +1039,12 @@ export default function FlyerDetailScreen() {
                   <View style={{ width: 50 }} />
                 )}
 
-                {/* Page indicator - always in center */}
                 <View style={styles.pageIndicatorBadge}>
                   <Text style={styles.pageIndicator}>
                     {currentPage + 1} / {catalogue.pages.length}
                   </Text>
                 </View>
 
-                {/* Next button */}
                 <TouchableOpacity
                   style={[
                     styles.navButton,
@@ -1050,12 +1067,11 @@ export default function FlyerDetailScreen() {
           <View style={styles.noPagesContainer}>
             <Ionicons name="document-text" size={64} color={colors.primary} />
             <Text style={styles.noPagesText}>
-              لا توجد صور لهذا الكتالوج
+              لا توجد صور لهذا الكاتالوج
             </Text>
           </View>
         )}
 
-        {/* Save page button */}
         {hasPages && (
           <View style={styles.savePageSection}>
             <SavePageButton
@@ -1067,9 +1083,6 @@ export default function FlyerDetailScreen() {
 
         <AdBanner position="flyers" maxAds={1} />
 
-        {/* 🔧 REMOVED: No offers message - just hide section when no offers */}
-
-        {/* Offers section - only shown when offers exist */}
         {shouldShowOffersSection && (
           <View style={styles.offersSection}>
             <View style={styles.offersSectionHeader}>
@@ -1147,7 +1160,7 @@ export default function FlyerDetailScreen() {
             </View>
           )}
 
-          {/* 🔧 FIXED: Fullscreen swipe hint positioning */}
+          {/* 🔧 FIXED: Fullscreen swipe hint - RIGHT in Arabic, LEFT in English */}
           {isLastPage && nextCatalogue && !isZoomed && (
             <View style={styles.fullScreenSwipeHint}>
               <Ionicons
@@ -1156,14 +1169,12 @@ export default function FlyerDetailScreen() {
                 color={colors.white}
               />
               <Text style={styles.fullScreenSwipeHintText}>
-                اسحب للكتالوج التالي
+                {i18n.language === 'ar' ? 'اسحب للكاتالوج التالي' : 'Swipe to next catalogue'}
               </Text>
             </View>
           )}
 
-          {/* 🔧 FIXED: Fullscreen navigation with proper RTL layout */}
           <View style={styles.fullScreenNav}>
-            {/* Previous button */}
             {currentPage > 0 ? (
               <TouchableOpacity
                 style={styles.fullScreenNavButton}
@@ -1180,14 +1191,12 @@ export default function FlyerDetailScreen() {
               <View style={{ width: 60 }} />
             )}
 
-            {/* Page indicator - center */}
             <View style={styles.fullScreenPageIndicator}>
               <Text style={styles.fullScreenPageText}>
                 {currentPage + 1} / {totalPages}
               </Text>
             </View>
 
-            {/* Next button */}
             <TouchableOpacity
               style={[
                 styles.fullScreenNavButton,
@@ -1210,17 +1219,12 @@ export default function FlyerDetailScreen() {
   );
 }
 
-// Continue to Part 6 (Styles)...
-// ✅ FIXED VERSION - Part 6/6: StyleSheet with RTL Support
-// 🔧 FIXED: All navigation elements properly positioned for RTL/LTR
-// (Continues from Part 5)
-
+// Styles with RTL fixes
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.backgroundSecondary,
   },
-
   errorContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -1278,12 +1282,14 @@ const styles = StyleSheet.create({
     height: 480,
     backgroundColor: colors.gray[200],
   },
-  // 🔧 FIXED: Swipe indicator - LEFT for Arabic, RIGHT for English
+  // 🔧 FIXED: Swipe indicator - Position based on language
   swipeIndicator: {
     position: 'absolute',
     bottom: 60,
-    left: I18nManager.isRTL ? spacing.md : undefined,  // LEFT in Arabic
-    right: I18nManager.isRTL ? undefined : spacing.md, // RIGHT in English
+    // In Arabic (RTL): show on RIGHT side
+    // In English (LTR): show on LEFT side
+    right: I18nManager.isRTL ? spacing.md : undefined,
+    left: I18nManager.isRTL ? undefined : spacing.md,
     flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(255, 255, 255, 0.9)',
@@ -1305,9 +1311,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // 🔧 FIXED: Navigation controls - proper button arrangement
   navControls: {
-    flexDirection: 'row', // Keep as 'row' - children handle their own RTL positioning
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     width: '100%',
@@ -1365,7 +1370,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
   },
-  // 🔧 REMOVED: noOffersContainer styles (no longer shown)
   offersSection: {
     padding: spacing.md,
   },
@@ -1534,12 +1538,14 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     fontWeight: '600',
   },
-  // 🔧 FIXED: Fullscreen swipe hint - LEFT for Arabic, RIGHT for English
+  // 🔧 FIXED: Fullscreen swipe hint - Position based on language
   fullScreenSwipeHint: {
     position: 'absolute',
     top: 150,
-    left: I18nManager.isRTL ? spacing.md : undefined,  // LEFT in Arabic
-    right: I18nManager.isRTL ? undefined : spacing.md, // RIGHT in English
+    // In Arabic (RTL): show on RIGHT side
+    // In English (LTR): show on LEFT side
+    right: I18nManager.isRTL ? spacing.md : undefined,
+    left: I18nManager.isRTL ? undefined : spacing.md,
     backgroundColor: colors.success,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
@@ -1553,13 +1559,12 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.sm,
     fontWeight: '600',
   },
-  // 🔧 FIXED: Fullscreen navigation
   fullScreenNav: {
     position: 'absolute',
     bottom: 40,
     left: 0,
     right: 0,
-    flexDirection: 'row', // Keep as 'row' - buttons handle RTL themselves
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.lg,
@@ -1588,7 +1593,6 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.lg,
     fontWeight: 'bold',
   },
-  // Performance overlay styles
   perfToggleButton: {
     position: 'absolute',
     top: 100,

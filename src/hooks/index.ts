@@ -20,6 +20,7 @@ export { useSmartRefresh } from './useSmartRefresh';
 export { usePersistBasket } from './usePersistBasket'; // ✅ Export the new hook
 export { useBasketLimit } from './useBasketLimit';
 export * from './useSafeTabBarHeight';
+export { useNotifications } from './useNotifications'; // NEW!
 
 // Hook for app initialization
 export const useAppInitialization = () => {

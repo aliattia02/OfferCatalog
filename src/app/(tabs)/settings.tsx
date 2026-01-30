@@ -1,5 +1,5 @@
-// src/app/(tabs)/settings.tsx - WITH COMPACT LOCATION SELECTOR
-import React from 'react';
+// src/app/(tabs)/settings.tsx - WITH CLIENT NOTIFICATIONS
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Alert,
   Image,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,7 +26,8 @@ import { clearBasket } from '../../store/slices/basketSlice';
 import { clearFavorites } from '../../store/slices/favoritesSlice';
 import { changeLanguage } from '../../i18n';
 import { usePersistSettings, useSafeTabBarHeight } from '../../hooks';
-import { APP_CONFIG } from '../../constants/config';
+import { APP_CONFIG, NOTIFICATION_TOPICS } from '../../constants/config';
+import { notificationService } from '../../services/notifications';
 
 export default function SettingsScreen() {
   const { t, i18n } = useTranslation();
@@ -41,6 +43,47 @@ export default function SettingsScreen() {
   const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds);
   const { user, isAuthenticated, isAdmin } = useAppSelector(state => state.auth);
 
+  // Notification states
+  const [notificationsPermission, setNotificationsPermission] = useState<'granted' | 'denied' | 'checking'>('checking');
+  const [subscribedTopics, setSubscribedTopics] = useState<string[]>([]);
+  const [loadingTopics, setLoadingTopics] = useState(false);
+
+  useEffect(() => {
+    checkNotificationPermission();
+    if (isAuthenticated && user?.uid) {
+      loadUserTopics();
+    }
+  }, [isAuthenticated, user]);
+
+  const checkNotificationPermission = async () => {
+    try {
+      const hasPermission = await notificationService.requestPermissions();
+      setNotificationsPermission(hasPermission ? 'granted' : 'denied');
+
+      if (hasPermission && user?.uid) {
+        // Initialize notification service with user ID
+        await notificationService.initialize(user.uid);
+      }
+    } catch (error) {
+      console.error('Error checking notification permission:', error);
+      setNotificationsPermission('denied');
+    }
+  };
+
+  const loadUserTopics = async () => {
+    if (!user?.uid) return;
+
+    try {
+      setLoadingTopics(true);
+      const topics = await notificationService.getUserTopics(user.uid);
+      setSubscribedTopics(topics);
+    } catch (error) {
+      console.error('Error loading topics:', error);
+    } finally {
+      setLoadingTopics(false);
+    }
+  };
+
   const handleLanguageChange = async (language: 'ar' | 'en') => {
     await changeLanguage(language);
     dispatch(setLanguage(language));
@@ -54,8 +97,86 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleNotificationsToggle = () => {
-    dispatch(setNotificationsEnabled(!settings.notificationsEnabled));
+  const handleNotificationsToggle = async () => {
+    const newValue = !settings.notificationsEnabled;
+    dispatch(setNotificationsEnabled(newValue));
+
+    if (newValue && notificationsPermission === 'denied') {
+      // Show alert to enable in system settings
+      Alert.alert(
+        t('settings.notificationsBlocked'),
+        t('settings.notificationsBlockedMessage'),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          {
+            text: t('settings.openSettings'),
+            onPress: () => {
+              // You can use Linking.openSettings() here
+              console.log('Open system settings');
+            }
+          }
+        ]
+      );
+    }
+  };
+
+  const handleTopicToggle = async (topic: string) => {
+    if (!user?.uid) {
+      Alert.alert(
+        t('settings.signInRequired'),
+        t('settings.signInToSubscribe')
+      );
+      return;
+    }
+
+    const isSubscribed = subscribedTopics.includes(topic);
+
+    try {
+      if (isSubscribed) {
+        await notificationService.unsubscribeFromTopic(user.uid, topic);
+      } else {
+        await notificationService.subscribeToTopic(user.uid, topic);
+      }
+
+      await loadUserTopics();
+
+      const message = isSubscribed
+        ? t('settings.unsubscribedFrom')
+        : t('settings.subscribedTo');
+
+      if (Platform.OS === 'web') {
+        alert(`${message} ${getTopicName(topic)}`);
+      } else {
+        Alert.alert(t('common.success'), `${message} ${getTopicName(topic)}`);
+      }
+    } catch (error: any) {
+      console.error('Error toggling topic:', error);
+      Alert.alert(t('common.error'), error.message);
+    }
+  };
+
+  const getTopicName = (topic: string): string => {
+    const topicNames: Record<string, string> = {
+      [NOTIFICATION_TOPICS.NEW_OFFERS]: i18n.language === 'ar' ? 'عروض جديدة' : 'New Offers',
+      [NOTIFICATION_TOPICS.EXPIRING_OFFERS]: i18n.language === 'ar' ? 'عروض توشك على الانتهاء' : 'Expiring Offers',
+      [NOTIFICATION_TOPICS.FAVORITE_STORES]: i18n.language === 'ar' ? 'متاجر مفضلة' : 'Favorite Stores',
+    };
+    return topicNames[topic] || topic;
+  };
+
+  const getTopicDescription = (topic: string): string => {
+    const descriptions: Record<string, string> = {
+      [NOTIFICATION_TOPICS.NEW_OFFERS]: i18n.language === 'ar'
+        ? 'احصل على إشعارات عند إضافة عروض جديدة'
+        : 'Get notified when new offers are added',
+      [NOTIFICATION_TOPICS.EXPIRING_OFFERS]: i18n.language === 'ar'
+        ? 'تنبيهات للعروض التي توشك على الانتهاء'
+        : 'Alerts for offers about to expire',
+      [NOTIFICATION_TOPICS.FAVORITE_STORES]: i18n.language === 'ar'
+        ? 'إشعارات من متاجرك المفضلة'
+        : 'Notifications from your favorite stores',
+    };
+    return descriptions[topic] || '';
   };
 
   const handleSignIn = () => {
@@ -222,14 +343,14 @@ export default function SettingsScreen() {
                     () => router.push('/cache-debug')
                   )}
 
+                  {renderSettingItem(
+                    'speedometer-outline',
+                    t('settings.performanceMonitor'),
+                    'Track app performance and transitions',
+                    undefined,
+                    () => router.push('/perf-debug')
+                  )}
 
-{renderSettingItem(
-  'speedometer-outline',
-  t('settings.performanceMonitor'),
-  'Track app performance and transitions',
-  undefined,
-  () => router.push('/perf-debug')
-)}
                   <View style={styles.divider} />
 
                   {renderSettingItem(
@@ -264,7 +385,7 @@ export default function SettingsScreen() {
         </View>
       </View>
 
-      {/* Location Section - COMPACT VERSION */}
+      {/* Location Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>{t('settings.location')}</Text>
         <View style={styles.card}>
@@ -279,8 +400,6 @@ export default function SettingsScreen() {
           </View>
         </View>
       </View>
-
-
 
       {/* Shopping Section */}
       <View style={styles.section}>
@@ -306,6 +425,110 @@ export default function SettingsScreen() {
             `${favoriteStoreIds.length} ${favoriteStoreIds.length === 1 ? t('favorites.store') : t('favorites.stores')} • ${favoriteSubcategoryIds.length} ${favoriteSubcategoryIds.length === 1 ? t('favorites.category') : t('favorites.categories')}`,
             undefined,
             () => router.push('/(tabs)/favorites')
+          )}
+        </View>
+      </View>
+
+      {/* Notifications Section - NEW! */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>{t('settings.notifications')}</Text>
+        <View style={styles.card}>
+          {/* Master Notification Toggle */}
+          {renderSettingItem(
+            'notifications',
+            t('settings.notificationsEnabled'),
+            notificationsPermission === 'granted'
+              ? t('settings.notificationsGranted')
+              : t('settings.notificationsDenied'),
+            <Switch
+              value={settings.notificationsEnabled}
+              onValueChange={handleNotificationsToggle}
+              trackColor={{ false: colors.gray[300], true: colors.primaryLight }}
+              thumbColor={settings.notificationsEnabled ? colors.primary : colors.gray[100]}
+              disabled={notificationsPermission === 'checking'}
+            />
+          )}
+
+          {/* Permission Warning */}
+          {notificationsPermission === 'denied' && settings.notificationsEnabled && (
+            <>
+              <View style={styles.divider} />
+              <View style={styles.warningBanner}>
+                <Ionicons name="warning" size={20} color={colors.warning} />
+                <Text style={styles.warningText}>
+                  {t('settings.notificationsBlockedMessage')}
+                </Text>
+              </View>
+            </>
+          )}
+
+          {/* Topic Subscriptions - Only show if notifications are enabled */}
+          {settings.notificationsEnabled && notificationsPermission === 'granted' && (
+            <>
+              <View style={styles.divider} />
+
+              {/* Sign-in prompt if not authenticated */}
+              {!isAuthenticated && (
+                <View style={styles.infoBanner}>
+                  <Ionicons name="information-circle" size={20} color={colors.primary} />
+                  <Text style={styles.infoBannerText}>
+                    {t('settings.signInToSubscribe')}
+                  </Text>
+                </View>
+              )}
+
+              {/* Topic List */}
+              {loadingTopics ? (
+                <View style={styles.loadingTopics}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.loadingText}>{t('common.loading')}</Text>
+                </View>
+              ) : (
+                Object.values(NOTIFICATION_TOPICS).map((topic, index) => (
+                  <View key={topic}>
+                    {index > 0 && <View style={styles.divider} />}
+                    <TouchableOpacity
+                      style={styles.topicItem}
+                      onPress={() => handleTopicToggle(topic)}
+                      disabled={!isAuthenticated}
+                    >
+                      <View style={styles.topicIcon}>
+                        <Ionicons
+                          name="pricetag"
+                          size={20}
+                          color={subscribedTopics.includes(topic) ? colors.primary : colors.gray[400]}
+                        />
+                      </View>
+                      <View style={styles.topicContent}>
+                        <Text style={styles.topicTitle}>{getTopicName(topic)}</Text>
+                        <Text style={styles.topicDescription}>{getTopicDescription(topic)}</Text>
+                      </View>
+                      <Switch
+                        value={subscribedTopics.includes(topic)}
+                        onValueChange={() => handleTopicToggle(topic)}
+                        trackColor={{ false: colors.gray[300], true: colors.primaryLight }}
+                        thumbColor={subscribedTopics.includes(topic) ? colors.primary : colors.gray[100]}
+                        disabled={!isAuthenticated}
+                      />
+                    </TouchableOpacity>
+                  </View>
+                ))
+              )}
+
+              {/* Test Notification Button - For Testing */}
+              {__DEV__ && isAuthenticated && (
+                <>
+                  <View style={styles.divider} />
+                  {renderSettingItem(
+                    'bug',
+                    'Test Notification',
+                    'Send a test notification to this device',
+                    undefined,
+                    () => router.push('/notification-test')
+                  )}
+                </>
+              )}
+            </>
           )}
         </View>
       </View>
@@ -353,32 +576,6 @@ export default function SettingsScreen() {
               <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
             )}
           </TouchableOpacity>
-        </View>
-      </View>
-
-      {/* Notifications Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>{t('settings.notifications')}</Text>
-        <View style={styles.card}>
-          {renderSettingItem(
-            'notifications',
-            t('settings.notificationsEnabled'),
-            undefined,
-            <Switch
-              value={settings.notificationsEnabled}
-              onValueChange={handleNotificationsToggle}
-              trackColor={{ false: colors.gray[300], true: colors.primaryLight }}
-              thumbColor={settings.notificationsEnabled ? colors.primary : colors.gray[100]}
-            />
-          )}
-          <View style={styles.divider} />
-          {renderSettingItem(
-            'settings',
-            t('settings.notificationSettings'),
-            undefined,
-            undefined,
-            () => Alert.alert(t('settings.comingSoon'), t('settings.inDevelopment'))
-          )}
         </View>
       </View>
 
@@ -561,5 +758,79 @@ const styles = StyleSheet.create({
     fontSize: typography.fontSize.xs,
     color: colors.white,
     fontWeight: '600',
+  },
+  // Notification styles
+  warningBanner: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.warning + '20',
+    padding: spacing.md,
+    marginHorizontal: spacing.md,
+    marginVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+  },
+  warningText: {
+    flex: 1,
+    fontSize: typography.fontSize.sm,
+    color: colors.warning,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  infoBanner: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    backgroundColor: colors.primary + '10',
+    padding: spacing.md,
+    marginHorizontal: spacing.md,
+    marginVertical: spacing.sm,
+    borderRadius: borderRadius.md,
+  },
+  infoBannerText: {
+    flex: 1,
+    fontSize: typography.fontSize.sm,
+    color: colors.primary,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  loadingTopics: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.sm,
+    padding: spacing.lg,
+  },
+  loadingText: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+  },
+  topicItem: {
+    flexDirection: I18nManager.isRTL ? 'row-reverse' : 'row',
+    alignItems: 'center',
+    padding: spacing.md,
+  },
+  topicIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.gray[100],
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: I18nManager.isRTL ? 0 : spacing.md,
+    marginLeft: I18nManager.isRTL ? spacing.md : 0,
+  },
+  topicContent: {
+    flex: 1,
+  },
+  topicTitle: {
+    fontSize: typography.fontSize.md,
+    fontWeight: '600',
+    color: colors.text,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
+  },
+  topicDescription: {
+    fontSize: typography.fontSize.sm,
+    color: colors.textSecondary,
+    marginTop: 2,
+    textAlign: I18nManager.isRTL ? 'right' : 'left',
   },
 });

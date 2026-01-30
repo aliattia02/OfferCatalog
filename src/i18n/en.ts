@@ -1,4 +1,4 @@
-// src/i18n/en.ts - COMPLETE WITH ALL MISSING TRANSLATIONS
+// src/i18n/en.ts - WITH NOTIFICATION TRANSLATIONS
 export default {
   // Navigation
   navigation: {
@@ -10,7 +10,7 @@ export default {
     favorites: 'Favorites',
   },
 
-  // Home Screen - ENHANCED
+  // Home Screen
   home: {
     title: 'Offer Catalog',
     featuredOffers: 'Featured Offers',
@@ -28,7 +28,7 @@ export default {
     noActiveOffers: 'No active offers currently',
   },
 
-  // Flyers Screen - ENHANCED
+  // Flyers Screen
   flyers: {
     title: 'Catalogues & Offers',
     activeCatalogues: 'Active Catalogues',
@@ -41,7 +41,7 @@ export default {
     allCategories: 'All Categories',
   },
 
-  // Favorites Screen - ENHANCED
+  // Favorites Screen
   favorites: {
     title: 'Favorites',
     catalogues: 'Catalogues',
@@ -69,7 +69,7 @@ export default {
     followingNewOffers: 'Following new offers and catalogues',
   },
 
-  // Basket Screen - ENHANCED
+  // Basket Screen
   basket: {
     title: 'Shopping Basket',
     empty: 'Basket is empty',
@@ -103,7 +103,7 @@ export default {
     tapToDelete: 'Tap to delete expired items',
   },
 
-  // Stores Screen - ENHANCED
+  // Stores Screen
   stores: {
     title: 'Stores',
     listView: 'List View',
@@ -120,7 +120,7 @@ export default {
     allStores: 'All Stores',
   },
 
-  // Settings Screen - ENHANCED
+  // Settings Screen - ENHANCED WITH NOTIFICATIONS
   settings: {
     title: 'Settings',
     account: 'Account',
@@ -135,6 +135,7 @@ export default {
     adminPanelDesc: 'Manage catalogues and offers',
     cacheMonitor: 'Cache Monitor',
     cacheMonitorDesc: 'View cache statistics and usage',
+    performanceMonitor: 'Performance Monitor',
     language: 'Language',
     arabic: 'العربية',
     english: 'English',
@@ -142,12 +143,24 @@ export default {
     locationHint: 'Your location helps us show nearby stores and branches',
     shopping: 'Shopping',
     storesAvailable: 'Store Available',
+
+    // Notifications - NEW!
     notifications: 'Notifications',
     notificationsEnabled: 'Enable Notifications',
+    notificationsGranted: 'Notifications enabled',
+    notificationsDenied: 'Notifications disabled',
+    notificationsBlocked: 'Notifications Blocked',
+    notificationsBlockedMessage: 'Please enable notifications in your device settings to receive updates',
+    openSettings: 'Open Settings',
+    signInRequired: 'Sign In Required',
+    signInToSubscribe: 'Sign in to manage notification preferences',
+    subscribedTo: 'Subscribed to',
+    unsubscribedFrom: 'Unsubscribed from',
     notificationSettings: 'Notification Settings',
     newOffers: 'New Offers',
     expiringOffers: 'Expiring Offers',
     favoriteStores: 'Favorite Stores',
+
     favorites: 'Favorites',
     favoritesCount: 'Stores • Categories',
     about: 'About',
@@ -164,7 +177,7 @@ export default {
     ok: 'OK',
   },
 
-  // Categories - ENHANCED
+  // Categories
   categories: {
     all: 'All',
     general: 'General',
@@ -172,7 +185,6 @@ export default {
     electronics: 'Electronics',
     home: 'Home & Furniture',
     fashion: 'Fashion',
-    // Subcategories
     dairy: 'Dairy',
     meatPoultry: 'Meat & Poultry',
     oilsGhee: 'Oils & Ghee',
@@ -183,7 +195,7 @@ export default {
     babyProducts: 'Baby Products',
   },
 
-  // Common - ENHANCED
+  // Common
   common: {
     egp: 'EGP',
     save: 'Save',
@@ -227,6 +239,10 @@ export default {
     info: 'Info',
     success: 'Success',
     failed: 'Failed',
+    yes: 'Yes',
+    no: 'No',
+    ok: 'OK',
+    done: 'Done',
   },
 
   // Status messages
@@ -277,5 +293,71 @@ export default {
   basketBadge: {
     items: 'items',
     item: 'item',
+  },
+
+  // Offer Details
+  offerDetails: {
+    title: 'Offer Details',
+    description: 'Description',
+    price: 'Price',
+    originalPrice: 'Original Price',
+    offerPrice: 'Offer Price',
+    discount: 'Discount',
+    unit: 'Unit',
+    validity: 'Offer Validity',
+    validUntil: 'Valid until',
+    daysRemaining: 'Remaining',
+    expired: 'Expired',
+    catalogue: 'Catalogue',
+    store: 'Store',
+    category: 'Category',
+    addToBasket: 'Add to Basket',
+    viewCatalogue: 'View Catalogue',
+    viewStore: 'View Store',
+    shareOffer: 'Share Offer',
+    notFound: 'Offer not found',
+  },
+
+  // Catalogue Details
+  catalogueDetails: {
+    title: 'Catalogue Details',
+    notFound: 'Catalogue not found',
+    noPages: 'No images for this catalogue',
+    page: 'Page',
+    of: 'of',
+    savePage: 'Save Page',
+    pageSaved: 'Saved',
+    offersOnPage: 'Offers on this page',
+    noOffersOnPage: 'You can add the entire page to basket - No registered offers',
+    loadingOffers: 'Loading offers...',
+    tapToZoom: 'Tap to zoom',
+    pinchToZoom: 'Pinch to zoom',
+  },
+
+  // Search
+  search: {
+    title: 'Search',
+    placeholder: 'Search for offers, products or stores...',
+    recentSearches: 'Recent Searches',
+    popularSearches: 'Popular Searches',
+    noResults: 'No results',
+    noResultsFor: 'No results for',
+    tryDifferentKeywords: 'Try different keywords',
+    searchResults: 'Search Results',
+    offers: 'Offers',
+    catalogues: 'Catalogues',
+    stores: 'Stores',
+    clearHistory: 'Clear History',
+  },
+
+  // Errors
+  errors: {
+    generic: 'Something went wrong',
+    network: 'Network connection error',
+    notFound: 'Not found',
+    unauthorized: 'Unauthorized',
+    serverError: 'Server error',
+    tryAgain: 'Try again',
+    offline: 'You are offline',
   },
 };
