@@ -176,6 +176,12 @@ const CachedImageComponent: React.FC<CachedImageProps> = ({
 
     setLoading(false);
 
+    // ⚡ Mark as preloaded so FlyerDetail gets instant cache hits
+    const imageUrl = typeof source === 'string' ? source : (source as { uri: string })?.uri;
+    if (imageUrl) {
+      imageCacheService.markPreloaded(imageUrl);
+    }
+
     // Fade in the full image
     Animated.timing(imageOpacity, {
       toValue: 1,

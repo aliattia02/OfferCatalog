@@ -40,6 +40,7 @@ import { getActiveOffers } from '../../services/offerService';
 import { cacheService } from '../../services/cacheService';
 import { logScreenView, logSelectContent } from '../../services/analyticsService';
 import { setScreen, addBreadcrumb, captureError, testSentryError, testSentryTracing } from '../../config/sentry';
+import { imageCacheService } from '../../services/imageCacheService'; // ⚡ preloading
 import type { Category, Catalogue, Store } from '../../types';
 import type { OfferWithCatalogue } from '../../services/offerService';
 
@@ -248,6 +249,19 @@ export default function HomeScreen() {
     return groupArray;
   }, [catalogues.length, userGovernorate]);
 
+  // ⚡ Preload page 1 of every active catalogue as soon as they're known.
+  // Since coverImage === pages[0].imageUrl, any catalogue whose thumbnail is
+  // currently visible will ALREADY be marked via CachedImage.markPreloaded.
+  // This effect handles off-screen catalogues that haven't rendered yet.
+  useEffect(() => {
+    if (categoryGroups.length === 0) return;
+    const activeCatalogues = categoryGroups.flatMap(g => g.catalogues);
+    if (activeCatalogues.length === 0) return;
+
+    console.log(`📚 [Home] Scheduling first-page preload for ${activeCatalogues.length} catalogues`);
+    imageCacheService.preloadCatalogueFirstPages(activeCatalogues);
+  }, [categoryGroups.length]);
+
   const topStoresByCatalogueCount = useMemo(() => {
     if (!isInteractionComplete || categoryGroups.length === 0) return [];
 
@@ -282,6 +296,9 @@ export default function HomeScreen() {
       offerName: offer.nameAr,
     });
 
+    // Find the catalogue for this offer to get local store information
+    const catalogue = catalogues.find(c => c.id === offer.catalogueId);
+
     dispatch(addToBasket({
       offer: {
         ...offer,
@@ -289,8 +306,20 @@ export default function HomeScreen() {
         catalogueId: offer.catalogueId,
       },
       storeName: offer.storeName,
+      // 🔧 FIXED: Include catalogue with local store name for proper display
+      catalogue: catalogue,
+      cataloguePage: catalogue ? {
+        catalogueId: catalogue.id,
+        catalogueTitle: catalogue.titleAr, // This includes local store name like "عروض زهران - الزقازيق"
+        pageNumber: offer.pageNumber || 1,
+        imageUrl: offer.imageUrl,
+      } : undefined,
+      // Include local store details if available
+      localStoreName: catalogue?.localStoreNameAr || undefined,
+      storeNameAr: catalogue?.localStoreNameAr || offer.storeName,
+      storeNameEn: catalogue?.localStoreNameEn || offer.storeName,
     }));
-  }, [dispatch]);
+  }, [dispatch, catalogues]);
 
   const handleToggleFavoriteSubcategory = useCallback((subcategoryId: string) => {
     addBreadcrumb('User toggled favorite subcategory', 'user_action', { subcategoryId });
@@ -438,7 +467,7 @@ export default function HomeScreen() {
         >
           <View style={styles.thumbnailImageContainer}>
             <CachedImage
-              source={catalogue.coverImage}
+              source={catalogue.pages?.[0]?.imageUrl || catalogue.coverImage}
               style={styles.thumbnailImage}
               contentFit="cover"
               showLoader={false}

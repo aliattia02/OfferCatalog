@@ -1,4 +1,4 @@
-// src/app/_layout.tsx - FIXED SENTRY INTEGRATION
+// src/app/_layout.tsx - FIXED: Delayed background sync for faster first load
 import React, { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { Provider } from 'react-redux';
@@ -18,129 +18,94 @@ import { cacheService } from '../services/cacheService';
 
 import '../i18n';
 
-// ✅ CRITICAL: Initialize Sentry FIRST
-console.log('🚀 Initializing Sentry...');
+// ✅ Initialize Sentry FIRST (synchronous)
 try {
   initializeSentry();
-  console.log('✅ Sentry initialization complete');
 } catch (error) {
   console.error('❌ Sentry initialization error:', error);
 }
+
+// ✅ Delay (ms) before starting background sync after app is ready.
+// This prevents background Firebase reads from competing with auth +
+// first-render during startup, which was the main cause of slow load times.
+const BACKGROUND_SYNC_DELAY_MS = 3000;
 
 function RootLayout() {
   const [isReady, setIsReady] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
 
   useEffect(() => {
+    let syncDelayTimer: NodeJS.Timeout | null = null;
+    let authChangeTimeout: NodeJS.Timeout | null = null;
+    let lastAuthState: any = null;
+    let unsubscribeAuth: (() => void) | null = null;
+
     const prepare = async () => {
       try {
-        console.log('🚀 Starting app initialization...');
-
-        // Initialize i18n
+        // 1. i18n (fast, synchronous-ish)
         await initI18n();
-        console.log('✅ i18n initialized');
 
-        // Initialize Firebase (now async with persistence)
+        // 2. Firebase (async, sets up persistence)
         await initializeFirebase();
-        console.log('✅ Firebase initialized with persistence');
 
-        // Check if user is already logged in
-        console.log('🔍 Checking for existing auth session...');
+        // 3. Restore existing auth session from persisted state
         await store.dispatch(checkAuthState()).unwrap();
-        console.log('✅ Auth state check complete');
 
-        // Clean up expired cache entries on startup
+        // 4. Clean expired cache entries (lightweight scan)
         const cleaned = await cacheService.cleanup();
-        if (cleaned > 0) {
+        if (cleaned > 0 && __DEV__) {
           console.log(`🧹 Cleaned ${cleaned} expired cache entries on startup`);
         }
 
-        // Debounce auth changes to prevent race conditions during sign-up
-        let authChangeTimeout: NodeJS.Timeout | null = null;
-        let lastAuthState: any = null;
-
-        // Listen to auth state changes
-        const unsubscribe = onAuthChange((user) => {
-          console.log('🔄 Auth state changed:', user ? user.email : 'Not logged in');
-
-          // Clear any pending timeout
-          if (authChangeTimeout) {
-            clearTimeout(authChangeTimeout);
+        // 5. Listen to live auth state changes (debounced)
+        unsubscribeAuth = onAuthChange((user) => {
+          if (__DEV__) {
+            console.log('🔄 Auth state changed:', user ? user.email : 'Not logged in');
           }
 
-          // Debounce: Wait 500ms before processing auth change
+          if (authChangeTimeout) clearTimeout(authChangeTimeout);
+
           authChangeTimeout = setTimeout(() => {
             const currentState = user ? user.uid : null;
-            if (currentState === lastAuthState) {
-              console.log('⏭️ Auth state unchanged, skipping');
-              return;
-            }
-
+            if (currentState === lastAuthState) return;
             lastAuthState = currentState;
 
             if (user) {
-              console.log('✅ User authenticated, updating store');
               store.dispatch(setUser(user));
-
-              // Set Sentry user context
-              setSentryUser({
-                uid: user.uid,
-                email: user.email,
-                isAdmin: user.isAdmin,
-              });
+              setSentryUser({ uid: user.uid, email: user.email, isAdmin: user.isAdmin });
             } else {
               const state = store.getState();
-              const isSigningIn = state.auth.loading;
-
-              if (!isSigningIn) {
-                console.log('🗑️ User signed out, clearing store');
+              if (!state.auth.loading) {
                 store.dispatch(clearUser());
                 cacheService.clearUserCaches();
-
-                // Clear Sentry user context
                 clearSentryUser();
-              } else {
-                console.log('⏸️ Sign-in in progress, ignoring temporary auth state');
               }
             }
           }, 500);
         });
 
-        // Start background sync service
-        console.log('🚀 Starting background sync service...');
-        startBackgroundSync();
-        console.log('✅ Background sync service started');
-
+        // 6. Mark app as ready — show UI immediately
         setIsReady(true);
-        console.log('✅ App initialization complete');
 
-        // Cleanup
-        return () => {
-          console.log('🛑 Cleaning up...');
-          if (authChangeTimeout) {
-            clearTimeout(authChangeTimeout);
-          }
-          unsubscribe();
-          stopBackgroundSync();
-        };
+        // 7. ✅ FIX: Delay background sync so it doesn't compete with
+        //    auth state resolution + first render + Redux hydration.
+        //    The home screen will load from cache while sync warms up.
+        syncDelayTimer = setTimeout(() => {
+          if (__DEV__) console.log('🚀 Starting background sync service (delayed)...');
+          startBackgroundSync();
+          if (__DEV__) console.log('✅ Background sync service started');
+        }, BACKGROUND_SYNC_DELAY_MS);
+
       } catch (error: any) {
-        console.error('❌ Error initializing app:', error);
+        if (__DEV__) console.error('❌ Error initializing app:', error);
 
-        // Report initialization errors to Sentry
         try {
           const Sentry = require('@sentry/react-native');
           Sentry.captureException(error, {
             tags: { initialization: true },
-            contexts: {
-              initialization: {
-                step: 'app_startup',
-                error_message: error.message,
-              },
-            },
+            contexts: { initialization: { step: 'app_startup', error_message: error.message } },
           });
-        } catch (sentryError) {
-          console.error('Failed to report to Sentry:', sentryError);
-        }
+        } catch {}
 
         setInitError(error.message || 'Failed to initialize app');
         setIsReady(true);
@@ -148,6 +113,13 @@ function RootLayout() {
     };
 
     prepare();
+
+    return () => {
+      if (syncDelayTimer) clearTimeout(syncDelayTimer);
+      if (authChangeTimeout) clearTimeout(authChangeTimeout);
+      if (unsubscribeAuth) unsubscribeAuth();
+      stopBackgroundSync();
+    };
   }, []);
 
   if (!isReady) {
@@ -176,45 +148,23 @@ function RootLayout() {
           screenOptions={{
             headerShown: false,
             animation: 'slide_from_right',
-            contentStyle: {
-              backgroundColor: colors.background,
-            },
+            contentStyle: { backgroundColor: colors.background },
           }}
         >
-          <Stack.Screen
-            name="(tabs)"
-            options={{
-              headerShown: false,
-            }}
-          />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="auth" options={{ headerShown: false }} />
           <Stack.Screen name="admin" options={{ headerShown: false }} />
           <Stack.Screen
             name="flyer/[id]"
-            options={{
-              headerShown: true,
-              title: '',
-              headerBackTitle: 'عودة',
-              presentation: 'card',
-            }}
+            options={{ headerShown: true, title: '', headerBackTitle: 'عودة', presentation: 'card' }}
           />
           <Stack.Screen
             name="store/[id]"
-            options={{
-              headerShown: true,
-              title: '',
-              headerBackTitle: 'عودة',
-              presentation: 'card',
-            }}
+            options={{ headerShown: true, title: '', headerBackTitle: 'عودة', presentation: 'card' }}
           />
           <Stack.Screen
             name="offer/[id]"
-            options={{
-              headerShown: true,
-              title: '',
-              headerBackTitle: 'عودة',
-              presentation: 'card',
-            }}
+            options={{ headerShown: true, title: '', headerBackTitle: 'عودة', presentation: 'card' }}
           />
         </Stack>
       </SafeAreaProvider>
@@ -222,17 +172,16 @@ function RootLayout() {
   );
 }
 
-// ✅ Wrap with Sentry for error boundary - with try/catch
+// Wrap with Sentry error boundary
 let ExportedComponent = RootLayout;
-
 try {
   const Sentry = require('@sentry/react-native');
-  if (Sentry && Sentry.wrap) {
+  if (Sentry?.wrap) {
     ExportedComponent = Sentry.wrap(RootLayout);
-    console.log('✅ Root component wrapped with Sentry error boundary');
+    if (__DEV__) console.log('✅ Root component wrapped with Sentry error boundary');
   }
 } catch (error) {
-  console.warn('⚠️ Could not wrap component with Sentry:', error);
+  if (__DEV__) console.warn('⚠️ Could not wrap component with Sentry:', error);
 }
 
 export default ExportedComponent;

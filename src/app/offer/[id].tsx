@@ -38,6 +38,7 @@ export default function OfferDetailScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const stores = useAppSelector(state => state.stores.stores);
+  const catalogues = useAppSelector(state => state.offers.catalogues);
   const favoriteSubcategoryIds = useAppSelector(state => state.favorites.subcategoryIds);
 
   // ✅ All hooks before early returns
@@ -102,9 +103,24 @@ export default function OfferDetailScreen() {
         endDate: offer.endDate,
       };
 
+      // Find the catalogue for this offer to get local store information
+      const catalogue = catalogues.find(c => c.id === offer.catalogueId);
+
       dispatch(addToBasket({
         offer: serializableOffer,
         storeName: storeName,
+        // 🔧 FIXED: Include catalogue with local store name for proper display
+        catalogue: catalogue,
+        cataloguePage: catalogue ? {
+          catalogueId: catalogue.id,
+          catalogueTitle: catalogue.titleAr, // This includes local store name like "عروض زهران - الزقازيق"
+          pageNumber: offer.pageNumber || 1,
+          imageUrl: offer.imageUrl,
+        } : undefined,
+        // Include local store details if available
+        localStoreName: catalogue?.localStoreNameAr || undefined,
+        storeNameAr: catalogue?.localStoreNameAr || storeName,
+        storeNameEn: catalogue?.localStoreNameEn || storeName,
       }));
 
       logAddToCart(offer.id, offer.nameAr, offer.offerPrice, {
@@ -114,7 +130,7 @@ export default function OfferDetailScreen() {
     } catch (err) {
       console.error('Error adding to basket:', err);
     }
-  }, [offer, storeName, dispatch]);
+  }, [offer, storeName, catalogues, dispatch]);
 
   const handleViewStore = useCallback(() => {
     if (store?.id) {

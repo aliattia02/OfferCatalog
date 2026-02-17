@@ -1,5 +1,6 @@
 // src/utils/performanceLogger.ts - ENHANCED VERSION
 // Performance logger with navigation transition tracking
+// ✅ All methods are no-ops in production builds (__DEV__ === false)
 
 interface TransitionMetrics {
   from: string;
@@ -29,17 +30,16 @@ class PerformanceLogger {
     operations: [] as number[],
   };
 
-  /**
-   * Start timing an operation
-   */
+  /** Start timing an operation */
   start(name: string) {
+    if (!__DEV__) return;
     this.timers.set(name, Date.now());
   }
 
-  /**
-   * End timing and log result
-   */
+  /** End timing and log result */
   end(name: string): number | undefined {
+    if (!__DEV__) return undefined;
+
     const startTime = this.timers.get(name);
     if (!startTime) {
       console.warn(`⚠️ No timer found for: ${name}`);
@@ -49,13 +49,13 @@ class PerformanceLogger {
     const duration = Date.now() - startTime;
     this.timers.delete(name);
 
-    // Track for stats
     this.sessionStats.operations.push(duration);
 
-    // Color-coded logging based on duration
-    if (duration < 100) {
+    if (duration < 300) {
       console.log(`✅ FAST [${name}]: ${duration}ms`);
-    } else if (duration < 500) {
+    } else if (duration < 1000) {
+      console.log(`🟡 OK [${name}]: ${duration}ms`);
+    } else if (duration < 3000) {
       console.warn(`⚠️ SLOW [${name}]: ${duration}ms`);
       this.sessionStats.slowOperations++;
     } else {
@@ -66,10 +66,10 @@ class PerformanceLogger {
     return duration;
   }
 
-  /**
-   * Track component render count
-   */
+  /** Track component render count */
   trackRender(componentName: string, maxRenders: number = 3): number {
+    if (!__DEV__) return 0;
+
     const count = (this.renderCounts.get(componentName) || 0) + 1;
     this.renderCounts.set(componentName, count);
     this.sessionStats.totalRenders++;
@@ -81,19 +81,17 @@ class PerformanceLogger {
     return count;
   }
 
-  /**
-   * Reset render count for a component
-   */
+  /** Reset render count for a component */
   resetRenderCount(componentName: string) {
+    if (!__DEV__) return;
     this.renderCounts.delete(componentName);
   }
 
-  /**
-   * Start tracking a navigation transition
-   */
+  /** Start tracking a navigation transition */
   startTransition(from: string, to: string) {
-    console.log(`🚀 TRANSITION START: ${from} → ${to}`);
+    if (!__DEV__) return;
 
+    console.log(`🚀 TRANSITION START: ${from} → ${to}`);
     this.currentTransition = {
       from,
       to,
@@ -102,10 +100,9 @@ class PerformanceLogger {
     };
   }
 
-  /**
-   * Mark a phase in the current transition
-   */
+  /** Mark a phase in the current transition */
   markTransitionPhase(phase: keyof TransitionMetrics['phases']) {
+    if (!__DEV__) return;
     if (!this.currentTransition) {
       console.warn(`⚠️ No active transition for phase: ${phase}`);
       return;
@@ -116,10 +113,9 @@ class PerformanceLogger {
     console.log(`  📍 ${phase}: ${elapsed}ms`);
   }
 
-  /**
-   * End the current transition
-   */
+  /** End the current transition */
   endTransition() {
+    if (!__DEV__) return;
     if (!this.currentTransition) {
       console.warn('⚠️ No active transition to end');
       return;
@@ -129,57 +125,50 @@ class PerformanceLogger {
     this.currentTransition.endTime = Date.now();
     this.currentTransition.duration = duration;
 
-    // Log summary
     console.log(`✅ TRANSITION COMPLETE: ${this.currentTransition.from} → ${this.currentTransition.to}`);
     console.log(`   Total: ${duration}ms`);
     console.log(`   Phases:`, this.currentTransition.phases);
 
-    // Color-code based on total duration
-    if (duration > 1000) {
-      console.error(`🔴 SLOW TRANSITION: ${duration}ms`);
-    } else if (duration > 500) {
-      console.warn(`⚠️ ACCEPTABLE TRANSITION: ${duration}ms`);
+    if (duration > 2000) {
+      console.warn(`⚠️ SLOW TRANSITION: ${duration}ms`);
+    } else if (duration > 800) {
+      console.log(`🟡 ACCEPTABLE TRANSITION: ${duration}ms`);
     }
 
     this.transitions.push({ ...this.currentTransition });
     this.currentTransition = null;
   }
 
-  /**
-   * Get transition history
-   */
+  /** Get transition history */
   getTransitions(): TransitionMetrics[] {
+    if (!__DEV__) return [];
     return [...this.transitions];
   }
 
-  /**
-   * Get the last transition
-   */
+  /** Get the last transition */
   getLastTransition(): TransitionMetrics | undefined {
+    if (!__DEV__) return undefined;
     return this.transitions[this.transitions.length - 1];
   }
 
-  /**
-   * Log state for debugging
-   */
+  /** Log state for debugging */
   logState(label: string, data: any) {
+    if (!__DEV__) return;
     console.log(`📊 [${label}]:`, JSON.stringify(data, null, 2));
   }
 
-  /**
-   * Measure synchronous operation
-   */
+  /** Measure synchronous operation */
   measure<T>(name: string, fn: () => T): T {
+    if (!__DEV__) return fn();
     this.start(name);
     const result = fn();
     this.end(name);
     return result;
   }
 
-  /**
-   * Measure async operation
-   */
+  /** Measure async operation */
   async measureAsync<T>(name: string, fn: () => Promise<T>): Promise<T> {
+    if (!__DEV__) return fn();
     this.start(name);
     try {
       const result = await fn();
@@ -191,10 +180,17 @@ class PerformanceLogger {
     }
   }
 
-  /**
-   * Get session statistics
-   */
+  /** Get session statistics */
   getSessionStats() {
+    if (!__DEV__) return {
+      totalRenders: 0,
+      slowOperations: 0,
+      criticalOperations: 0,
+      avgOperationTime: 0,
+      operations: [],
+      totalOperations: 0,
+    };
+
     const ops = this.sessionStats.operations;
     const avg = ops.length > 0
       ? ops.reduce((a, b) => a + b, 0) / ops.length
@@ -207,10 +203,10 @@ class PerformanceLogger {
     };
   }
 
-  /**
-   * Reset all statistics
-   */
+  /** Reset all statistics */
   resetStats() {
+    if (!__DEV__) return;
+
     this.renderCounts.clear();
     this.transitions = [];
     this.sessionStats = {
@@ -223,12 +219,11 @@ class PerformanceLogger {
     console.log('🔄 Performance stats reset');
   }
 
-  /**
-   * Log comprehensive performance report
-   */
+  /** Log comprehensive performance report */
   logReport() {
-    console.log('\n📊 ===== PERFORMANCE REPORT =====');
+    if (!__DEV__) return;
 
+    console.log('\n📊 ===== PERFORMANCE REPORT =====');
     const stats = this.getSessionStats();
     console.log('Session Stats:');
     console.log(`  Total Operations: ${stats.totalOperations}`);

@@ -1,5 +1,5 @@
-// src/hooks/usePersistBasket.ts - NEW FILE WITH IMAGE PREFETCHING
-import { useEffect } from 'react';
+// src/hooks/usePersistBasket.ts - FIXED: Debounced saves to prevent memory leak
+import { useEffect, useRef } from 'react';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { hydrateBasket, removeExpiredItems } from '../store/slices/basketSlice';
 import { databaseService } from '../services/database';
@@ -7,42 +7,73 @@ import { imageCacheService } from '../services/imageCacheService';
 
 /**
  * Hook to persist basket state and prefetch basket images
+ * ✅ Debounced saves to prevent memory leaks
  * ✅ Only caches images for items actually in basket
  */
 export const usePersistBasket = () => {
   const dispatch = useAppDispatch();
   const basket = useAppSelector(state => state.basket);
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const isHydratedRef = useRef(false);
 
-  // ✅ Load basket on mount
+  // ✅ Load basket on mount (ONCE)
   useEffect(() => {
     const loadBasket = async () => {
-      const savedBasket = await databaseService.getBasket();
-      if (savedBasket) {
-        dispatch(hydrateBasket(savedBasket));
-        
-        // Remove expired items
-        dispatch(removeExpiredItems());
-        
-        console.log('💧 Basket hydrated from storage');
+      if (isHydratedRef.current) return; // Prevent multiple hydrations
+
+      try {
+        const savedBasket = await databaseService.getBasket();
+        if (savedBasket) {
+          dispatch(hydrateBasket(savedBasket));
+
+          // Remove expired items after hydration
+          dispatch(removeExpiredItems());
+
+          console.log('💧 Basket hydrated from storage');
+        }
+        isHydratedRef.current = true;
+      } catch (error) {
+        console.error('❌ Error loading basket:', error);
       }
     };
 
     loadBasket();
-  }, [dispatch]);
+  }, [dispatch]); // Only run once on mount
 
-  // ✅ Save basket whenever it changes
+  // ✅ Save basket with debouncing (prevent rapid saves)
   useEffect(() => {
-    const saveBasket = async () => {
-      await databaseService.saveBasket(basket);
-      console.log(`💾 Basket saved (${basket.items.length} items)`);
+    // Skip if not yet hydrated (prevents saving initial empty state)
+    if (!isHydratedRef.current) return;
+
+    // Clear existing timer
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+
+    // Debounce saves (wait 500ms after last change)
+    saveTimerRef.current = setTimeout(async () => {
+      try {
+        await databaseService.saveBasket(basket);
+        console.log(`💾 Basket saved (${basket.items.length} items)`);
+      } catch (error) {
+        console.error('❌ Error saving basket:', error);
+      }
+    }, 500); // 500ms debounce
+
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
     };
+  }, [basket.items.length, basket.total]); // Only trigger on meaningful changes
 
-    saveBasket();
-  }, [basket]);
-
-  // ✅ Prefetch basket item images with HIGH priority
+  // ✅ Prefetch basket item images with HIGH priority (debounced)
   useEffect(() => {
-    const prefetchImages = async () => {
+    // Skip if not yet hydrated
+    if (!isHydratedRef.current) return;
+    if (basket.items.length === 0) return;
+
+    const prefetchTimer = setTimeout(async () => {
       const imageUrls: string[] = [];
 
       for (const item of basket.items) {
@@ -56,13 +87,15 @@ export const usePersistBasket = () => {
       }
 
       if (imageUrls.length > 0) {
-        console.log(`🔥 Prefetching ${imageUrls.length} basket images...`);
-        await imageCacheService.prefetchBasketImages(imageUrls);
+        try {
+          console.log(`🔥 Prefetching ${imageUrls.length} basket images...`);
+          await imageCacheService.prefetchBasketImages(imageUrls);
+        } catch (error) {
+          console.error('❌ Error prefetching basket images:', error);
+        }
       }
-    };
+    }, 1000); // Delay image prefetching by 1 second
 
-    if (basket.items.length > 0) {
-      prefetchImages();
-    }
-  }, [basket.items]);
+    return () => clearTimeout(prefetchTimer);
+  }, [basket.items.length]); // Only trigger when item count changes
 };

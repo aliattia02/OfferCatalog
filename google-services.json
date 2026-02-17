@@ -7,6 +7,67 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:384711933806:android:92d600ed084aeee6bccb7f",
+        "android_client_info": {
+          "package_name": "com.medlyticssolutions.dailydeals"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "384711933806-226smcms2ngqhk0cfeiagvqg9ipvql88.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.medlyticssolutions.dailydeals",
+            "certificate_hash": "4f766105f8db0b9caedc86fedccf69577a95429c"
+          }
+        },
+        {
+          "client_id": "384711933806-299g79vq37ovtq96uot0302e0qbm7h3u.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.medlyticssolutions.dailydeals",
+            "certificate_hash": "32fca1cae21b4f68d40a3243b3dd1fa8fb204aa6"
+          }
+        },
+        {
+          "client_id": "384711933806-lc539l3etgfkb4pgc2vv7hrhvl1a3gqc.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.medlyticssolutions.dailydeals",
+            "certificate_hash": "7a2333afa2856035efeb8672fa9d0a6ecbd78beb"
+          }
+        },
+        {
+          "client_id": "384711933806-pf435jov0edekif0qle00g5lfn95ecp2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.medlyticssolutions.dailydeals",
+            "certificate_hash": "5e8f16062ea3cd2c4a0d547876baa6f38cabf625"
+          }
+        },
+        {
+          "client_id": "384711933806-mj5gddiaesno7p84i04aprl15uo0at8d.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyApVJfPqb8d2qRRIiqhYxDlvvCfXEQkj8o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "384711933806-f0ch8ul0i52iu1p8bo5gbpq33enhr9on.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:384711933806:android:519b13197c677ef8bccb7f",
         "android_client_info": {
           "package_name": "com.yourcompany.offercatalog"

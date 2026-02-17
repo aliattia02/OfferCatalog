@@ -84,11 +84,21 @@ export default function SignInScreen() {
   const configureGoogleSignIn = async () => {
     try {
       console.log('🔧 Configuring Google Sign-In for native.. .');
-      GoogleSignin.configure({
+
+      // ✅ CRITICAL FIX: Add androidClientId for Android platform
+      const config: any = {
         webClientId: clientIds.webClientId,
         offlineAccess: true,
         forceCodeForRefreshToken: true,
-      });
+      };
+
+      // Add androidClientId for Android platform
+      if (Platform.OS === 'android') {
+        config.androidClientId = clientIds.androidClientId;
+        console.log('✅ Using Android Client ID for native Android');
+      }
+
+      GoogleSignin.configure(config);
       setIsConfigured(true);
       console.log('✅ Google Sign-In configured successfully');
     } catch (error) {
@@ -579,10 +589,7 @@ export default function SignInScreen() {
               {t('auth.welcome')}
             </Text>
 
-            {/* Subtitle */}
-            <Text style={styles.subtitle}>
-              {t('auth. welcomeMessage')}
-            </Text>
+
 
             {/* Sign-In Method Toggle */}
             <View style={styles. toggleContainer}>

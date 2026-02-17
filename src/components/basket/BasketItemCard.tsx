@@ -1,4 +1,4 @@
-// src/components/basket/BasketItemCard.tsx - FAVORITE BUTTON ON RIGHT SIDE
+// src/components/basket/BasketItemCard.tsx - FIXED: Display local store name (like "زهران", "راية")
 import React from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, I18nManager } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -27,7 +27,7 @@ export const BasketItemCard: React.FC<BasketItemCardProps> = ({
   isFavorite = false,
   onToggleFavorite,
 }) => {
-  const { getName } = useLocalized();
+  const { getName, getTitle, language } = useLocalized();
 
   // Only render if this is an offer type basket item
   if (item.type !== 'offer' || !item.offer) {
@@ -35,6 +35,50 @@ export const BasketItemCard: React.FC<BasketItemCardProps> = ({
   }
 
   const daysRemaining = getDaysRemaining(item.offerEndDate);
+
+  // 🔧 FIXED: Get the store name with proper priority for local stores
+  const getStoreName = () => {
+    // PRIORITY 1: cataloguePage.catalogueTitle (includes local store name like "عروض زهران - الزقازيق")
+    // This is what SavedPageCard uses and works perfectly for local stores
+    if (item.cataloguePage?.catalogueTitle) {
+      return item.cataloguePage.catalogueTitle;
+    }
+
+    // PRIORITY 2: catalogue.titleAr/titleEn (same as above, but from catalogue object)
+    if (item.catalogue) {
+      return getTitle(item.catalogue);
+    }
+
+    // PRIORITY 3: localStoreName (specific local store name like "زهران", "راية")
+    if (item.localStoreName) {
+      return item.localStoreName;
+    }
+
+    // PRIORITY 4: branch.storeName (local store name from branch)
+    if (item.branch?.storeName) {
+      return item.branch.storeName;
+    }
+
+    // PRIORITY 5: storeNameAr/storeNameEn from item (localized store name)
+    if (item.storeNameAr && item.storeNameEn) {
+      return language === 'ar' ? item.storeNameAr : item.storeNameEn;
+    }
+
+    // PRIORITY 6: branch.storeNameAr/storeNameEn
+    if (item.branch) {
+      if (item.branch.storeNameAr && item.branch.storeNameEn) {
+        return language === 'ar' ? item.branch.storeNameAr : item.branch.storeNameEn;
+      }
+    }
+
+    // PRIORITY 7: store object with localization
+    if (item.store) {
+      return getName(item.store);
+    }
+
+    // FALLBACK: Use generic storeName
+    return item.storeName || '';
+  };
 
   const containerContent = (
     <View style={[styles.container, isExpired && styles.containerExpired]}>
@@ -87,7 +131,7 @@ export const BasketItemCard: React.FC<BasketItemCardProps> = ({
         </View>
 
         <Text style={[styles.storeName, isExpired && styles.textExpired]}>
-          {item.storeName}
+          {getStoreName()}
         </Text>
 
         {/* Expiry Info */}
@@ -204,9 +248,9 @@ const styles = StyleSheet.create({
   favoriteButton: {
     position: 'absolute',
     top: spacing.sm,
-    right: I18nManager.isRTL ? undefined : '25%', // Second quarter from right
-    left: I18nManager.isRTL ? '25%' : undefined, // Second quarter from left in RTL
-    transform: [{ translateX: I18nManager.isRTL ? 16 : -16 }], // Center it in the quarter
+    right: I18nManager.isRTL ? undefined : '25%',
+    left: I18nManager.isRTL ? '25%' : undefined,
+    transform: [{ translateX: I18nManager.isRTL ? 16 : -16 }],
     width: 32,
     height: 32,
     borderRadius: borderRadius.full,

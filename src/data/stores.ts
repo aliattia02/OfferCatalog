@@ -27,6 +27,7 @@ export const governorateNames: Record<GovernorateId, { ar: string; en: string }>
 // CITY DEFINITIONS
 // ============================================
 export const CITIES = {
+  // Sharkia
   ZAGAZIG: 'zagazig',
   BILBEIS: 'bilbeis',
   MINYA_QAMH: 'minya_qamh',
@@ -34,21 +35,30 @@ export const CITIES = {
   ABU_HAMMAD: 'abu_hammad',
   ABU_KABIR: 'abu_kabir',
   HEHIA: 'hehia',
+  // Dakahlia
   MANSOURA: 'mansoura',
   TALKHA: 'talkha',
   MIT_GHAMR: 'mit_ghamr',
   BELQAS: 'belqas',
   SHERBIN: 'sherbin',
+  // Cairo
   NASR_CITY: 'nasr_city',
   HELIOPOLIS: 'heliopolis',
   MAADI: 'maadi',
   DOWNTOWN: 'downtown',
-  SIXTH_OCTOBER: 'sixth_october',
+  SIXTH_OCTOBER: 'sixth_october', // Often mapped to Cairo/Giza metro area
+  // Alexandria (NEW)
+  ALEXANDRIA_CITY: 'alexandria_city',
+  SMOUHA: 'smouha',
+  SIDI_GABER: 'sidi_gaber',
+  MONTAZAH: 'montazah',
+  MOHARRAM_BEY: 'moharram_bey',
 } as const;
 
 export type CityId = typeof CITIES[keyof typeof CITIES];
 
 export const cityNames: Record<CityId, { ar: string; en: string; governorate: GovernorateId }> = {
+  // Sharkia
   zagazig: { ar: 'الزقازيق', en: 'Zagazig', governorate: 'sharkia' },
   bilbeis: { ar: 'بلبيس', en: 'Bilbeis', governorate: 'sharkia' },
   minya_qamh: { ar: 'منيا القمح', en: 'Minya El Qamh', governorate: 'sharkia' },
@@ -56,16 +66,24 @@ export const cityNames: Record<CityId, { ar: string; en: string; governorate: Go
   abu_hammad: { ar: 'أبو حماد', en: 'Abu Hammad', governorate: 'sharkia' },
   abu_kabir: { ar: 'أبو كبير', en: 'Abu Kabir', governorate: 'sharkia' },
   hehia: { ar: 'ههيا', en: 'Hehia', governorate: 'sharkia' },
+  // Dakahlia
   mansoura: { ar: 'المنصورة', en: 'Mansoura', governorate: 'dakahlia' },
   talkha: { ar: 'طلخا', en: 'Talkha', governorate: 'dakahlia' },
   mit_ghamr: { ar: 'ميت غمر', en: 'Mit Ghamr', governorate: 'dakahlia' },
   belqas: { ar: 'بلقاس', en: 'Belqas', governorate: 'dakahlia' },
   sherbin: { ar: 'شربين', en: 'Sherbin', governorate: 'dakahlia' },
+  // Cairo
   nasr_city: { ar: 'مدينة نصر', en: 'Nasr City', governorate: 'cairo' },
   heliopolis: { ar: 'مصر الجديدة', en: 'Heliopolis', governorate: 'cairo' },
   maadi: { ar: 'المعادي', en: 'Maadi', governorate: 'cairo' },
   downtown: { ar: 'وسط البلد', en: 'Downtown', governorate: 'cairo' },
   sixth_october: { ar: 'السادس من أكتوبر', en: '6th of October', governorate: 'cairo' },
+  // Alexandria
+  alexandria_city: { ar: 'الإسكندرية', en: 'Alexandria', governorate: 'alexandria' },
+  smouha: { ar: 'سموحة', en: 'Smouha', governorate: 'alexandria' },
+  sidi_gaber: { ar: 'سيدي جابر', en: 'Sidi Gaber', governorate: 'alexandria' },
+  montazah: { ar: 'المنتزه', en: 'Montazah', governorate: 'alexandria' },
+  moharram_bey: { ar: 'محرم بك', en: 'Moharram Bey', governorate: 'alexandria' },
 };
 
 // ============================================
@@ -372,69 +390,44 @@ export const stores: Store[] = [
 // ============================================
 
 export const sharkiaBranches: Branch[] = [
-  // NATIONAL STORES IN ZAGAZIG
+  // Carrefour Zagazig - VERIFIED LOCATION
   {
-    id: 'carrefour-zagazig-mall',
+    id: 'carrefour-zagazig-1',
     storeId: 'carrefour',
-    addressAr: 'مول الزقازيق، طريق الإسماعيلية، الزقازيق، الشرقية',
-    addressEn: 'Zagazig Mall, Ismailia Road, Zagazig, Sharqia',
+    addressAr: 'شارع القوميه - الزقازيق، الشرقيه',
+    addressEn: 'Kawmia Street - Zagazig Rd, Shaibet an Nakareyah',
     governorate: 'sharkia',
     city: 'zagazig',
-    latitude: 30.5932,
-    longitude: 31.5112,
-    openingHours: '9:00 ص - 11:00 م',
-    phone: '+20552478965',
+    latitude: 30.590486,
+    longitude: 31.489913,
+    openingHours: '09:00 AM - 12:00 AM', //
+    phone: '16061',
   },
   {
-    id: 'kazyon-zagazig-galaa',
+    id: 'btech-zagazig-1',
+    storeId: 'btech',
+    addressAr: 'شارع المحافظة، برج صيدناوي، أمام مبنى المحافظة، الزقازيق',
+    addressEn: 'Al-Mohafaza St, Sidanawy Tower, in front of the Governorate Building, Zagazig',
+    governorate: 'sharkia',
+    city: 'zagazig',
+    latitude: 30.5882,
+    longitude: 31.5015,
+    openingHours: '10:00 AM - 10:00 PM', //
+    phone: '19966',
+  },
+  {
+    id: 'kazyon-zagazig-1',
     storeId: 'kazyon',
     addressAr: 'شارع الجلاء، الزقازيق، الشرقية',
-    addressEn: 'El-Galaa Street, Zagazig, Sharqia',
+    addressEn: 'Al-Galaa St, Zagazig, Sharqia',
     governorate: 'sharkia',
     city: 'zagazig',
-    latitude: 30.5877,
-    longitude: 31.5020,
-    openingHours: '8:00 ص - 12:00 ص',
-    phone: '+20552365478',
+    latitude: 30.5833,
+    longitude: 31.5167,
+    openingHours: '09:00 AM - 01:00 AM',
+    phone: '19600',
   },
-  {
-    id: 'kazyon-zagazig-orabi',
-    storeId: 'kazyon',
-    addressAr: 'شارع أحمد عرابي، الزقازيق، الشرقية',
-    addressEn: 'Ahmed Orabi Street, Zagazig, Sharqia',
-    governorate: 'sharkia',
-    city: 'zagazig',
-    latitude: 30.5912,
-    longitude: 31.5045,
-    openingHours: '8:00 ص - 12:00 ص',
-    phone: '+20552398741',
-  },
-  {
-    id: 'metro-zagazig-farouk',
-    storeId: 'metro',
-    addressAr: 'شارع فاروق، الزقازيق، الشرقية',
-    addressEn: 'Farouk Street, Zagazig, Sharqia',
-    governorate: 'sharkia',
-    city: 'zagazig',
-    latitude: 30.5890,
-    longitude: 31.5050,
-    openingHours: '8:00 ص - 11:00 م',
-    phone: '+20552456789',
-  },
-  {
-    id: 'btech-zagazig-mall',
-    storeId: 'btech',
-    addressAr: 'مول الزقازيق، الزقازيق، الشرقية',
-    addressEn: 'Zagazig Mall, Zagazig, Sharqia',
-    governorate: 'sharkia',
-    city: 'zagazig',
-    latitude: 30.5935,
-    longitude: 31.5115,
-    openingHours: '10:00 ص - 10:00 م',
-    phone: '+20552223344',
-  },
-
-  // LOCAL SHARKIA STORES - ZAGAZIG
+  // LOCAL STORES (Kept as originally requested if valid, else can be trimmed)
   {
     id: 'zahran-zagazig-galaa',
     storeId: 'sharkia_local',
@@ -450,48 +443,6 @@ export const sharkiaBranches: Branch[] = [
     phone: '+20552365400',
   },
   {
-    id: 'zahran-zagazig-geish',
-    storeId: 'sharkia_local',
-    storeName: 'زهران',
-    storeNameEn: 'Zahran',
-    addressAr: 'شارع الجيش، الزقازيق، الشرقية',
-    addressEn: 'El-Geish Street, Zagazig, Sharqia',
-    governorate: 'sharkia',
-    city: 'zagazig',
-    latitude: 30.5850,
-    longitude: 31.5000,
-    openingHours: '8:00 ص - 12:00 ص',
-    phone: '+20552334455',
-  },
-  {
-    id: 'raya-zagazig-orabi',
-    storeId: 'sharkia_local',
-    storeName: 'راية',
-    storeNameEn: 'Raya',
-    addressAr: 'شارع أحمد عرابي، الزقازيق، الشرقية',
-    addressEn: 'Ahmed Orabi Street, Zagazig, Sharqia',
-    governorate: 'sharkia',
-    city: 'zagazig',
-    latitude: 30.5905,
-    longitude: 31.5040,
-    openingHours: '8:00 ص - 11:00 م',
-    phone: '+20552445566',
-  },
-  {
-    id: 'raya-zagazig-horreya',
-    storeId: 'sharkia_local',
-    storeName: 'راية',
-    storeNameEn: 'Raya',
-    addressAr: 'شارع الحرية، الزقازيق، الشرقية',
-    addressEn: 'El-Horreya Street, Zagazig, Sharqia',
-    governorate: 'sharkia',
-    city: 'zagazig',
-    latitude: 30.5875,
-    longitude: 31.5035,
-    openingHours: '8:00 ص - 11:00 م',
-    phone: '+20552778899',
-  },
-  {
     id: 'abouelsaoud-zagazig-hosseiny',
     storeId: 'sharkia_local',
     storeName: 'أبو السعود',
@@ -505,25 +456,124 @@ export const sharkiaBranches: Branch[] = [
     openingHours: '9:00 ص - 11:00 م',
     phone: '+20552667788',
   },
+];
+
+export const dakahliaBranches: Branch[] = [
   {
-    id: 'abouelsaoud-zagazig-saad',
-    storeId: 'sharkia_local',
-    storeName: 'أبو السعود',
-    storeNameEn: 'Abou El Saoud',
-    addressAr: 'شارع سعد زغلول، الزقازيق، الشرقية',
-    addressEn: 'Saad Zaghloul Street, Zagazig, Sharqia',
-    governorate: 'sharkia',
-    city: 'zagazig',
-    latitude: 30.5865,
-    longitude: 31.5025,
-    openingHours: '9:00 ص - 11:00 م',
-    phone: '+20552556677',
+    id: 'carrefour-mansoura-1',
+    storeId: 'carrefour',
+    addressAr: 'المنصورة قسم 2، شارع الجمهورية، الدقهلية',
+    addressEn: 'Mansoura Qism 2, El Gomhouria St, Dakahlia',
+    governorate: 'dakahlia',
+    city: 'mansoura',
+    latitude: 31.0409,
+    longitude: 31.3785,
+    openingHours: '09:00 AM - 01:00 AM', //
+    phone: '16061',
+  },
+  {
+    id: 'btech-mansoura-1',
+    storeId: 'btech',
+    addressAr: 'شارع بورسعيد، بجوار مسجد الصالح الصغير، مبنى التصنيع القديم',
+    addressEn: 'Port Said St, next to Al-Saleh Small Mosque, Old Manufacturing Building',
+    governorate: 'dakahlia',
+    city: 'mansoura',
+    latitude: 31.0450,
+    longitude: 31.3850,
+    openingHours: '10:00 AM - 10:00 PM', //
+    phone: '19966',
+  },
+  {
+    id: 'kazyon-mansoura-1',
+    storeId: 'kazyon',
+    addressAr: 'شارع الإمام أحمد عبده، متفرع من كلية الآداب، حي غرب',
+    addressEn: 'El Emam Ahmed Abdou St, Off Koleyet El Adaab St, West District',
+    governorate: 'dakahlia',
+    city: 'mansoura',
+    latitude: 31.0360,
+    longitude: 31.3680,
+    openingHours: '09:00 AM - 01:00 AM', //
+    phone: '19600',
   },
 ];
 
-export const dakahliaBranches: Branch[] = [];
+export const cairoBranches: Branch[] = [
+  {
+    id: 'carrefour-cairo-almaza',
+    storeId: 'carrefour',
+    addressAr: 'سيتي سنتر ألماظة، طريق السويس، هليوبوليس، القاهرة',
+    addressEn: 'City Centre Almaza, Suez Rd, Heliopolis, Cairo',
+    governorate: 'cairo',
+    city: 'heliopolis',
+    latitude: 30.0980,
+    longitude: 31.3630,
+    openingHours: '10:00 AM - 12:00 AM', //
+    phone: '16061',
+  },
+  {
+    id: 'btech-cairo-nasr',
+    storeId: 'btech',
+    addressAr: '4 طريق النصر، مكرم عبيد، المنطقة السادسة، مدينة نصر',
+    addressEn: '4 El-Nasr Rd, Makram Ebeid, District 6, Nasr City',
+    governorate: 'cairo',
+    city: 'nasr_city',
+    latitude: 30.0590,
+    longitude: 31.3380,
+    openingHours: '10:00 AM - 11:00 PM', //
+    phone: '19966',
+  },
+  {
+    id: 'hyperone-cairo-zayed',
+    storeId: 'hyperone',
+    addressAr: 'مدخل 1 مدينة الشيخ زايد، محور 26 يوليو، 6 أكتوبر',
+    addressEn: 'Entrance 1 Sheikh Zayed City, 26th of July Corridor, 6th of October',
+    governorate: 'cairo',
+    city: 'sixth_october',
+    latitude: 30.0150,
+    longitude: 30.9850,
+    openingHours: '08:00 AM - 11:00 PM', //
+    phone: '16400',
+  },
+];
 
-export const cairoBranches: Branch[] = [];
+export const alexandriaBranches: Branch[] = [
+  {
+    id: 'carrefour-alex-citycenter',
+    storeId: 'carrefour',
+    addressAr: 'كارفور سيتي سنتر، بوابة 4، طريق الإسكندرية الصحراوي، الكيلو 8',
+    addressEn: 'Carrefour City Center, Gate 4, Alex-Cairo Desert Rd, Km 8',
+    governorate: 'alexandria',
+    city: 'alexandria_city',
+    latitude: 31.1550,
+    longitude: 29.9550,
+    openingHours: '09:00 AM - 12:00 AM', //
+    phone: '16061',
+  },
+  {
+    id: 'spinneys-alex-smouha',
+    storeId: 'spinneys',
+    addressAr: '364 شارع النقل والهندسة، سموحة، بجوار نادي سموحة',
+    addressEn: '364 El Naql & El Handasa St., Semouha, Next to Smouha Club',
+    governorate: 'alexandria',
+    city: 'smouha',
+    latitude: 31.2150,
+    longitude: 29.9450,
+    openingHours: '09:00 AM - 01:00 AM', //
+    phone: '16005',
+  },
+  {
+    id: 'btech-alex-sidi-gaber',
+    storeId: 'btech',
+    addressAr: '305 شارع بورسعيد، سيدي جابر، أمام مستشفى القوات المسلحة',
+    addressEn: '305 Port Said St., Sidi Gaber, In front of Armed Forces Hospital',
+    governorate: 'alexandria',
+    city: 'sidi_gaber',
+    latitude: 31.2200,
+    longitude: 29.9420,
+    openingHours: '10:00 AM - 10:00 PM', //
+    phone: '19966',
+  },
+];
 
 // ============================================
 // HELPER FUNCTIONS
@@ -534,7 +584,7 @@ export const getStoreById = (storeId: string): Store | undefined => {
 };
 
 export const getBranchesByStore = (storeId: string): Branch[] => {
-  const allBranches = [...sharkiaBranches, ...dakahliaBranches, ...cairoBranches];
+  const allBranches = [...sharkiaBranches, ...dakahliaBranches, ...cairoBranches, ...alexandriaBranches];
   return allBranches.filter(b => b.storeId === storeId);
 };
 
@@ -546,13 +596,15 @@ export const getBranchesByGovernorate = (governorate: GovernorateId): Branch[] =
       return dakahliaBranches;
     case 'cairo':
       return cairoBranches;
+    case 'alexandria':
+      return alexandriaBranches;
     default:
       return [];
   }
 };
 
 export const getBranchesByCity = (cityId: CityId): Branch[] => {
-  const allBranches = [...sharkiaBranches, ...dakahliaBranches, ...cairoBranches];
+  const allBranches = [...sharkiaBranches, ...dakahliaBranches, ...cairoBranches, ...alexandriaBranches];
   return allBranches.filter(b => b.city === cityId);
 };
 
@@ -585,7 +637,7 @@ export const getStoresByUserLocation = (
 };
 
 export const getAllBranches = (): Branch[] => {
-  return [...sharkiaBranches, ...dakahliaBranches, ...cairoBranches];
+  return [...sharkiaBranches, ...dakahliaBranches, ...cairoBranches, ...alexandriaBranches];
 };
 
 export const getStoresByCategory = (categoryId: string): Store[] => {

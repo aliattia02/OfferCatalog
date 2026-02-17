@@ -23,31 +23,41 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // For React Native persistence
 import { getReactNativePersistence } from 'firebase/auth';
 
-// ✅ CRITICAL FIX: Get platform-specific App ID
+// ✅ CRITICAL FIX: Get platform-specific App ID with better fallback
 const getAppId = () => {
+  const extra = Constants.expoConfig?.extra;
+
   if (Platform.OS === 'web') {
-    return Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_APP_ID_WEB ||
+    return extra?.EXPO_PUBLIC_FIREBASE_APP_ID_WEB ||
            process.env.EXPO_PUBLIC_FIREBASE_APP_ID_WEB;
   } else if (Platform.OS === 'android') {
-    return Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_APP_ID_ANDROID ||
+    return extra?.EXPO_PUBLIC_FIREBASE_APP_ID_ANDROID ||
            process.env.EXPO_PUBLIC_FIREBASE_APP_ID_ANDROID;
   } else if (Platform.OS === 'ios') {
     // Add iOS App ID when available
-    return Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_APP_ID_IOS ||
-           process.env.EXPO_PUBLIC_FIREBASE_APP_ID_IOS;
+    return extra?.EXPO_PUBLIC_FIREBASE_APP_ID_IOS ||
+           process.env.EXPO_PUBLIC_FIREBASE_APP_ID_IOS ||
+           // Fallback to Android ID for iOS if iOS not configured
+           extra?.EXPO_PUBLIC_FIREBASE_APP_ID_ANDROID ||
+           process.env.EXPO_PUBLIC_FIREBASE_APP_ID_ANDROID;
   }
   return undefined;
 };
 
+// Helper to get env value with fallback
+const getEnvValue = (key: string) => {
+  return Constants.expoConfig?.extra?.[key] || process.env[key];
+};
+
 // Firebase configuration from environment variables
 const firebaseConfig = {
-  apiKey: Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_API_KEY || process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
-  authDomain: Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_PROJECT_ID || process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: getAppId(), // ✅ Platform-specific App ID
-  measurementId: Constants.expoConfig?.extra?.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID || process.env.EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID,
+  apiKey: getEnvValue('EXPO_PUBLIC_FIREBASE_API_KEY'),
+  authDomain: getEnvValue('EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN'),
+  projectId: getEnvValue('EXPO_PUBLIC_FIREBASE_PROJECT_ID'),
+  storageBucket: getEnvValue('EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET'),
+  messagingSenderId: getEnvValue('EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
+  appId: getAppId(),
+  measurementId: getEnvValue('EXPO_PUBLIC_FIREBASE_MEASUREMENT_ID'),
 };
 
 let app: FirebaseApp | null = null;
@@ -88,14 +98,31 @@ export const initializeFirebase = async (): Promise<{
       console.log('🚀 Initializing Firebase...');
       console.log('📱 Platform:', Platform.OS);
 
-      // Validate configuration
-      if (!firebaseConfig.appId) {
-        throw new Error(`❌ Firebase App ID not found for platform: ${Platform.OS}`);
+      // ✅ ENHANCED VALIDATION: Check all required fields
+      const missingFields = [];
+      if (!firebaseConfig.apiKey) missingFields.push('apiKey');
+      if (!firebaseConfig.authDomain) missingFields.push('authDomain');
+      if (!firebaseConfig.projectId) missingFields.push('projectId');
+      if (!firebaseConfig.storageBucket) missingFields.push('storageBucket');
+      if (!firebaseConfig.messagingSenderId) missingFields.push('messagingSenderId');
+      if (!firebaseConfig.appId) missingFields.push('appId');
+
+      if (missingFields.length > 0) {
+        const errorMsg = `❌ Firebase configuration incomplete. Missing: ${missingFields.join(', ')}`;
+        console.error(errorMsg);
+        console.error('🔍 Debug Info:', {
+          platform: Platform.OS,
+          hasExtra: !!Constants.expoConfig?.extra,
+          extraKeys: Constants.expoConfig?.extra ? Object.keys(Constants.expoConfig.extra) : [],
+          processEnvKeys: Object.keys(process.env).filter(k => k.startsWith('EXPO_PUBLIC_')),
+        });
+        throw new Error(errorMsg);
       }
 
       console.log('✅ Firebase Config loaded:', {
         projectId: firebaseConfig.projectId,
-        appId: firebaseConfig.appId,
+        appId: firebaseConfig.appId?.substring(0, 20) + '...',
+        platform: Platform.OS,
         hasApiKey: !!firebaseConfig.apiKey,
         hasMeasurementId: !!firebaseConfig.measurementId,
       });
@@ -178,7 +205,7 @@ export const initializeFirebase = async (): Promise<{
           }
         }
       } else {
-        console.log('📱 Native platform - Analytics handled by @react-native-firebase/analytics');
+        console.log('📱 Native platform - Analytics handled by Firebase SDK');
       }
 
       console.log('✅ All Firebase services initialized successfully');

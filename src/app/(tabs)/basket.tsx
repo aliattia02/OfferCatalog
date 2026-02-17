@@ -152,22 +152,8 @@ export default function BasketScreen() {
   };
 
   const handleRemoveItem = (itemId: string) => {
-    // FIXED: Use Alert.alert instead of window.confirm
-    Alert.alert(
-      'حذف العنصر',
-      'هل تريد حذف هذا العنصر من السلة؟',
-      [
-        {
-          text: 'إلغاء',
-          style: 'cancel'
-        },
-        {
-          text: 'حذف',
-          style: 'destructive',
-          onPress: () => dispatch(removeFromBasket(itemId))
-        }
-      ]
-    );
+    // Remove item directly without confirmation
+    dispatch(removeFromBasket(itemId));
   };
 
   const handleClearBasket = () => {

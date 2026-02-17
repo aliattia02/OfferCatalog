@@ -1,7 +1,8 @@
 // src/services/imageCacheService.ts - FIXED: Web platform support + fallback
 import * as FileSystem from 'expo-file-system';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { Image, Platform } from 'react-native';
+import type { Catalogue } from '../types';
 
 interface CachedImage {
   url: string;
@@ -22,6 +23,13 @@ class ImageCacheService {
   private cacheDir: string | null = null;
   private isWebPlatform = Platform.OS === 'web';
   private cacheSupported = false;
+
+  /**
+   * ⚡ In-memory set of URLs already fetched into the network/HTTP cache.
+   * Shared across HomeScreen (preload) and FlyerDetail (instant hit check).
+   * Separate from file-system cache — this is session-only, zero I/O.
+   */
+  readonly loadedImages: Set<string> = new Set();
 
   async init(): Promise<void> {
     if (this.initialized) return;
@@ -351,6 +359,100 @@ class ImageCacheService {
    */
   isCacheSupported(): boolean {
     return this.cacheSupported;
+  }
+
+  // =========================================================
+  // ⚡ PRELOAD TRACKING — session-only, zero I/O
+  // Used by FlyerDetail for instant cache-hit checks and by
+  // HomeScreen to warm up first pages before the user taps.
+  // =========================================================
+
+  /**
+   * Returns true if the URL has already been prefetched into
+   * the network/HTTP cache this session.
+   */
+  isPreloaded(url: string): boolean {
+    return this.loadedImages.has(url);
+  }
+
+  /**
+   * Mark a URL as preloaded (called by CachedImage.handleLoad so every
+   * rendered image automatically populates the preload set).
+   */
+  markPreloaded(url: string): void {
+    if (url) this.loadedImages.add(url);
+  }
+
+  /**
+   * Prefetch a single URL into the network/HTTP cache.
+   * Does NOT write to file system — use getCachedImage() for that.
+   * Returns true on success.
+   */
+  async preloadImage(url: string): Promise<boolean> {
+    if (!url || typeof url !== 'string') return false;
+    if (this.loadedImages.has(url)) return true; // Already done
+
+    try {
+      if (this.isWebPlatform) {
+        await new Promise<void>((resolve, reject) => {
+          const img = new window.Image();
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error('Failed to load'));
+          img.src = url;
+        });
+      } else {
+        await Image.prefetch(url);
+      }
+      this.loadedImages.add(url);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Preload the first page of every active catalogue.
+   * Called from HomeScreen once catalogues load — makes Page 1 instant.
+   * Runs in staggered batches to avoid competing with app startup.
+   */
+  preloadCatalogueFirstPages(catalogues: Catalogue[]): void {
+    if (!catalogues || catalogues.length === 0) return;
+
+    const urls = catalogues
+      .map(cat => cat.pages?.[0]?.imageUrl)
+      .filter((url): url is string => !!url && !this.loadedImages.has(url));
+
+    if (urls.length === 0) {
+      console.log('⚡ [ImagePreload] All first pages already preloaded');
+      return;
+    }
+
+    console.log(`🚀 [ImagePreload] Queuing first pages for ${urls.length} catalogues...`);
+
+    const BATCH_SIZE = 3;
+    const BATCH_DELAY_MS = 800;
+    const INITIAL_DELAY_MS = 1500; // Let app finish startup first
+
+    const loadBatch = (startIndex: number) => {
+      const batch = urls.slice(startIndex, startIndex + BATCH_SIZE);
+      if (batch.length === 0) return;
+
+      batch.forEach(async (url) => {
+        const success = await this.preloadImage(url);
+        if (success) {
+          const name = url.split('/').pop()?.slice(0, 40) ?? url;
+          console.log(`✅ [ImagePreload] Ready: ${name}`);
+        }
+      });
+
+      if (startIndex + BATCH_SIZE < urls.length) {
+        setTimeout(() => loadBatch(startIndex + BATCH_SIZE), BATCH_DELAY_MS);
+      } else {
+        console.log(`✅ [ImagePreload] Done — ${urls.length} first pages preloaded`);
+      }
+    };
+
+    setTimeout(() => loadBatch(0), INITIAL_DELAY_MS);
   }
 }
 
