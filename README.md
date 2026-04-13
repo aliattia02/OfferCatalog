@@ -100,32 +100,7 @@ Shoppers in Egypt have no single place to browse promotional catalogues from sup
 - A Firebase project (Firestore, Storage, Auth, FCM)
 - Google OAuth credentials
 
-### Installation
 
-```bash
-# 1. Clone the repo
-git clone https://github.com/aliattia02/OfferCatalog.git
-cd OfferCatalog
-
-# 2. Install dependencies
-npm install
-
-# 3. Set up environment variables
-cp .env.example .env   # fill in your Firebase credentials
-
-# 4. Start the dev server
-npm start
-```
-
-### Environment Variables
-
-You'll need the following in your `.env` file — all values come from your Firebase project settings:
-
-`EXPO_PUBLIC_FIREBASE_API_KEY`, `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`, `EXPO_PUBLIC_FIREBASE_PROJECT_ID`, `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET`, `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`, `EXPO_PUBLIC_FIREBASE_APP_ID`, `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`
-
-You'll also need to place your `google-services.json` (from Firebase Console) in the project root for Android builds.
-
----
 
 ## 🚦 Feature Status
 
