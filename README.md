@@ -6,7 +6,8 @@
 
 Daily Deals is a bilingual **(Arabic / English)** mobile app for Egyptian shoppers that brings together weekly store flyers, promotional offers, and product catalogues from national and local retailers — so you never miss a deal.
 
-[![Google Play](https://img.shields.io/badge/Google%20Play-Download-green?logo=google-play&style=flat-square)](https://play.google.com/store/apps/details?id=com.medlyticssolutions.dailydeals)
+[![Google Play](https://img.shields.io/badge/Google%20Play-Download%20Now-green?logo=google-play&style=for-the-badge)](https://play.google.com/store/apps/details?id=com.medlyticssolutions.dailydeals)
+
 [![Version](https://img.shields.io/badge/version-1.0.8-blue?style=flat-square)]()
 [![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20iOS-lightgrey?style=flat-square)]()
 [![Language](https://img.shields.io/badge/Language-Arabic%20%7C%20English-orange?style=flat-square)]()
@@ -20,9 +21,7 @@ Daily Deals is a bilingual **(Arabic / English)** mobile app for Egyptian shoppe
 1. [Overview](#-overview)
 2. [Features](#-features)
 3. [Screenshots](#-screenshots)
-4. [Getting Started](#-getting-started)
-5. [Feature Status](#-feature-status)
-6. [License](#-license)
+4. [License](#-license)
 
 ---
 
@@ -60,15 +59,14 @@ Shoppers in Egypt have no single place to browse promotional catalogues from sup
 ### 🛒 Shopping Basket
 - Add individual offers or full catalogue pages to your basket
 - Manage quantities per item
-- Filter and sort your list by store or expiry date
+- Filter and sort by store or expiry date
 - Auto-detects expired items and prompts for removal
-- Total price shown in EGP
-- Basket is saved between sessions
+- Total price shown in EGP — basket saved between sessions
 
 ### ❤️ Favourites
 - Favourite your go-to stores and product categories
 - See all active catalogues from your favourite stores in one tab
-- Browse grouped offers from your favourite categories with offer counts
+- Browse grouped offers from favourite categories with live offer counts
 
 ### 🏪 Stores Directory
 - Full list of national and local stores with logos and branch details
@@ -93,21 +91,11 @@ Shoppers in Egypt have no single place to browse promotional catalogues from sup
 
 ---
 
-## 🚀 Getting Started
+## 🚦 What's Coming
 
-### Prerequisites
-- Node.js ≥ 18
-- A Firebase project (Firestore, Storage, Auth, FCM)
-- Google OAuth credentials
-
-
-
-## 🚦 Feature Status
-
-| Status | |
-|---|---|
-| ✅ Live | Catalogues, offers, search, basket, favourites, store directory, notifications, Google sign-in, location personalisation, Arabic/English support |
-| 🔜 Planned | iOS App Store release, more store partnerships, price tracking over time |
+- iOS App Store release
+- More store partnerships across Egypt
+- Price tracking over time
 
 ---
 
@@ -117,4 +105,10 @@ Private — All rights reserved © Medlytics Solutions.
 
 ---
 
-<div align="center">Built with ❤️ for Egyptian shoppers</div>
+<div align="center">
+
+Built with ❤️ for Egyptian shoppers
+
+**[⬇️ Download on Google Play](https://play.google.com/store/apps/details?id=com.medlyticssolutions.dailydeals)**
+
+</div>
